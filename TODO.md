@@ -1,0 +1,1 @@
+-   ask user for languages to keep and transform them into iso639, then check in remove_audio & remove_subtitles
