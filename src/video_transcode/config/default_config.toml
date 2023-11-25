@@ -1,0 +1,7 @@
+# Default TOML configuration file
+
+radarr_api_key = ""
+radarr_url     = ""
+sonarr_api_key = ""
+sonarr_url     = ""
+tmdb_api_key   = ""
