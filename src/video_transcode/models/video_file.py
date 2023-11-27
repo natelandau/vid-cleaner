@@ -44,6 +44,7 @@ class VideoFile:
         self.ran_language_check = False
         self.current_tmp_file: Path | None = None  # Current temporary file
         self.tmp_files: list[Path] = []  # All temporary files created by this VideoFile
+        self.tmp_file_number = 1
 
         # Register cleanup on exit
         atexit.register(cleanup_on_exit, self)
@@ -338,12 +339,18 @@ class VideoFile:
         suffix = suffix if suffix else self.suffix
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
 
-        i = 1
+        # Create a new tmp file name
         for file in self.tmp_dir.iterdir():
-            if file.stem.startswith(f"{i}_"):
-                i += 1
+            if file.stem.startswith(f"{self.tmp_file_number}_"):
+                self.tmp_file_number += 1
 
-        output_file = self.tmp_dir / f"{i}_{step}{suffix}"
+        output_file = self.tmp_dir / f"{self.tmp_file_number}_{step}{suffix}"
+
+        # Remove all but the most recent tmp file to reduce the size of tmp files on disk
+        for file in self.tmp_dir.iterdir():
+            if file != input_file:
+                logger.trace(f"Remove: {file}")
+                file.unlink()
 
         return input_file, output_file
 
@@ -577,16 +584,17 @@ class VideoFile:
         Remove all temporary files and directories associated with this VideoFile instance.
         This includes cleaning up any intermediate files generated during processing.
         """
-        logger.debug("Clean up temporary files")
+        if self.tmp_dir.exists():
+            logger.debug("Clean up temporary files")
 
-        # Clean up temporary files
-        for file in self.tmp_dir.iterdir():
-            logger.trace(f"Remove: {file}")
-            file.unlink()
+            # Clean up temporary files
+            for file in self.tmp_dir.iterdir():
+                logger.trace(f"Remove: {file}")
+                file.unlink()
 
-        # Clean up temporary directory
-        logger.trace(f"Remove: {self.tmp_dir}")
-        self.tmp_dir.rmdir()
+            # Clean up temporary directory
+            logger.trace(f"Remove: {self.tmp_dir}")
+            self.tmp_dir.rmdir()
 
     def clip(self, start: str, duration: str) -> Path:
         """Clip a segment from the video.
