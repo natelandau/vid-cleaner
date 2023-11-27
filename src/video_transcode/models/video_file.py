@@ -1,5 +1,6 @@
 """VideoFile model."""
 
+import atexit
 import re
 from pathlib import Path
 
@@ -20,6 +21,11 @@ from video_transcode.constants import (
 from video_transcode.utils import ffprobe, query_radarr, query_sonarr, query_tmdb
 
 
+def cleanup_on_exit(video_file: "VideoFile") -> None:
+    """Cleanup temporary files on exit."""
+    video_file.cleanup()
+
+
 class VideoFile:
     """VideoFile model."""
 
@@ -38,6 +44,9 @@ class VideoFile:
         self.ran_language_check = False
         self.current_tmp_file: Path | None = None  # Current temporary file
         self.tmp_files: list[Path] = []  # All temporary files created by this VideoFile
+
+        # Register cleanup on exit
+        atexit.register(cleanup_on_exit, self)
 
     def _convert_to_h265(self) -> Path:
         """Convert the video to H.265 codec format.
