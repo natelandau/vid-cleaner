@@ -1,32 +1,34 @@
-# video-transcode
+# Vid Cleaner
 
-Tools to transcode, inspect and convert videos.
+Tools to transcode, inspect and convert videos. This package provides convenience wrappers around [ffmpeg](https://ffmpeg.org/) and [ffprobe](https://ffmpeg.org/ffprobe.html) to make it easier to work with video files. The functionality is highly customized to my personal workflows and needs. I am sharing it in case it is useful to others.
 
-## Install CLI apps
+## Features
 
-Use [PIPX](https://pypa.github.io/pipx/) to install this package from Github.
+-   Remove commentary tracks and subtitles
+-   Remove unwanted audio and subtitle tracks
+-   Convert to H.265 or VP9
+-   Downmix from surround to create missing stereo streams with custom filters to improve quality
+-   Removes unwanted audio and subtitle tracks, optionally keeping the original language audio track
+-   Create clips from a video file
 
-```bash
-pipx install git+https://${GITHUB_TOKEN}@github.com/natelandau/video-transcode
-```
+## Install
 
-Running the above command will install all script entry points as standalone scripts in the users' PATH.
-
-**Note: You must be authenticated on Github for this to work**
-
-**_Alternative_**
-You can install from the local filesystem. This approach will create a link to the _editable version_ of the script which may cause problems if you plan on developing from that directory.
+vid-cleaner requires Python v3.11 or above
 
 ```bash
-pipx install ~/path/to/project
+pip install vid-cleaner
 ```
+
+## Usage
+
+Run `vid-cleaner --help` to see the available commands and options.
 
 ## Contributing
 
 ## Setup: Once per project
 
 1. Install Python 3.11 and [Poetry](https://python-poetry.org)
-2. Clone this repository. `git clone https://github.com/natelandau/video-transcode`
+2. Clone this repository. `git clone https://github.com/natelandau/vid-cleaner`
 3. Install the Poetry environment with `poetry install`.
 4. Activate your Poetry environment with `poetry shell`.
 5. Install the pre-commit hooks with `pre-commit install --install-hooks`.

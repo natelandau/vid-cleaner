@@ -10,7 +10,7 @@ from iso639 import Lang
 from loguru import logger
 from rich.progress import Progress
 
-from video_transcode.constants import (
+from vid_cleaner.constants import (
     APP_DIR,
     EXCLUDED_VIDEO_CODECS,
     FFMPEG_APPEND,
@@ -18,7 +18,7 @@ from video_transcode.constants import (
     H265_CODECS,
     AudioLayout,
 )
-from video_transcode.utils import ffprobe, query_radarr, query_sonarr, query_tmdb
+from vid_cleaner.utils import ffprobe, query_radarr, query_sonarr, query_tmdb
 
 
 def cleanup_on_exit(video_file: "VideoFile") -> None:

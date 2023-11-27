@@ -1,4 +1,4 @@
-"""Custom errors for the video_transcode package."""
+"""Custom errors for the vid-cleaner package."""
 
 
 class SameFileError(OSError):

@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import typer
 
-from video_transcode.utils import console, existing_file_path, tmp_to_output
+from vid_cleaner.utils import console, existing_file_path, tmp_to_output
 
 
 def test_existing_file_path_1(tmp_path):

@@ -1,4 +1,4 @@
-"""Models for video_transcode app."""
+"""Models for vid-cleaner app."""
 
 from .video_file import VideoFile
 

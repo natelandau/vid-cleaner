@@ -1,4 +1,4 @@
-"""video-transcode CLI."""
+"""vid-cleaner CLI."""
 
 import re
 from pathlib import Path
@@ -8,9 +8,9 @@ import typer
 from loguru import logger
 from rich.table import Table
 
-from video_transcode.__version__ import __version__
-from video_transcode.models import VideoFile
-from video_transcode.utils import (
+from vid_cleaner.__version__ import __version__
+from vid_cleaner.models import VideoFile
+from vid_cleaner.utils import (
     console,
     existing_file_path,
     ffprobe,

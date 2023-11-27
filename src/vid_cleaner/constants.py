@@ -1,4 +1,4 @@
-"""Constants for video-transcode."""
+"""Constants for vid-cleaner."""
 
 from enum import Enum
 from pathlib import Path
@@ -7,7 +7,7 @@ import typer
 
 
 class LogLevel(Enum):
-    """Log levels for video-transcode."""
+    """Log levels for vid-cleaner."""
 
     INFO = 0
     DEBUG = 1
@@ -17,7 +17,7 @@ class LogLevel(Enum):
 
 
 class AudioLayout(Enum):
-    """Audio layouts for video-transcode. Values are the number of streams."""
+    """Audio layouts for vid-cleaner. Values are the number of streams."""
 
     MONO = 1
     STEREO = 2
@@ -25,7 +25,7 @@ class AudioLayout(Enum):
     SURROUND7 = 8
 
 
-APP_DIR = Path(typer.get_app_dir("video-transcode"))
+APP_DIR = Path(typer.get_app_dir("vid-cleaner"))
 EXCLUDED_VIDEO_CODECS = {"mjpeg", "png"}
 FFMPEG_APPEND: list[str] = ["-max_muxing_queue_size", "9999"]
 FFMPEG_PREPEND: list[str] = ["-y", "-hide_banner"]

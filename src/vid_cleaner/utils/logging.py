@@ -1,4 +1,4 @@
-"""Logging utilities for video_transcode."""
+"""Logging utilities for vid-cleaner."""
 
 import logging
 import sys
@@ -6,13 +6,13 @@ from pathlib import Path
 
 from loguru import logger
 
-from video_transcode.constants import LogLevel
+from vid_cleaner.constants import LogLevel
 
 
 def instantiate_logger(
     verbosity: int, log_file: Path, log_to_file: bool
 ) -> None:  # pragma: no cover
-    """Instantiate the Loguru logger for video_transcode.
+    """Instantiate the Loguru logger for vid-cleaner.
 
     Args:
         verbosity (int): Verbosity level

@@ -1,4 +1,4 @@
-"""Helper functions for video-transcode."""
+"""Helper functions for vid-cleaner."""
 
 import io
 import shutil
@@ -11,9 +11,9 @@ import typer
 from loguru import logger
 from rich.progress import Progress
 
-from video_transcode.config import Config
-from video_transcode.constants import APP_DIR, BUFFER_SIZE
-from video_transcode.utils import errors
+from vid_cleaner.config import Config
+from vid_cleaner.constants import APP_DIR, BUFFER_SIZE
+from vid_cleaner.utils import errors
 
 
 def existing_file_path(path: str) -> Path:

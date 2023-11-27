@@ -1,1 +1,1 @@
-"""video-transcode test suite."""
+"""vid-cleaner test suite."""
