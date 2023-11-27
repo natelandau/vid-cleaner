@@ -20,7 +20,7 @@ from video_transcode.utils import (
 
 typer.rich_utils.STYLE_HELPTEXT = ""
 
-app = typer.Typer(add_completion=False, no_args_is_help=True, rich_markup_mode="markdown")
+app = typer.Typer(add_completion=False, no_args_is_help=True, rich_markup_mode="rich")
 
 
 def version_callback(value: bool) -> None:
@@ -55,7 +55,7 @@ def inspect_command(
         ),
     ],
 ) -> None:
-    """# Inspect video files to display detailed stream information.
+    """Inspect video files to display detailed stream information.
 
     Use this command to view detailed information about the video and audio streams
     of a video file. The information includes stream type, codec, language,
@@ -106,13 +106,14 @@ def clip_command(
         bool, typer.Option("--overwrite", help="Overwrite output file if it exists")
     ] = False,
 ) -> None:
-    """# Clip a section from a video file.
+    """Clip a section from a video file.
 
     This command allows you to extract a specific portion of a video file based on start time and duration.
 
-    * The start time and duration should be specified in `HH:MM:SS` format.
+    * The start time and duration should be specified in [code]HH:MM:SS[/code] format.
+    * You can also specify an output file to save the clipped video. If the output file is not specified, the clip will be saved with a default naming convention.
 
-    * You can also specify an output file to save the clipped video. If the output file is not specified, the clip will be saved with a default naming convention. Use the `--overwrite` option to overwrite the output file if it already exists.
+    Use the [code]--overwrite[/code] option to overwrite the output file if it already exists.
     """
     time_pattern = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 
@@ -195,36 +196,28 @@ def transcode_command(
         bool, typer.Option("--overwrite", help="Overwrite output file if it exists")
     ] = False,
 ) -> None:
-    """# Transcode video files to different formats or configurations.
+    """Transcode video files to different formats or configurations.
 
     This command is versatile and allows for a range of transcoding options for video files with various options. You can select various audio and video settings, manage subtitles, and choose the output file format.
 
     The defaults for this command will:
 
     * Drop commentary audio tracks
-
     * Drop all audio languages other than English, unless the original audio is not in English, in which case the original audio is retained
-
-    * Drop all subtitles other than English, unless the original audio is not in English, in which case English subtitles are retained\n\n
+    * Drop all subtitles other than English, unless the original audio is not in English, in which case English subtitles are retained
 
     The defaults can be overridden by using the various options available.
 
     Additionally, this script can transcode video files to the H265 or VP9 codecs and downmix audio.  See the options below for more details.
 
-    ### Usage Examples
+    [bold underline]Usage Examples[/bold underline]
 
-    ```bash
+    [#999999]Transcode a video to H265 format and keep English audio:[/#999999]
+    transcode --h265 --langs=eng <video_file>
 
-    # Transcode a video to H265 format and keep English audio:\n\n
-
-    transcode --h265 --langs=eng <video_file>\n\n
-
-    # Downmix audio to stereo and keep all subtitles:\n\n
-
+    [#999999]Downmix audio to stereo and keep all subtitles:[/#999999]
     transcode --downmix --keep_subs <video_file>
-
-    ```
-    """  # noqa: D301
+    """
     for video in files:
         if h265 and vp9:
             msg = "Cannot convert to both H265 and VP9"
