@@ -1,15 +1,19 @@
 """Helper functions for video-transcode."""
 
+import io
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 import ffmpeg as python_ffmpeg
 import requests
 import typer
 from loguru import logger
+from rich.progress import Progress
 
 from video_transcode.config import Config
-from video_transcode.constants import APP_DIR
+from video_transcode.constants import APP_DIR, BUFFER_SIZE
+from video_transcode.utils import errors
 
 
 def existing_file_path(path: str) -> Path:
@@ -155,6 +159,80 @@ def query_sonarr(search: str) -> dict:  # Pragma: no cover
     return response.json()
 
 
+def _copyfileobj(
+    src_bytes: io.BufferedReader,
+    dest_bytes: io.BufferedWriter,
+    callback: Callable,
+    length: int,
+) -> None:
+    """Copy from src_bytes to dest_bytes.
+
+    Args:
+        src_bytes (io.BufferedReader): Source file
+        dest_bytes (io.BufferedWriter): Destination file
+        callback (Callable): Callback to call after every length bytes copied
+        total (int): Total number of bytes to copy
+        length (int): How many bytes to copy at once
+
+    """
+    copied = 0
+    while True:
+        buf = src_bytes.read(length)
+        if not buf:
+            break
+        dest_bytes.write(buf)
+        copied += len(buf)
+        if callback is not None:
+            callback(copied)
+
+
+def copy_with_callback(
+    src: Path,
+    dest: Path,
+    callback: Callable | None = None,
+    buffer_size: int = BUFFER_SIZE,
+) -> Path:
+    """Copy file with a callback.
+
+    Args:
+        src (Path): Path to source file
+        dest (Path): Path to destination file
+        callback (Callable, optional): Callable callback that will be called after every buffer_size bytes copied. Defaults to None.
+        buffer_size (int, optional): How many bytes to copy at once (between calls to callback). Defaults to BUFFER_SIZE (4mb).
+
+    Returns:
+        Path: Path to destination file
+
+
+    Raises:
+        FileNotFoundError: If source file does not exist
+        SameFileError: If source and destination are the same file
+        ValueError: If callback is not callable
+
+    Note: Does not copy extended attributes, resource forks or other metadata.
+    """
+    if not src.is_file():
+        msg = f"src file `{src}` doesn't exist"
+        raise FileNotFoundError(msg)
+
+    dest = dest / src.name if dest.is_dir() else dest
+
+    if dest.exists() and src.samefile(dest):
+        msg = f"source file `{src}` and destination file `{dest}` are the same file."
+        raise errors.SameFileError(msg)
+
+    if callback is not None and not callable(callback):
+        msg = f"callback must be callable, not {type(callback)}"  # type: ignore [unreachable]
+        raise ValueError(msg)
+
+    with src.open("rb") as src_bytes, dest.open("wb") as dest_bytes:
+        _copyfileobj(src_bytes, dest_bytes, callback=callback, length=buffer_size)
+
+    shutil.copymode(str(src), str(dest))
+
+    return dest
+
+
 def tmp_to_output(
     tmp_file: Path,
     stem: str,
@@ -190,6 +268,15 @@ def tmp_to_output(
             new = parent / f"{stem}_{i}{tmp_file.suffix}"
             i += 1
 
-    shutil.copy(tmp_file, new)
+    tmp_file_size = tmp_file.stat().st_size
+
+    with Progress(transient=True) as progress:
+        task = progress.add_task("Copy file…", total=tmp_file_size)
+        copy_with_callback(
+            tmp_file,
+            new,
+            callback=lambda total_copied: progress.update(task, completed=total_copied),
+        )
+
     logger.trace(f"File copied to {new}")
     return new
