@@ -136,7 +136,7 @@ def clip_command(
             video.current_tmp_file, stem=video.stem, new_file=out, overwrite=overwrite
         )
         video.cleanup()
-        logger.success(f"✅ {out_file}")
+        logger.success(f"{out_file}")
 
 
 @app.command("clean")
@@ -273,7 +273,7 @@ def clean_command(
             logger.debug(f"Delete: {video.path}")
             video.path.unlink()
 
-        logger.success(f"✅ {out_file}")
+        logger.success(f"{out_file}")
 
 
 @app.callback()

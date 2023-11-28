@@ -582,7 +582,7 @@ class VideoFile:
             for complete in ff.run_command_with_progress():
                 progress.update(task, completed=complete)
 
-        logger.info(f"✔️ {title}")
+        logger.info(f"✔ {title}")
 
         # Set current temporary file and return path
         self.current_tmp_file = output_path
