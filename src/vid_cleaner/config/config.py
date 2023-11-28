@@ -65,7 +65,7 @@ class Config:
         return config
 
     def get(
-        self, key: str, default: str | None = None, pass_none: bool = False
+        self, key: str, default: str | bool | list[str] | None = None, pass_none: bool = False
     ) -> str | int | bool | list[str | int] | None:
         """Get a value from the configuration file.
 

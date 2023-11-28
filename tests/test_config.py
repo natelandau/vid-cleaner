@@ -49,6 +49,9 @@ def test_init_config_3(tmp_path):
     assert config.config_path == path_to_config
     assert config.config == {
         "dry_run": False,
+        "keep_languages": ["en"],
+        "log_file": "log.txt",
+        "log_to_file": True,
         "radarr_api_key": "",
         "radarr_url": "",
         "sonarr_api_key": "",
@@ -71,6 +74,9 @@ def test_init_config_4(tmp_path):
     assert config.config_path == path_to_config
     assert config.config == {
         "dry_run": True,
+        "keep_languages": ["en"],
+        "log_file": "log.txt",
+        "log_to_file": True,
         "force": True,
         "radarr_api_key": "",
         "radarr_url": "",

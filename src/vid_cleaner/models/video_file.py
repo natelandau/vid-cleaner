@@ -615,7 +615,7 @@ class VideoFile:
         # Run ffmpeg
         return self._run_ffmpeg(ffmpeg_command, title="Clip video", step="clip")
 
-    def process(
+    def process_streams(
         self,
         langs_to_keep: list[str],
         drop_original_audio: bool,

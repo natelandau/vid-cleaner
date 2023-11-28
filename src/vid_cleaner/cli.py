@@ -9,6 +9,8 @@ from loguru import logger
 from rich.table import Table
 
 from vid_cleaner.__version__ import __version__
+from vid_cleaner.config import Config
+from vid_cleaner.constants import APP_DIR
 from vid_cleaner.models import VideoFile
 from vid_cleaner.utils import (
     console,
@@ -21,6 +23,7 @@ from vid_cleaner.utils import (
 typer.rich_utils.STYLE_HELPTEXT = ""
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, rich_markup_mode="rich")
+config = Config(config_path=APP_DIR / "config.toml")
 
 
 def version_callback(value: bool) -> None:
@@ -136,8 +139,8 @@ def clip_command(
         logger.success(f"✅ Clipped video saved to {out_file}")
 
 
-@app.command("transcode")
-def transcode_command(
+@app.command("clean")
+def clean_command(
     files: Annotated[
         list[VideoFile],
         typer.Argument(
@@ -150,7 +153,20 @@ def transcode_command(
             resolve_path=True,
         ),
     ],
-    out: Annotated[Optional[Path], typer.Option(help="Output file", show_default=False)] = None,
+    out: Annotated[
+        Optional[Path],
+        typer.Option(
+            help=r"Output file [#888888]\[default: input file][/#888888]",
+            show_default=False,
+        ),
+    ] = None,
+    replace: Annotated[
+        bool,
+        typer.Option(
+            "--replace",
+            help="Delete or overwrite original file after processing. Use with caution",
+        ),
+    ] = False,
     downmix_stereo: Annotated[
         bool,
         typer.Option(
@@ -186,15 +202,12 @@ def transcode_command(
         typer.Option(
             help="Languages to keep. Comma separated language codes", rich_help_panel="Audio"
         ),
-    ] = "eng",
+    ] = ",".join(config.get("keep_languages", default=["eng"])),  # type: ignore [arg-type]
     h265: Annotated[
         bool, typer.Option("--h265", help="Convert to H265", rich_help_panel="Video")
     ] = False,
     vp9: Annotated[
         bool, typer.Option("--vp9", help="Convert to VP9", rich_help_panel="Video")
-    ] = False,
-    overwrite: Annotated[
-        bool, typer.Option("--overwrite", help="Overwrite output file if it exists")
     ] = False,
 ) -> None:
     """Transcode video files to different formats or configurations.
@@ -227,7 +240,7 @@ def transcode_command(
             raise typer.BadParameter(msg)
 
         video.reorder_streams()
-        video.process(
+        video.process_streams(
             langs_to_keep=langs.split(","),
             drop_original_audio=drop_original_audio,
             keep_commentary=keep_commentary,
@@ -239,22 +252,26 @@ def transcode_command(
 
         if h265:
             video._convert_to_h265()
-            video.reorder_streams()
 
         if vp9:
             video._convert_to_vp9()
 
         out_file = tmp_to_output(
-            video.current_tmp_file, stem=video.stem, new_file=out, overwrite=overwrite
+            video.current_tmp_file, stem=video.stem, new_file=out, overwrite=replace
         )
         video.cleanup()
+
+        if replace and out_file != video.path:
+            logger.debug(f"Delete: {video.path}")
+            video.path.unlink()
+
         logger.success(f"✅ Video saved to {out_file}")
 
 
 @app.callback()
 def main(
     log_file: Path = typer.Option(
-        Path(Path.home() / "logs" / f"{__package__}.log"),
+        config.get("log_file", default=f"{APP_DIR}/vid-cleaner.log"),
         help="Path to log file",
         show_default=True,
         dir_okay=False,
@@ -262,7 +279,7 @@ def main(
         exists=False,
     ),
     log_to_file: bool = typer.Option(
-        False,
+        config.get("log_to_file", default=False),
         "--log-to-file",
         help="Log to file",
         show_default=True,
