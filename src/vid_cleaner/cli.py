@@ -23,7 +23,7 @@ from vid_cleaner.utils import (
 typer.rich_utils.STYLE_HELPTEXT = ""
 
 app = typer.Typer(add_completion=False, no_args_is_help=True, rich_markup_mode="rich")
-config = Config(config_path=Path(f"{APP_DIR}/config.toml"))
+config = Config(config_path=APP_DIR / "config.toml")
 
 
 def version_callback(value: bool) -> None:

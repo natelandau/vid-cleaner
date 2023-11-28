@@ -7,6 +7,7 @@ from typing import Any
 import tomllib
 import typer
 from loguru import logger
+from rich import print as rprint
 
 PATH_CONFIG_DEFAULT = Path(__file__).parent / "default_config.toml"
 
@@ -42,6 +43,7 @@ class Config:
         shutil.copy(PATH_CONFIG_DEFAULT, self.config_path)
         logger.success(f"Created default configuration file at {self.config_path}")
         logger.info(f"Please edit {self.config_path} before continuing")
+        rprint(f"{self.config_path} created. Please edit before continuing.")
         raise typer.Exit(code=1)
 
     def _load_config(self) -> dict[str, Any]:

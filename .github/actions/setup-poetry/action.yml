@@ -43,7 +43,7 @@ runs:
               virtualenvs-in-project: true
               installer-parallel: true
 
-        # # Load cached venv if cache exists
+        # Load cached venv if cache exists
         # - name: Load cached venv
         #   id: cached-poetry-dependencies
         #   uses: actions/cache@v3
