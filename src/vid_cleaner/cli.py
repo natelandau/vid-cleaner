@@ -129,14 +129,14 @@ def clip_command(
         raise typer.BadParameter(msg)
 
     for video in files:
-        logger.info(f"Clipping {video.path.name}")
+        logger.info(f"Process {video.path.name}")
 
         video.clip(start, duration)
         out_file = tmp_to_output(
             video.current_tmp_file, stem=video.stem, new_file=out, overwrite=overwrite
         )
         video.cleanup()
-        logger.success(f"✅ Clipped video saved to {out_file}")
+        logger.success(f"✅ {out_file}")
 
 
 @app.command("clean")
@@ -241,7 +241,7 @@ def clean_command(
     transcode --downmix --keep_subs <video_file>
     """
     for video in files:
-        logger.info(f"Transcoding {video.path.name}")
+        logger.info(f"Process {video.path.name}")
 
         if h265 and vp9:
             msg = "Cannot convert to both H265 and VP9"
@@ -273,7 +273,7 @@ def clean_command(
             logger.debug(f"Delete: {video.path}")
             video.path.unlink()
 
-        logger.success(f"✅ Video saved to {out_file}")
+        logger.success(f"✅ {out_file}")
 
 
 @app.callback()

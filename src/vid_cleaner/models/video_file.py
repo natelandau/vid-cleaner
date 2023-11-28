@@ -2,6 +2,7 @@
 
 import atexit
 import re
+import uuid
 from pathlib import Path
 
 import typer
@@ -38,7 +39,7 @@ class VideoFile:
         self.suffix = path.suffix
         self.suffixes = self.path.suffixes
 
-        self.tmp_dir = APP_DIR / "tmp" / self.stem
+        self.tmp_dir = APP_DIR / "tmp" / uuid.uuid4().hex
         self.container = self.suffix
         self.language: Lang = None
         self.ran_language_check = False
@@ -581,7 +582,7 @@ class VideoFile:
             for complete in ff.run_command_with_progress():
                 progress.update(task, completed=complete)
 
-        logger.info(f"✅ {title} complete")
+        logger.info(f"✔️ {title}")
 
         # Set current temporary file and return path
         self.current_tmp_file = output_path
