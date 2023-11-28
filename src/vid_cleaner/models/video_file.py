@@ -49,15 +49,18 @@ class VideoFile:
         # Register cleanup on exit
         atexit.register(cleanup_on_exit, self)
 
-    def _convert_to_h265(self) -> Path:
+    def _convert_to_h265(self, force: bool = False) -> Path:
         """Convert the video to H.265 codec format.
 
         Check if conversion is necessary and perform it if so. This involves calculating the
         bitrate, building the ffmpeg command, and running it. Return the path to the converted
         video or the original video if conversion isn't needed.
 
+        Args:
+            force (bool, optional): Flag to force conversion even if the video is already H.265. Defaults to False.
+
         Returns:
-        Path: Path to the converted or original video file.
+            Path: Path to the converted or original video file.
         """
         input_path, _ = self._get_input_and_output()
 
@@ -76,8 +79,10 @@ class VideoFile:
             return input_path
 
         # Return if video is already H.265
-        if video_stream["codec_name"].lower() in H265_CODECS:
-            logger.info("Video is already H.265 or VP9")
+        if not force and video_stream["codec_name"].lower() in H265_CODECS:
+            logger.warning(
+                "H265 ENCODE: Video already H.265 or VP9. Run with `--force` to re-encode. Skipping"
+            )
             return input_path
 
         # Calculate Bitrate
@@ -126,12 +131,15 @@ class VideoFile:
         # Run ffmpeg
         return self._run_ffmpeg(command, title="Convert to H.265", step="h265")
 
-    def _convert_to_vp9(self) -> Path:
+    def _convert_to_vp9(self, force: bool = False) -> Path:
         """Convert the video to the VP9 codec format.
 
         Verify if conversion is required and proceed with it using ffmpeg. This method specifically
         targets the VP9 video codec. Return the path to the converted video or the original video
         if conversion is not necessary.
+
+        Args:
+            force (bool, optional): Flag to force conversion even if the video is already VP9. Defaults to False.
 
         Returns:
             Path: Path to the converted or original video file.
@@ -153,8 +161,10 @@ class VideoFile:
             return input_path
 
         # Return if video is already H.265
-        if video_stream["codec_name"].lower() in H265_CODECS:
-            logger.info("Video is already H.265 or VP9")
+        if not force and video_stream["codec_name"].lower() in H265_CODECS:
+            logger.warning(
+                "VP9 ENCODE: Video already H.265 or VP9. Run with `--force` to re-encode. Skipping"
+            )
             return input_path
 
         # Build ffmpeg command
@@ -175,7 +185,7 @@ class VideoFile:
         command.extend(["-c:s", "copy"])
 
         # Run ffmpeg
-        return self._run_ffmpeg(command, title="Convert to WebM", suffix=".webm", step="vp9")
+        return self._run_ffmpeg(command, title="Convert to vp9", suffix=".webm", step="vp9")
 
     @staticmethod
     def _downmix_to_stereo(streams: list[dict]) -> list[str]:

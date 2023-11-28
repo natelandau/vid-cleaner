@@ -209,6 +209,14 @@ def clean_command(
     vp9: Annotated[
         bool, typer.Option("--vp9", help="Convert to VP9", rich_help_panel="Video")
     ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Force processing of file even if it is transcoded",
+            rich_help_panel="Video",
+        ),
+    ] = False,
 ) -> None:
     """Transcode video files to different formats or configurations.
 
@@ -251,10 +259,10 @@ def clean_command(
         )
 
         if h265:
-            video._convert_to_h265()
+            video._convert_to_h265(force=force)
 
         if vp9:
-            video._convert_to_vp9()
+            video._convert_to_vp9(force=force)
 
         out_file = tmp_to_output(
             video.current_tmp_file, stem=video.stem, new_file=out, overwrite=replace
