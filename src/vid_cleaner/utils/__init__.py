@@ -2,6 +2,7 @@
 
 from .console import console
 from .helpers import (
+    copy_with_callback,
     existing_file_path,
     ffprobe,
     query_radarr,
@@ -12,8 +13,9 @@ from .helpers import (
 from .logging import InterceptHandler, instantiate_logger
 
 __all__ = [
-    "existing_file_path",
     "console",
+    "copy_with_callback",
+    "existing_file_path",
     "ffprobe",
     "instantiate_logger",
     "InterceptHandler",

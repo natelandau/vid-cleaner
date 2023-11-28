@@ -2,6 +2,9 @@
 """Shared fixtures."""
 
 import pytest
+from loguru import logger
+
+logger.remove()  # Remove default logger
 
 
 @pytest.fixture(autouse=True)

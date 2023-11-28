@@ -74,7 +74,7 @@
         'raise Exit',
         'raise typer\.Exit',
     ]
-    fail_under = 20
+    fail_under = 60
     precision = 1
     show_missing = true
     skip_covered = true
@@ -87,12 +87,6 @@
 
 [tool.coverage.xml]
     output = "reports/coverage.xml"
-
-[tool.interrogate]
-    exclude            = ["build", "docs", "tests"]
-    fail-under         = 90
-    ignore-init-method = true
-    verbose            = 2
 
 [tool.mypy] # https://mypy.readthedocs.io/en/latest/config_file.html
     disallow_any_unimported = false

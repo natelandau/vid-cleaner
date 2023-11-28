@@ -31,7 +31,7 @@ def existing_file_path(path: str) -> Path:
     return resolved_path
 
 
-def ffprobe(path: Path) -> dict:  # Pragma: no cover
+def ffprobe(path: Path) -> dict:  # pragma: no cover
     """Probe video file and return a dict.
 
     Args:
@@ -46,7 +46,7 @@ def ffprobe(path: Path) -> dict:  # Pragma: no cover
     return probe
 
 
-def query_tmdb(search: str) -> dict:  # Pragma: no cover
+def query_tmdb(search: str) -> dict:  # pragma: no cover
     """Query The Movie Database API for a movie title.
 
     Args:
@@ -84,7 +84,7 @@ def query_tmdb(search: str) -> dict:  # Pragma: no cover
     return response.json()
 
 
-def query_radarr(search: str) -> dict:  # Pragma: no cover
+def query_radarr(search: str) -> dict:  # pragma: no cover
     """Query Radarr API for a movie title.
 
     Args:
@@ -121,7 +121,7 @@ def query_radarr(search: str) -> dict:  # Pragma: no cover
     return response.json()
 
 
-def query_sonarr(search: str) -> dict:  # Pragma: no cover
+def query_sonarr(search: str) -> dict:  # pragma: no cover
     """Query Sonarr API for a movie title.
 
     Args:

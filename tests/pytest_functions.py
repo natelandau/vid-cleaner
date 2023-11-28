@@ -4,7 +4,7 @@
 import re
 
 
-class Regex:
+class Regex:  # noqa: PLW1641
     """Assert that a given string meets some expectations.
 
     Usage:
