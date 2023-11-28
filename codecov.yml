@@ -3,7 +3,7 @@ coverage:
     status:
         project:
             default:
-                target: 20% # the required coverage value
+                target: 60% # the required coverage value
                 threshold: 5% # the leniency in hitting the target
         patch:
             default:

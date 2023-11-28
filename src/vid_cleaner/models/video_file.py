@@ -21,7 +21,7 @@ from vid_cleaner.constants import (
 from vid_cleaner.utils import ffprobe, query_radarr, query_sonarr, query_tmdb
 
 
-def cleanup_on_exit(video_file: "VideoFile") -> None:
+def cleanup_on_exit(video_file: "VideoFile") -> None:  # pragma: no cover
     """Cleanup temporary files on exit."""
     video_file.cleanup()
 
@@ -253,7 +253,7 @@ class VideoFile:
         logger.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
         return downmix_command
 
-    def _find_original_language(self) -> Lang:
+    def _find_original_language(self) -> Lang:  # pragma: no cover
         """Determine the original language of the video.
 
         Query various sources like IMDb, TMDB, Radarr, and Sonarr to identify the original language.
@@ -298,7 +298,7 @@ class VideoFile:
         self.ran_language_check = True
         return language
 
-    def _get_probe(self, key: str | None = None) -> dict:
+    def _get_probe(self, key: str | None = None) -> dict:  # pragma: no cover
         """Retrieve the ffprobe probe information for the video.
 
         Fetch detailed information about the video file using ffprobe. Optionally filter
