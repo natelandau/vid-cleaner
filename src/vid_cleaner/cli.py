@@ -129,7 +129,7 @@ def clip_command(
         raise typer.BadParameter(msg)
 
     for video in files:
-        logger.info(f"Process {video.path.name}")
+        logger.info(f"⇨ {video.path.name}")
 
         video.clip(start, duration)
         out_file = tmp_to_output(
@@ -241,7 +241,7 @@ def clean_command(
     transcode --downmix --keep_subs <video_file>
     """
     for video in files:
-        logger.info(f"Process {video.path.name}")
+        logger.info(f"⇨ {video.path.name}")
 
         if h265 and vp9:
             msg = "Cannot convert to both H265 and VP9"

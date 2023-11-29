@@ -23,7 +23,14 @@ from vid_cleaner.utils import ffprobe, query_radarr, query_sonarr, query_tmdb
 
 
 def cleanup_on_exit(video_file: "VideoFile") -> None:  # pragma: no cover
-    """Cleanup temporary files on exit."""
+    """Cleanup temporary files on exit.
+
+    Args:
+        video_file (VideoFile): The VideoFile object to perform cleanup on.
+
+    Returns:
+        None
+    """
     video_file.cleanup()
 
 
@@ -533,8 +540,9 @@ class VideoFile:
     def _query_arr_apps_for_imdb_id(self) -> str | None:
         """Query Radarr and Sonarr APIs to find the IMDb ID of the video.
 
-        Attempt to retrieve the IMDb ID based on the video file's name. Utilize external
-        APIs for Radarr and Sonarr as sources.
+        This method attempts to retrieve the IMDb ID based on the video file's name by utilizing external APIs for Radarr and Sonarr as sources. It first queries Radarr API and checks if the response contains the movie information with the IMDb ID. If found, it returns the IMDb ID.
+
+        If not found, it then queries Sonarr API and checks if the response contains the series information with the IMDb ID. If found, it returns the IMDb ID. If no IMDb ID is found from either API, it returns None.
 
         Returns:
             str | None: The IMDb ID if found, otherwise None.

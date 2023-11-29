@@ -17,7 +17,17 @@ from vid_cleaner.utils import errors
 
 
 def existing_file_path(path: str) -> Path:
-    """Check if path exists and is a file."""
+    """Check if the given path exists and is a file.
+
+    Args:
+        path (str): The path to check.
+
+    Returns:
+        Path: The resolved path if it exists and is a file.
+
+    Raises:
+        typer.BadParameter: If the path does not exist or is not a file.
+    """
     resolved_path = Path(path).expanduser().resolve()
 
     if not resolved_path.exists():
@@ -36,6 +46,9 @@ def ffprobe(path: Path) -> dict:  # pragma: no cover
 
     Args:
         path (Path): Path to video file
+
+    Returns:
+        dict: A dictionary containing information about the video file.
     """
     try:
         probe = python_ffmpeg.probe(path)

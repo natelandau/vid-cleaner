@@ -30,11 +30,19 @@ class Config:
         self.config = self._load_config()
 
     def __repr__(self) -> str:
-        """Return string representation of Config."""
+        """Return string representation of Config.
+
+        Returns:
+            str: The string representation of the Config object.
+        """
         return f"{self.config}"
 
     def _create_config(self) -> None:
-        """Create a configuration file from the default when it does not exist."""
+        """Create a configuration file from the default when it does not exist.
+
+        Raises:
+            typer.Exit: If no configuration file is specified.
+        """
         if self.config_path is None:
             logger.error("No configuration file specified")
             raise typer.Exit(code=1)
@@ -47,8 +55,19 @@ class Config:
         raise typer.Exit(code=1)
 
     def _load_config(self) -> dict[str, Any]:
-        """Load the configuration file."""
-        logger.debug(f"Loading configuration from {self.config_path}")
+        """Load the configuration file.
+
+        This method reads the configuration file specified by `self.config_path`
+        and returns the parsed configuration as a dictionary. It also adds the
+        context items to the configuration dictionary.
+
+        Returns:
+            A dictionary containing the parsed configuration.
+
+        Raises:
+            typer.Exit: If the configuration file is empty or malformed.
+        """
+        logger.trace(f"Loading configuration from {self.config_path}")
         with self.config_path.open("rb") as f:
             try:
                 config = tomllib.load(f)
@@ -79,6 +98,8 @@ class Config:
         Returns:
             str | int | bool | list[str | int] | None: The value of the config variable.
 
+        Raises:
+            typer.Exit: If the config variable is not set and `pass_none` is False.
         """
         value = self.config.get(key, default)
 

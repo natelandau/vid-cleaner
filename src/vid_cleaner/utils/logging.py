@@ -14,10 +14,21 @@ def instantiate_logger(
 ) -> None:  # pragma: no cover
     """Instantiate the Loguru logger for vid-cleaner.
 
+    This function initializes the Loguru logger for the vid-cleaner application.
+    It configures the logger with the specified verbosity level, log file path,
+    and whether to log to a file.
+
     Args:
-        verbosity (int): Verbosity level
-        log_file (Path): Path to log file
-        log_to_file (bool): Whether to log to file
+        verbosity (int): The verbosity level of the logger. Valid values are:
+            - 0: No log messages will be displayed.
+            - 1: Only log messages with severity level INFO and above will be displayed.
+            - 2: Only log messages with severity level DEBUG and above will be displayed.
+            - 3: Only log messages with severity level TRACE and above will be displayed.
+        log_file (Path): The path to the log file where the log messages will be written.
+        log_to_file (bool): Whether to log the messages to the file specified by `log_file`.
+
+    Returns:
+        None
     """
     logger.remove()
     logger.add(
