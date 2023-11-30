@@ -14,7 +14,7 @@
     version     = "0.0.0"
 
     [tool.poetry.scripts] # https://python-poetry.org/docs/pyproject/#scripts
-        vid-cleaner = "vid_cleaner.cli:app"
+        vidcleaner = "vid_cleaner.cli:app"
 
     [tool.poetry.dependencies]
         ffmpeg-progress-yield = "^0.7.8"
