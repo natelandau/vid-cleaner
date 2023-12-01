@@ -29,6 +29,7 @@ runs:
         # ----------------------------------------------
 
         - name: copy config file
+          shell: bash
           run: |
               mkdir -p ${HOME}/.config/vid-cleaner/
               cp src/vid_cleaner/config/default_config.toml ${HOME}/.config/vid-cleaner/config.toml
