@@ -24,6 +24,17 @@ runs:
     using: composite
     steps:
         # ----------------------------------------------
+        #   Copy configuration file to disk
+        #   This allows tests to pass
+        # ----------------------------------------------
+
+        - name: copy config file
+          shell: bash
+          run: |
+              mkdir -p ${HOME}/.config/vid-cleaner/
+              cp src/vid_cleaner/config/default_config.toml ${HOME}/.config/vid-cleaner/config.toml
+
+        # ----------------------------------------------
         #    Install python and checkout repository
         # ----------------------------------------------
 
