@@ -11,7 +11,7 @@
     name        = "vid-cleaner"
     readme      = "README.md"
     repository  = "https://github.com/natelandau/vid-cleaner"
-    version     = "0.0.0"
+    version     = "0.1.0"
 
     [tool.poetry.scripts] # https://python-poetry.org/docs/pyproject/#scripts
         vidcleaner = "vid_cleaner.cli:app"
@@ -54,7 +54,7 @@
     changelog_merge_prerelease = true
     tag_format                 = "v$version"
     update_changelog_on_bump   = true
-    version                    = "0.0.0"
+    version                    = "0.1.0"
     version_files              = ["pyproject.toml:version", "src/vid_cleaner/__version__.py:__version__"]
 
 [tool.coverage.report] # https://coverage.readthedocs.io/en/latest/config.html#report
