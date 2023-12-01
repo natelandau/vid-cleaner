@@ -15,7 +15,13 @@ Tools to transcode, inspect and convert videos. This package provides convenienc
 
 ## Install
 
-vid-cleaner requires Python v3.11 or above
+Before installing vid-cleaner, the following dependencies must be installed:
+
+-   [ffmpeg](https://ffmpeg.org/)
+-   [ffprobe](https://ffmpeg.org/ffprobe.html)
+-   python 3.11+
+
+To install vid-cleaner, run:
 
 ```bash
 pip install vid-cleaner
@@ -23,7 +29,7 @@ pip install vid-cleaner
 
 ## Usage
 
-Run `vid-cleaner --help` to see the available commands and options.
+Run `vidcleaner --help` to see the available commands and options.
 
 ## Contributing
 
