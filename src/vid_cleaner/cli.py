@@ -68,21 +68,36 @@ def inspect_command(
     for video in files:
         probe = ffprobe(video.path)
 
-        table = Table(title=probe["format"]["tags"]["title"])
+        if "title" in probe["format"]["tags"]:
+            name = probe["format"]["tags"]["title"]
+        elif "filename" in probe["format"]:
+            name = probe["format"]["filename"]
+        else:
+            name = video.stem
+
+        table = Table(title=name)
         table.add_column("#")
         table.add_column("Stream")
         table.add_column("Type")
         table.add_column("Language")
         table.add_column("Channels")
         table.add_column("Channel Layout")
+        table.add_column("Title")
 
         for i, stream in enumerate(probe["streams"]):
             language = stream["tags"].get("language", "-")
             channels = stream.get("channels", "-")
             layout = stream.get("channel_layout", "-")
+            title = stream["tags"].get("title", "-")
 
             table.add_row(
-                str(i), stream["codec_type"], stream["codec_name"], language, str(channels), layout
+                str(i),
+                stream["codec_type"],
+                stream["codec_name"],
+                language,
+                str(channels),
+                layout,
+                title,
             )
 
         console.print(table)
@@ -140,7 +155,7 @@ def clip_command(
 
 
 @app.command("clean")
-def clean_command(
+def clean_command(  # noqa: PLR0917
     files: Annotated[
         list[VideoFile],
         typer.Argument(
