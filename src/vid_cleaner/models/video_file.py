@@ -389,7 +389,7 @@ class VideoFile:
         logger.trace(f"PROCESS VIDEO: {command}")
         return command
 
-    def _process_subtitles(  # noqa: PLR0917
+    def _process_subtitles(
         self,
         streams: list[dict],
         langs_to_keep: list[str],
@@ -628,7 +628,7 @@ class VideoFile:
         # Run ffmpeg
         return self._run_ffmpeg(ffmpeg_command, title="Clip video", step="clip")
 
-    def process_streams(  # noqa: PLR0917
+    def process_streams(
         self,
         langs_to_keep: list[str],
         drop_original_audio: bool,
@@ -694,44 +694,52 @@ class VideoFile:
 
         Arrange the streams in the video file so that video streams appear first, followed by audio streams, and then subtitle streams. Exclude certain types of video streams like 'mjpeg' and 'png'.
 
-
         Returns:
             Path: Path to the video file with reordered streams.
         """
         streams = self._get_probe("streams")
 
-        video_streams = [
-            stream
-            for stream in streams
-            if stream["codec_type"] == "video"
-            and stream["codec_name"].lower() not in EXCLUDED_VIDEO_CODECS
-        ]
-        audio_streams = [stream for stream in streams if stream["codec_type"] == "audio"]
-        subtitle_streams = [stream for stream in streams if stream["codec_type"] == "subtitle"]
+        # Categorize streams
+        categorized_streams: dict[str, list[dict]] = {"video": [], "audio": [], "subtitle": []}
+        for stream in streams:
+            codec_type = stream["codec_type"]
+            if codec_type in categorized_streams and (
+                codec_type != "video" or stream["codec_name"].lower() not in EXCLUDED_VIDEO_CODECS
+            ):
+                categorized_streams[codec_type].append(stream)
 
         # Fail if no video or audio streams are found
-        if not video_streams:
+        if not categorized_streams["video"]:
             logger.error("No video streams found")
             raise typer.Exit(1)
-
-        if not audio_streams:
+        if not categorized_streams["audio"]:
             logger.error("No audio streams found")
             raise typer.Exit(1)
 
+        # Check if reordering is needed
+        reorder = any(
+            stream["index"] != i
+            for i, stream in enumerate(
+                categorized_streams["video"]
+                + categorized_streams["audio"]
+                + categorized_streams["subtitle"]
+            )
+        )
+
+        if not reorder:
+            logger.info("✔ No streams to reorder")
+            input_path, _ = self._get_input_and_output()
+            return input_path
+
         # Build ffmpeg command
-        command: list[str] = []
-
-        for stream in video_streams:
-            command.extend(["-map", f"0:{stream['index']}"])
-
-        for stream in audio_streams:
-            command.extend(["-map", f"0:{stream['index']}"])
-
-        if subtitle_streams:
-            for stream in subtitle_streams:
-                command.extend(["-map", f"0:{stream['index']}"])
-
-        command.extend(["-c", "copy"])
+        command = sum(
+            [
+                ["-map", f"0:{stream['index']}"]
+                for stream_type in categorized_streams
+                for stream in categorized_streams[stream_type]
+            ],
+            start=["-c", "copy"],
+        )
 
         # Run ffmpeg
         return self._run_ffmpeg(command, title="Reorder streams", step="reorder")

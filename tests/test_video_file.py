@@ -145,9 +145,26 @@ def test_reorder_streams(video_file, mocker, mock_ffmpeg):
     args, _ = mock_ffmpeg.call_args
     command = args[0]
 
-    assert command[6] == "0:2"  # Video stream should be first
-    assert command[8] == "0:1"  # Audio stream should be second
-    assert command[10] == "0:0"  # Subtitle stream should be third
+    assert command[8] == "0:2"  # Video stream should be first
+    assert command[10] == "0:1"  # Audio stream should be second
+    assert command[12] == "0:0"  # Subtitle stream should be third
+
+
+def test_reorder_streams_no_reorder(video_file, mocker, mock_ffmpeg):
+    """Test the behavior of reorder_streams when no streams should be reordered."""
+    disordered_streams = [
+        {"index": 1, "codec_type": "audio"},
+        {"index": 0, "codec_type": "video", "codec_name": "h264"},
+        {"index": 2, "codec_type": "subtitle"},
+    ]
+    mocker.patch.object(video_file, "_get_probe", return_value=disordered_streams)
+
+    # WHEN reorder_streams is called
+    result = video_file.reorder_streams()
+
+    # THEN ffmpeg should not be called
+    mock_ffmpeg.assert_not_called()
+    assert isinstance(result, Path)
 
 
 def test_reorder_streams_errors(video_file, mocker):
