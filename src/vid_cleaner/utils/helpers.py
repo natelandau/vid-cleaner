@@ -254,6 +254,8 @@ def tmp_to_output(
 ) -> Path:
     """Copy a temporary file to an output file.
 
+    If no output file is given, the name and directory of the source file will be used.  If overwrite is False, a number will be appended to the stem if the output file already exists.
+
     Args:
         tmp_file (Path): Path to input file
         stem (str): Stem of output file

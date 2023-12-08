@@ -155,7 +155,7 @@ def clip_command(
 
 
 @app.command("clean")
-def clean_command(  # noqa: PLR0917
+def clean_command(
     files: Annotated[
         list[VideoFile],
         typer.Argument(
