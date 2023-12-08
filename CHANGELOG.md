@@ -1,3 +1,10 @@
+## v0.2.0 (2023-12-08)
+
+### Feat
+
+- **clean**: don't reorder streams if already in the right order (#6)
+- **inspect**: add stream title (#5)
+
 ## v0.1.1 (2023-12-01)
 
 ## v0.1.0 (2023-12-01)
