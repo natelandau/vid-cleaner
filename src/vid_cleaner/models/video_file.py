@@ -500,6 +500,7 @@ class VideoFile:
 
         streams_to_keep = []
         for stream in streams:
+            # Keep unknown language streams
             if "tags" not in stream or "language" not in stream["tags"]:
                 command.extend(["-map", f"0:{stream['index']}"])
                 streams_to_keep.append(stream)

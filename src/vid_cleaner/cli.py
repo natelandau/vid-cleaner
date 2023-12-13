@@ -319,7 +319,37 @@ def main(
         None, "--version", help="Print version and exit", callback=version_callback, is_eager=True
     ),
 ) -> None:
-    """Inspect and transcode video files."""
+    """Transcode video files to different formats or configurations using ffmpeg. This script provides a simple CLI for common video transcoding tasks.
+
+    \b
+    - [bold]Inspect[/bold] video files to display detailed stream information
+    - [bold]Clip[/bold] a section from a video file
+    - [bold]Drop audio streams[/bold] containing undesired languages or commentary
+    - [bold]Drop subtitles[/bold] containing undesired languages
+    - [bold]Keep subtitles[/bold] if original audio is not in desired language
+    - [bold]Downmix audio[/bold] to stereo
+    - [bold]Convert[/bold] video files to H265 or VP9
+
+    [bold underline]Usage Examples[/bold underline]
+
+        [#999999]Inspect video file:[/#999999]
+        vid-cleaner inspect <video_file>
+
+        [#999999]Clip a one minute clip from a video file:[/#999999]
+        vid-cleaner clip --start=00:00:00 --duration=00:01:00 <video_file>
+
+        [#999999]Transcode a video to H265 format and keep English audio:[/#999999]
+        vid-cleaner clean --h265 --langs=eng <video_file>
+
+        [#999999]Downmix audio to stereo and keep all subtitles:[/#999999]
+        vid-cleaner clean --downmix --keep_all_subtitles <video_file>
+
+        [#999999]Keep all audio and subtitles if original audio is not English:[/#999999]
+        vid-cleaner clean --keep_subtitles_if_not_original --langs=eng <video_file>
+
+
+
+    """  # noqa: D301
     # Instantiate Logging
     instantiate_logger(verbosity, log_file, log_to_file)
 
