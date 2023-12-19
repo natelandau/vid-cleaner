@@ -93,7 +93,7 @@ def inspect_command(
             table.add_row(
                 str(i),
                 stream["codec_type"],
-                stream["codec_name"],
+                stream.get("codec_name", "-"),
                 language,
                 str(channels),
                 layout,
