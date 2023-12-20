@@ -193,10 +193,10 @@ def clean_command(
         typer.Option("--drop_original", help="Drop original language", rich_help_panel="Audio"),
     ] = False,
     keep_all_subtitles: Annotated[
-        bool, typer.Option("--keep_subs", help="Keep all subtitles", rich_help_panel="Subtitles")
+        bool, typer.Option("--keep-subs", help="Keep all subtitles", rich_help_panel="Subtitles")
     ] = False,
     keep_commentary: Annotated[
-        bool, typer.Option("--keep_commentary", help="Keep commentary", rich_help_panel="Audio")
+        bool, typer.Option("--keep-commentary", help="Keep commentary", rich_help_panel="Audio")
     ] = False,
     keep_local_subtitles: Annotated[
         bool,
@@ -217,7 +217,7 @@ def clean_command(
         typer.Option(
             help="Languages to keep. Comma separated language codes", rich_help_panel="Audio"
         ),
-    ] = ",".join(config.get("keep_languages", default=["eng"])),  # type: ignore [arg-type]
+    ] = ",".join(config.get("keep-languages", default=["eng"])),  # type: ignore [arg-type]
     h265: Annotated[
         bool, typer.Option("--h265", help="Convert to H265", rich_help_panel="Video")
     ] = False,
@@ -253,7 +253,10 @@ def clean_command(
     transcode --h265 --langs=eng <video_file>
 
     [#999999]Downmix audio to stereo and keep all subtitles:[/#999999]
-    transcode --downmix --keep_subs <video_file>
+    transcode --downmix --keep-subs <video_file>
+
+    [#999999]Keep all audio and keep subtitles only if original audio is not English:[/#999999]
+    vid-cleaner clean --local-when-needed --langs=eng <video_file>
     """
     for video in files:
         logger.info(f"⇨ {video.path.name}")
@@ -263,6 +266,7 @@ def clean_command(
             raise typer.BadParameter(msg)
 
         video.reorder_streams()
+
         video.process_streams(
             langs_to_keep=langs.split(","),
             drop_original_audio=drop_original_audio,
@@ -342,10 +346,10 @@ def main(
         vid-cleaner clean --h265 --langs=eng <video_file>
 
         [#999999]Downmix audio to stereo and keep all subtitles:[/#999999]
-        vid-cleaner clean --downmix --keep_all_subtitles <video_file>
+        vid-cleaner clean --downmix --keep-subs <video_file>
 
-        [#999999]Keep all audio and subtitles if original audio is not English:[/#999999]
-        vid-cleaner clean --keep_subtitles_if_not_original --langs=eng <video_file>
+        [#999999]Keep all audio and keep subtitles only if original audio is not English:[/#999999]
+        vid-cleaner clean --local-when-needed --langs=eng <video_file>
 
 
 
