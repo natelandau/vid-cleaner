@@ -185,9 +185,12 @@ class VideoFile:
             "30",
             "-c:a",
             "libvorbis",
+            "-dn",
+            "-map_chapters",
+            "-1",
         ]
 
-        # Copy audio and subtitles
+        # Copy subtitles
         command.extend(["-c:s", "copy"])
 
         # Run ffmpeg
