@@ -1,3 +1,10 @@
+## v0.2.1 (2023-12-22)
+
+### Fix
+
+- improve cli options
+- remove data streams from vp9 (#7)
+
 ## v0.2.0 (2023-12-08)
 
 ### Feat
