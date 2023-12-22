@@ -136,11 +136,11 @@ def clip_command(
     time_pattern = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 
     if not time_pattern.match(start):
-        msg = "Start must be in format HH:MM:SS"
+        msg = "Start must be in format HH:MM:SS"  # type: ignore [unreachable]
         raise typer.BadParameter(msg)
 
     if not time_pattern.match(duration):
-        msg = "Duration must be in format HH:MM:SS"
+        msg = "Duration must be in format HH:MM:SS"  # type: ignore [unreachable]
         raise typer.BadParameter(msg)
 
     for video in files:
@@ -190,28 +190,33 @@ def clean_command(
     ] = False,
     drop_original_audio: Annotated[
         bool,
-        typer.Option("--drop_original", help="Drop original language", rich_help_panel="Audio"),
+        typer.Option(
+            "--drop-original", help="Drop original language audio", rich_help_panel="Audio"
+        ),
     ] = False,
     keep_all_subtitles: Annotated[
         bool, typer.Option("--keep-subs", help="Keep all subtitles", rich_help_panel="Subtitles")
     ] = False,
     keep_commentary: Annotated[
-        bool, typer.Option("--keep-commentary", help="Keep commentary", rich_help_panel="Audio")
+        bool,
+        typer.Option("--keep-commentary", help="Keep commentary audio", rich_help_panel="Audio"),
     ] = False,
     keep_local_subtitles: Annotated[
         bool,
         typer.Option(
-            "--keep-local-subs", help="Always keep local subtitles", rich_help_panel="Subtitles"
-        ),
-    ] = False,
-    keep_subtitles_if_not_original: Annotated[
-        bool,
-        typer.Option(
-            "--local-when-needed/--no-local",
-            help="Keep subtitles if original audio not in langs_to_keep",
+            "--keep-local-subs",
+            help="Keep subtitles matching the local languages but drop all others",
             rich_help_panel="Subtitles",
         ),
-    ] = True,
+    ] = False,
+    subs_drop_local: Annotated[
+        bool,
+        typer.Option(
+            "--drop-local-subs",
+            help="Force dropping local subtitles even if audio is not default language",
+            rich_help_panel="Subtitles",
+        ),
+    ] = False,
     langs: Annotated[
         str,
         typer.Option(
@@ -239,13 +244,13 @@ def clean_command(
 
     The defaults for this command will:
 
+    * Use English as the default language
     * Drop commentary audio tracks
-    * Drop all audio languages other than English, unless the original audio is not in English, in which case the original audio is retained
-    * Drop all subtitles other than English, unless the original audio is not in English, in which case English subtitles are retained
+    * Keep default language audio
+    * Keep original audio if it is not the default language
+    * Drop all subtitles unless the original audio is not in the default language, in which case the default subtitles are retained
 
     The defaults can be overridden by using the various options available.
-
-    Additionally, this script can transcode video files to the H265 or VP9 codecs and downmix audio.  See the options below for more details.
 
     [bold underline]Usage Examples[/bold underline]
 
@@ -274,7 +279,7 @@ def clean_command(
             downmix_stereo=downmix_stereo,
             keep_all_subtitles=keep_all_subtitles,
             keep_local_subtitles=keep_local_subtitles,
-            keep_subtitles_if_not_original=keep_subtitles_if_not_original,
+            subs_drop_local=subs_drop_local,
         )
 
         if h265:

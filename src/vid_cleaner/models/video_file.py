@@ -399,7 +399,7 @@ class VideoFile:
         keep_commentary: bool,
         keep_all_subtitles: bool,
         keep_local_subtitles: bool,
-        keep_subtitles_if_not_original: bool = True,
+        subs_drop_local: bool = False,
     ) -> list[str]:
         """Construct a command list for processing subtitle streams.
 
@@ -412,7 +412,7 @@ class VideoFile:
             keep_commentary (bool): Flag to keep or discard commentary subtitles.
             keep_all_subtitles (bool): Flag to keep all subtitles regardless of language.
             keep_local_subtitles (bool): Flag to keep subtitles with 'undetermined' language or in the specified list.
-            keep_subtitles_if_not_original (bool, optional): Keep subtitles if the original language is not in the list. Defaults to True.
+            subs_drop_local (bool, optional): Drop subtitles if the original language is not in the list. Defaults to False.
 
         Returns:
             list[str]: A list of strings forming part of an ffmpeg command for subtitle processing.
@@ -422,15 +422,11 @@ class VideoFile:
         langs = [Lang(lang) for lang in langs_to_keep]
 
         # Find original language
-        if keep_subtitles_if_not_original:
+        if not subs_drop_local:
             original_language = self._find_original_language()
 
         # Return no streams if no languages are specified
-        if (
-            not keep_all_subtitles
-            and not keep_local_subtitles
-            and not keep_subtitles_if_not_original
-        ):
+        if not keep_all_subtitles and not keep_local_subtitles and subs_drop_local:
             return command
 
         for stream in streams:
@@ -454,7 +450,7 @@ class VideoFile:
                     continue
 
                 if (
-                    keep_subtitles_if_not_original
+                    not subs_drop_local
                     and langs
                     and original_language not in langs
                     and (
@@ -640,7 +636,7 @@ class VideoFile:
         downmix_stereo: bool,
         keep_all_subtitles: bool,
         keep_local_subtitles: bool,
-        keep_subtitles_if_not_original: bool,
+        subs_drop_local: bool,
     ) -> Path:
         """Process the video file according to specified audio and subtitle preferences.
 
@@ -653,7 +649,7 @@ class VideoFile:
             downmix_stereo (bool): Flag to downmix to stereo if the original is not stereo.
             keep_all_subtitles (bool): Flag to keep all subtitle tracks, regardless of language.
             keep_local_subtitles (bool): Flag to keep subtitles with 'undetermined' language or in the specified list.
-            keep_subtitles_if_not_original (bool): Flag to keep subtitles if the original language is not in the list.
+            subs_drop_local (bool): Flag to drop subtitles if the original language is not in the list.
 
         Returns:
             Path: Path to the processed video file.
@@ -679,7 +675,7 @@ class VideoFile:
             keep_commentary,
             keep_all_subtitles,
             keep_local_subtitles,
-            keep_subtitles_if_not_original,
+            subs_drop_local,
         )
 
         # Run ffmpeg

@@ -207,7 +207,7 @@ def test_process__subtitles_strip_all(video_file):
             keep_commentary=False,
             keep_all_subtitles=False,
             keep_local_subtitles=False,
-            keep_subtitles_if_not_original=False,
+            subs_drop_local=True,
         )
         == []
     )
@@ -229,7 +229,7 @@ def test_process__subtitles_keep_all(video_file):
         keep_commentary=False,
         keep_all_subtitles=True,
         keep_local_subtitles=False,
-        keep_subtitles_if_not_original=False,
+        subs_drop_local=True,
     )
 
     assert command == ["-map", "0:0", "-map", "0:1", "-map", "0:2"]
@@ -251,7 +251,7 @@ def test_process__subtitles_keep_local(video_file):
         keep_commentary=True,
         keep_all_subtitles=False,
         keep_local_subtitles=True,
-        keep_subtitles_if_not_original=False,
+        subs_drop_local=True,
     )
 
     assert command == ["-map", "0:0", "-map", "0:1"]
@@ -273,7 +273,7 @@ def test_process__subtitles_strip_commentary(video_file):
         keep_commentary=False,
         keep_all_subtitles=False,
         keep_local_subtitles=True,
-        keep_subtitles_if_not_original=False,
+        subs_drop_local=True,
     )
 
     assert command == ["-map", "0:0"]
@@ -305,7 +305,7 @@ def test__process_subtitles_keep_not_original(video_file, mocker, lang, result):
         keep_commentary=False,
         keep_all_subtitles=False,
         keep_local_subtitles=False,
-        keep_subtitles_if_not_original=True,
+        subs_drop_local=False,
     )
 
     assert command == result
