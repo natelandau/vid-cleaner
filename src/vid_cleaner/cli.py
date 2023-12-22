@@ -259,9 +259,6 @@ def clean_command(
 
     [#999999]Downmix audio to stereo and keep all subtitles:[/#999999]
     transcode --downmix --keep-subs <video_file>
-
-    [#999999]Keep all audio and keep subtitles only if original audio is not English:[/#999999]
-    vid-cleaner clean --local-when-needed --langs=eng <video_file>
     """
     for video in files:
         logger.info(f"⇨ {video.path.name}")
@@ -352,12 +349,6 @@ def main(
 
         [#999999]Downmix audio to stereo and keep all subtitles:[/#999999]
         vid-cleaner clean --downmix --keep-subs <video_file>
-
-        [#999999]Keep all audio and keep subtitles only if original audio is not English:[/#999999]
-        vid-cleaner clean --local-when-needed --langs=eng <video_file>
-
-
-
     """  # noqa: D301
     # Instantiate Logging
     instantiate_logger(verbosity, log_file, log_to_file)
