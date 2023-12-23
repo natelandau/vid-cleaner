@@ -1,3 +1,11 @@
+## v0.3.0 (2023-12-23)
+
+### Feat
+
+- `--dry-run` shows ffmpeg commands without executing
+- option to convert to 1080p
+- **inspect**: add `--json` to output full stream data in json format
+
 ## v0.2.1 (2023-12-22)
 
 ### Fix
