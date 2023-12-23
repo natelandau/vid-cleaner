@@ -234,11 +234,14 @@ def clean_command(
     vp9: Annotated[
         bool, typer.Option("--vp9", help="Convert to VP9", rich_help_panel="Video")
     ] = False,
+    video_1080: Annotated[
+        bool, typer.Option("--1080p", help="Convert to 1080p", rich_help_panel="Video")
+    ] = False,
     force: Annotated[
         bool,
         typer.Option(
             "--force",
-            help="Force processing of file even if it is transcoded",
+            help="Force processing of file even if it is already in the desired format",
             rich_help_panel="Video",
         ),
     ] = False,
@@ -283,6 +286,9 @@ def clean_command(
             keep_local_subtitles=keep_local_subtitles,
             subs_drop_local=subs_drop_local,
         )
+
+        if video_1080:
+            video.video_to_1080p(force=force)
 
         if h265:
             video._convert_to_h265(force=force)

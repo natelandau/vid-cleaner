@@ -17,6 +17,7 @@ from vid_cleaner.constants import (
     FFMPEG_APPEND,
     FFMPEG_PREPEND,
     H265_CODECS,
+    SYMBOL_CHECK,
     AudioLayout,
 )
 from vid_cleaner.utils import ffprobe, query_radarr, query_sonarr, query_tmdb
@@ -392,6 +393,43 @@ class VideoFile:
         logger.trace(f"PROCESS VIDEO: {command}")
         return command
 
+    def video_to_1080p(self, force: bool = False) -> Path:
+        """Convert the video to 1080p resolution."""
+        input_path, _ = self._get_input_and_output()
+
+        # Get ffprobe probe
+        probe = self._get_probe()
+
+        video_stream = [  # noqa: RUF015
+            stream
+            for stream in probe["streams"]
+            if stream["codec_type"].lower() == "video"
+            and stream["codec_name"].lower() not in EXCLUDED_VIDEO_CODECS
+        ][0]
+
+        # Fail if no video stream is found
+        if not video_stream:
+            logger.error("No video stream found")
+            return input_path
+
+        # Return if video is not 4K
+        if not force and video_stream.get("width", 0) <= 1920:  # noqa: PLR2004
+            logger.info(f"{SYMBOL_CHECK} No convert to 1080p needed")
+            return input_path
+
+        # Build ffmpeg command
+        command: list[str] = [
+            "-filter:v",
+            "scale=width=1920:height=-2",
+            "-c:a",
+            "copy",
+            "-c:s",
+            "copy",
+        ]
+
+        # Run ffmpeg
+        return self._run_ffmpeg(command, title="Convert to 1080p", step="1080p")
+
     def _process_subtitles(
         self,
         streams: list[dict],
@@ -584,7 +622,7 @@ class VideoFile:
             for complete in ff.run_command_with_progress():
                 progress.update(task, completed=complete)
 
-        logger.info(f"✔ {title}")
+        logger.info(f"{SYMBOL_CHECK} {title}")
 
         # Set current temporary file and return path
         self.current_tmp_file = output_path
@@ -727,7 +765,7 @@ class VideoFile:
         )
 
         if not reorder:
-            logger.info("✔ No streams to reorder")
+            logger.info(f"{SYMBOL_CHECK} No streams to reorder")
             input_path, _ = self._get_input_and_output()
             return input_path
 
