@@ -20,7 +20,7 @@ from vid_cleaner.constants import (
     SYMBOL_CHECK,
     AudioLayout,
 )
-from vid_cleaner.utils import ffprobe, query_radarr, query_sonarr, query_tmdb
+from vid_cleaner.utils import console, ffprobe, query_radarr, query_sonarr, query_tmdb
 
 
 def cleanup_on_exit(video_file: "VideoFile") -> None:  # pragma: no cover
@@ -58,7 +58,11 @@ class VideoFile:
         # Register cleanup on exit
         atexit.register(cleanup_on_exit, self)
 
-    def _convert_to_h265(self, force: bool = False) -> Path:
+    def _convert_to_h265(
+        self,
+        force: bool = False,
+        dry_run: bool = False,
+    ) -> Path:
         """Convert the video to H.265 codec format.
 
         Check if conversion is necessary and perform it if so. This involves calculating the
@@ -67,6 +71,7 @@ class VideoFile:
 
         Args:
             force (bool, optional): Flag to force conversion even if the video is already H.265. Defaults to False.
+            dry_run (bool, optional): Run in dry run mode. Defaults to False.
 
         Returns:
             Path: Path to the converted or original video file.
@@ -136,9 +141,13 @@ class VideoFile:
         command.extend(["-c:a", "copy", "-c:s", "copy"])
 
         # Run ffmpeg
-        return self._run_ffmpeg(command, title="Convert to H.265", step="h265")
+        return self._run_ffmpeg(command, title="Convert to H.265", step="h265", dry_run=dry_run)
 
-    def _convert_to_vp9(self, force: bool = False) -> Path:
+    def _convert_to_vp9(
+        self,
+        force: bool = False,
+        dry_run: bool = False,
+    ) -> Path:
         """Convert the video to the VP9 codec format.
 
         Verify if conversion is required and proceed with it using ffmpeg. This method specifically
@@ -146,6 +155,7 @@ class VideoFile:
         if conversion is not necessary.
 
         Args:
+            dry_run (bool, optional): Run in dry run mode. Defaults to False.
             force (bool, optional): Flag to force conversion even if the video is already VP9. Defaults to False.
 
         Returns:
@@ -195,7 +205,9 @@ class VideoFile:
         command.extend(["-c:s", "copy"])
 
         # Run ffmpeg
-        return self._run_ffmpeg(command, title="Convert to vp9", suffix=".webm", step="vp9")
+        return self._run_ffmpeg(
+            command, title="Convert to vp9", suffix=".webm", step="vp9", dry_run=dry_run
+        )
 
     @staticmethod
     def _downmix_to_stereo(streams: list[dict]) -> list[str]:
@@ -393,7 +405,7 @@ class VideoFile:
         logger.trace(f"PROCESS VIDEO: {command}")
         return command
 
-    def video_to_1080p(self, force: bool = False) -> Path:
+    def video_to_1080p(self, force: bool = False, dry_run: bool = False) -> Path:
         """Convert the video to 1080p resolution."""
         input_path, _ = self._get_input_and_output()
 
@@ -428,7 +440,7 @@ class VideoFile:
         ]
 
         # Run ffmpeg
-        return self._run_ffmpeg(command, title="Convert to 1080p", step="1080p")
+        return self._run_ffmpeg(command, title="Convert to 1080p", step="1080p", dry_run=dry_run)
 
     def _process_subtitles(
         self,
@@ -590,7 +602,12 @@ class VideoFile:
         return None
 
     def _run_ffmpeg(
-        self, command: list[str], title: str, suffix: str | None = None, step: str | None = None
+        self,
+        command: list[str],
+        title: str,
+        suffix: str | None = None,
+        step: str | None = None,
+        dry_run: bool = False,
     ) -> Path:
         """Execute an ffmpeg command.
 
@@ -599,6 +616,7 @@ class VideoFile:
 
         Args:
             command (list[str]): The ffmpeg command to execute.
+            dry_run (bool, optional): Run in dry run mode. Defaults to False.
             title (str): Title for logging the process.
             suffix (str | None, optional): Suffix for the output file. Defaults to None.
             step (str | None, optional): Step name for file naming. Defaults to None.
@@ -613,6 +631,11 @@ class VideoFile:
         cmd.extend([*FFMPEG_APPEND, str(output_path)])
 
         logger.trace(f"RUN FFMPEG:\n{' '.join(cmd)}")
+
+        if dry_run:
+            console.rule(f"{title} (dry run)")
+            console.print(f"[code]{' '.join(cmd)}[/code]")
+            return output_path
 
         # Run ffmpeg
         ff = FfmpegProgress(cmd)
@@ -647,7 +670,12 @@ class VideoFile:
             logger.trace(f"Remove: {self.tmp_dir}")
             self.tmp_dir.rmdir()
 
-    def clip(self, start: str, duration: str) -> Path:
+    def clip(
+        self,
+        start: str,
+        duration: str,
+        dry_run: bool = False,
+    ) -> Path:
         """Clip a segment from the video.
 
         Extract a specific portion of the video based on the given start time and duration.
@@ -656,6 +684,7 @@ class VideoFile:
         Args:
             start (str): Start time of the clip.
             duration (str): Duration of the clip.
+            dry_run (bool, optional): Run in dry run mode. Defaults to False.
 
         Returns:
             Path: Path to the clipped video file.
@@ -664,7 +693,7 @@ class VideoFile:
         ffmpeg_command: list[str] = ["-ss", start, "-t", duration, "-map", "0", "-c", "copy"]
 
         # Run ffmpeg
-        return self._run_ffmpeg(ffmpeg_command, title="Clip video", step="clip")
+        return self._run_ffmpeg(ffmpeg_command, title="Clip video", step="clip", dry_run=dry_run)
 
     def process_streams(
         self,
@@ -675,12 +704,14 @@ class VideoFile:
         keep_all_subtitles: bool,
         keep_local_subtitles: bool,
         subs_drop_local: bool,
+        dry_run: bool = False,
     ) -> Path:
         """Process the video file according to specified audio and subtitle preferences.
 
         Execute the necessary steps to process the video file, including managing audio and subtitle streams.  Keep or discard audio streams based on specified languages, commentary preferences, and downmix settings. Similarly, filter subtitle streams based on language preferences and criteria such as keeping commentary or local subtitles. Perform the processing using ffmpeg and return the path to the processed video file.
 
         Args:
+            dry_run (bool, optional): Run in dry run mode. Defaults to False.
             langs_to_keep (list[str]): List of language codes for audio and subtitles to retain.
             drop_original_audio (bool): Flag to determine whether to drop the original audio track.
             keep_commentary (bool): Flag to determine whether to keep or discard commentary audio tracks.
@@ -725,9 +756,13 @@ class VideoFile:
             + downmix_command,
             title="Process video",
             step="process",
+            dry_run=dry_run,
         )
 
-    def reorder_streams(self) -> Path:
+    def reorder_streams(
+        self,
+        dry_run: bool = False,
+    ) -> Path:
         """Reorder the media streams within the video file.
 
         Arrange the streams in the video file so that video streams appear first, followed by audio streams, and then subtitle streams. Exclude certain types of video streams like 'mjpeg' and 'png'.
@@ -780,4 +815,4 @@ class VideoFile:
         )
 
         # Run ffmpeg
-        return self._run_ffmpeg(command, title="Reorder streams", step="reorder")
+        return self._run_ffmpeg(command, title="Reorder streams", step="reorder", dry_run=dry_run)

@@ -124,9 +124,20 @@ def clip_command(
     ],
     start: Annotated[str, typer.Option(help="Start time 'HH:MM:SS'")] = "00:00:00",
     duration: Annotated[str, typer.Option(help="Duration to clip 'HH:MM:SS'")] = "00:01:00",
-    out: Annotated[Optional[Path], typer.Option(help="Output file", show_default=False)] = None,
+    out: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--out",
+            "-o",
+            help=r"Output file [#888888]\[default: input_file_1][/#888888]",
+            show_default=False,
+        ),
+    ] = None,
     overwrite: Annotated[
         bool, typer.Option("--overwrite", help="Overwrite output file if it exists")
+    ] = False,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", "-n", help="Show ffmpeg commands without executing")
     ] = False,
 ) -> None:
     """Clip a section from a video file.
@@ -151,12 +162,14 @@ def clip_command(
     for video in files:
         logger.info(f"⇨ {video.path.name}")
 
-        video.clip(start, duration)
-        out_file = tmp_to_output(
-            video.current_tmp_file, stem=video.stem, new_file=out, overwrite=overwrite
-        )
-        video.cleanup()
-        logger.success(f"{out_file}")
+        video.clip(start, duration, dry_run=dry_run)
+
+        if not dry_run:
+            out_file = tmp_to_output(
+                video.current_tmp_file, stem=video.stem, new_file=out, overwrite=overwrite
+            )
+            video.cleanup()
+            logger.success(f"{out_file}")
 
 
 @app.command("clean")
@@ -176,7 +189,9 @@ def clean_command(
     out: Annotated[
         Optional[Path],
         typer.Option(
-            help=r"Output file [#888888]\[default: input file][/#888888]",
+            "--out",
+            "-o",
+            help=r"Output file [#888888]\[default: input_file_1][/#888888]",
             show_default=False,
         ),
     ] = None,
@@ -184,6 +199,7 @@ def clean_command(
         bool,
         typer.Option(
             "--replace",
+            "-r",
             help="Delete or overwrite original file after processing. Use with caution",
         ),
     ] = False,
@@ -245,6 +261,9 @@ def clean_command(
             rich_help_panel="Video",
         ),
     ] = False,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", "-n", help="Show ffmpeg commands without executing")
+    ] = False,
 ) -> None:
     """Transcode video files to different formats or configurations.
 
@@ -275,7 +294,7 @@ def clean_command(
             msg = "Cannot convert to both H265 and VP9"
             raise typer.BadParameter(msg)
 
-        video.reorder_streams()
+        video.reorder_streams(dry_run=dry_run)
 
         video.process_streams(
             langs_to_keep=langs.split(","),
@@ -285,27 +304,29 @@ def clean_command(
             keep_all_subtitles=keep_all_subtitles,
             keep_local_subtitles=keep_local_subtitles,
             subs_drop_local=subs_drop_local,
+            dry_run=dry_run,
         )
 
         if video_1080:
-            video.video_to_1080p(force=force)
+            video.video_to_1080p(force=force, dry_run=dry_run)
 
         if h265:
-            video._convert_to_h265(force=force)
+            video._convert_to_h265(force=force, dry_run=dry_run)
 
         if vp9:
-            video._convert_to_vp9(force=force)
+            video._convert_to_vp9(force=force, dry_run=dry_run)
 
-        out_file = tmp_to_output(
-            video.current_tmp_file, stem=video.stem, new_file=out, overwrite=replace
-        )
-        video.cleanup()
+        if not dry_run:
+            out_file = tmp_to_output(
+                video.current_tmp_file, stem=video.stem, new_file=out, overwrite=replace
+            )
+            video.cleanup()
 
-        if replace and out_file != video.path:
-            logger.debug(f"Delete: {video.path}")
-            video.path.unlink()
+            if replace and out_file != video.path:
+                logger.debug(f"Delete: {video.path}")
+                video.path.unlink()
 
-        logger.success(f"{out_file}")
+            logger.success(f"{out_file}")
 
 
 @app.callback()

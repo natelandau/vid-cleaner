@@ -9,6 +9,7 @@ Tools to transcode, inspect and convert videos. This package provides convenienc
 -   Remove commentary tracks and subtitles
 -   Remove unwanted audio and subtitle tracks
 -   Convert to H.265 or VP9
+-   Convert 4k to 1080p
 -   Downmix from surround to create missing stereo streams with custom filters to improve quality
 -   Removes unwanted audio and subtitle tracks, optionally keeping the original language audio track
 -   Create clips from a video file
