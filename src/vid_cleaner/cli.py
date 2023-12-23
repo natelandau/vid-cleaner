@@ -57,6 +57,7 @@ def inspect_command(
             resolve_path=True,
         ),
     ],
+    json: Annotated[bool, typer.Option(help="Output in JSON format")] = False,
 ) -> None:
     """Inspect video files to display detailed stream information.
 
@@ -67,6 +68,10 @@ def inspect_command(
     """
     for video in files:
         probe = ffprobe(video.path)
+
+        if json:
+            console.print(probe)
+            return
 
         if "title" in probe["format"]["tags"]:
             name = probe["format"]["tags"]["title"]
