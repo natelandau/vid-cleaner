@@ -282,10 +282,10 @@ def clean_command(
     [bold underline]Usage Examples[/bold underline]
 
     [#999999]Transcode a video to H265 format and keep English audio:[/#999999]
-    transcode --h265 --langs=eng <video_file>
+    vidcleaner clean --h265 --langs=eng <video_file>
 
     [#999999]Downmix audio to stereo and keep all subtitles:[/#999999]
-    transcode --downmix --keep-subs <video_file>
+    vidcleaner clean --downmix --keep-subs <video_file>
     """
     for video in files:
         logger.info(f"⇨ {video.path.name}")
@@ -371,16 +371,16 @@ def main(
     [bold underline]Usage Examples[/bold underline]
 
         [#999999]Inspect video file:[/#999999]
-        vid-cleaner inspect <video_file>
+        vidcleaner inspect <video_file>
 
         [#999999]Clip a one minute clip from a video file:[/#999999]
-        vid-cleaner clip --start=00:00:00 --duration=00:01:00 <video_file>
+        vidcleaner clip --start=00:00:00 --duration=00:01:00 <video_file>
 
         [#999999]Transcode a video to H265 format and keep English audio:[/#999999]
-        vid-cleaner clean --h265 --langs=eng <video_file>
+        vidcleaner clean --h265 --langs=eng <video_file>
 
         [#999999]Downmix audio to stereo and keep all subtitles:[/#999999]
-        vid-cleaner clean --downmix --keep-subs <video_file>
+        vidcleaner clean --downmix --keep-subs <video_file>
     """  # noqa: D301
     # Instantiate Logging
     instantiate_logger(verbosity, log_file, log_to_file)
