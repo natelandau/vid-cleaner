@@ -13,12 +13,12 @@ from .helpers import (
 from .logging import InterceptHandler, instantiate_logger
 
 __all__ = [
+    "InterceptHandler",
     "console",
     "copy_with_callback",
     "existing_file_path",
     "ffprobe",
     "instantiate_logger",
-    "InterceptHandler",
     "query_radarr",
     "query_sonarr",
     "query_tmdb",

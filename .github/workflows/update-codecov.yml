@@ -1,18 +1,23 @@
 ---
-name: Publish to PyPi
+name: "Upload to Codecov"
+
 on:
     workflow_dispatch:
-    release:
+    workflow_run:
+        workflows: ["Automated Tests"]
         types:
-            - published
+            - completed
+        branches:
+            - main
 
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
     cancel-in-progress: true
 
 jobs:
-    publish-to-pypi:
+    upload-coverage:
         runs-on: ubuntu-latest
+        if: ${{ github.event.workflow_run.conclusion == 'success' }}
         strategy:
             fail-fast: true
             matrix:
@@ -25,20 +30,18 @@ jobs:
                   disable-sudo: true
                   allowed-endpoints: >
                       api.github.com:443
+                      api.snapcraft.io:443
+                      auth.docker.io:443
+                      codecov.io:443
                       files.pythonhosted.org:443
                       github.com:443
                       install.python-poetry.org:443
+                      production.cloudflare.docker.com:443
                       pypi.org:443
                       python-poetry.org:443
-                      upload.pypi.org:443
-
-            # ----------------------------------------------
-            #    Install python and checkout repository
-            # ----------------------------------------------
-            - name: Set up Python ${{ matrix.python-version }}
-              uses: actions/setup-python@v5
-              with:
-                  python-version: ${{ matrix.python-version }}
+                      registry-1.docker.io:443
+                      storage.googleapis.com:443
+                      *.codecov.io:443
 
             # ----------------------------------------------
             #    Checkout repository
@@ -57,19 +60,25 @@ jobs:
                   python-version: ${{ matrix.python-version }}
 
             # ----------------------------------------------
-            # Test before building and uploading the package
+            #    run test suite
             # ----------------------------------------------
-            - name: run poetry checks
+            - name: Run tests with pytest
               run: |
-                  poetry run poetry check
                   poetry run coverage run
-
+                  poetry run coverage report
+                  poetry run coverage xml
             # ----------------------------------------------
-            # Publish to PyPi
+            #             upload coverage stats
             # ----------------------------------------------
-            - name: Publish
+            - name: Upload coverage
+              uses: codecov/codecov-action@v4
+              with:
+                  files: reports/coverage.xml
               env:
-                  PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
-              run: |
-                  poetry config pypi-token.pypi $PYPI_TOKEN
-                  poetry publish --build
+                  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+    on-failure:
+        runs-on: ubuntu-latest
+        if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+        steps:
+            - run: echo 'The triggering workflow failed'
