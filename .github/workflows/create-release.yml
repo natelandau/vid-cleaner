@@ -6,11 +6,9 @@ on:
         tags:
             - "v*"
 
-
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
     cancel-in-progress: true
-
 
 permissions:
     contents: write
@@ -41,13 +39,17 @@ jobs:
                       githubapp.com:443
                       docker.com:443
 
+            # ----------------------------------------------
+            #    Checkout repository
+            # ----------------------------------------------
+
             - name: Checkout repository
               uses: actions/checkout@v4
               with:
                   fetch-depth: 0
 
             # ----------------------------------------------
-            #    Install poetry and project dependencies
+            #    Install Python, Poetry, and project dependencies
             # ----------------------------------------------
 
             - name: Setup Python and Poetry
@@ -96,7 +98,6 @@ jobs:
                   TAG=$(git describe HEAD --tags --abbrev=0)
                    echo "CURRENT_TAG=refs/tags/${TAG}" >> $GITHUB_ENV
 
-
             - name: Get notes
               id: generate_notes
               uses: anmarkoulis/commitizen-changelog-reader@master
@@ -104,11 +105,9 @@ jobs:
                   tag_name: ${{ env.CURRENT_TAG }}
                   changelog: CHANGELOG.md
 
-
             # ----------------------------------------------
             # Build draft release (Note: Will need to manually publish)
             # ----------------------------------------------
-
 
             - name: Create Release Draft
               uses: softprops/action-gh-release@v1

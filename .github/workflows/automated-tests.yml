@@ -34,7 +34,7 @@ jobs:
         strategy:
             fail-fast: true
             matrix:
-                python-version: ["3.11"]
+                python-version: ["3.10", "3.11", "3.12"]
         steps:
             - name: Harden Security Runner
               uses: step-security/harden-runner@v2
@@ -45,7 +45,6 @@ jobs:
                       api.github.com:443
                       api.snapcraft.io:443
                       auth.docker.io:443
-                      codecov.io:443
                       files.pythonhosted.org:443
                       github.com:443
                       install.python-poetry.org:443
@@ -54,32 +53,29 @@ jobs:
                       python-poetry.org:443
                       registry-1.docker.io:443
                       storage.googleapis.com:443
-                      uploader.codecov.io:443
 
             # ----------------------------------------------
-            #    Install python and checkout repository
+            #    Checkout repository
             # ----------------------------------------------
-            - name: Set up Python ${{ matrix.python-version }}
-              uses: actions/setup-python@v5
-              with:
-                  python-version: ${{ matrix.python-version }}
 
             - name: Checkout repository
               uses: actions/checkout@v4
 
             # ----------------------------------------------
-            #    Install poetry and project dependencies
+            #    Install Python, Poetry, and project dependencies
             # ----------------------------------------------
 
             - name: Setup Python and Poetry
               uses: ./.github/actions/setup-poetry
+              with:
+                  python-version: ${{ matrix.python-version }}
 
             # ----------------------------------------------
             #    run linters
             # ----------------------------------------------
 
             - name: lint with ruff
-              run: poetry run ruff --extend-ignore=I001,D301,D401 src/
+              run: poetry run ruff --extend-ignore=I001,D401 src/
             - name: check pyproject.toml
               run: poetry run poetry check
 
@@ -87,17 +83,4 @@ jobs:
             #    run test suite
             # ----------------------------------------------
             - name: Run tests with pytest
-              run: |
-                  poetry run coverage run
-                  poetry run coverage report
-                  poetry run coverage xml
-            # ----------------------------------------------
-            #             upload coverage stats
-            # ----------------------------------------------
-            - name: Upload coverage
-              if: github.ref == 'refs/heads/main' && matrix.python-version == '3.11'
-              uses: codecov/codecov-action@v3
-              with:
-                  token: ${{ secrets.CODECOV_TOKEN }} # Only required for private repositories
-                  files: reports/coverage.xml
-                  fail_ci_if_error: true
+              run: poetry run pytest tests/

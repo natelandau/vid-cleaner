@@ -40,15 +40,21 @@ jobs:
               with:
                   python-version: ${{ matrix.python-version }}
 
+            # ----------------------------------------------
+            #    Checkout repository
+            # ----------------------------------------------
+
             - name: Checkout repository
               uses: actions/checkout@v4
 
             # ----------------------------------------------
-            #    Install poetry and project dependencies
+            #    Install Python, Poetry, and project dependencies
             # ----------------------------------------------
 
             - name: Setup Python and Poetry
               uses: ./.github/actions/setup-poetry
+              with:
+                  python-version: ${{ matrix.python-version }}
 
             # ----------------------------------------------
             # Test before building and uploading the package

@@ -126,16 +126,18 @@ class VideoFile:
         command: list[str] = ["-map", "0", "-c:v", "libx265"]
 
         # Create bitrate command
-        command.extend([
-            "-b:v",
-            f"{target_bitrate}k",
-            "-minrate",
-            f"{min_bitrate}k",
-            "-maxrate",
-            f"{max_bitrate}k",
-            "-bufsize",
-            f"{current_bitrate}k",
-        ])
+        command.extend(
+            [
+                "-b:v",
+                f"{target_bitrate}k",
+                "-minrate",
+                f"{min_bitrate}k",
+                "-maxrate",
+                f"{max_bitrate}k",
+                "-bufsize",
+                f"{current_bitrate}k",
+            ]
+        )
 
         # Copy audio and subtitles
         command.extend(["-c:a", "copy", "-c:s", "copy"])
@@ -239,22 +241,24 @@ class VideoFile:
 
         if not has_stereo and surround5:
             for surround5_stream in surround5:
-                downmix_command.extend([
-                    "-map",
-                    f"0:{surround5_stream['index']}",
-                    f"-c:a:{new_index}",
-                    "aac",
-                    f"-ac:a:{new_index}",
-                    "2",
-                    f"-b:a:{new_index}",
-                    "256k",
-                    f"-filter:a:{new_index}",
-                    "pan=stereo|FL=FC+0.30*FL+0.30*FLC+0.30*BL+0.30*SL+0.60*LFE|FR=FC+0.30*FR+0.30*FRC+0.30*BR+0.30*SR+0.60*LFE,loudnorm",
-                    f"-ar:a:{new_index}",
-                    "48000",
-                    f"-metadata:s:a:{new_index}",
-                    "title=2.0",
-                ])
+                downmix_command.extend(
+                    [
+                        "-map",
+                        f"0:{surround5_stream['index']}",
+                        f"-c:a:{new_index}",
+                        "aac",
+                        f"-ac:a:{new_index}",
+                        "2",
+                        f"-b:a:{new_index}",
+                        "256k",
+                        f"-filter:a:{new_index}",
+                        "pan=stereo|FL=FC+0.30*FL+0.30*FLC+0.30*BL+0.30*SL+0.60*LFE|FR=FC+0.30*FR+0.30*FRC+0.30*BR+0.30*SR+0.60*LFE,loudnorm",
+                        f"-ar:a:{new_index}",
+                        "48000",
+                        f"-metadata:s:a:{new_index}",
+                        "title=2.0",
+                    ]
+                )
                 new_index += 1
                 has_stereo = True
 
@@ -264,18 +268,20 @@ class VideoFile:
             )
 
             for surround7_stream in surround7:
-                downmix_command.extend([
-                    "-map",
-                    f"0:{surround7_stream['index']}",
-                    f"-c:a:{new_index}",
-                    "aac",
-                    f"-ac:a:{new_index}",
-                    "2",
-                    f"-b:a:{new_index}",
-                    "256k",
-                    f"-metadata:s:a:{new_index}",
-                    "title=2.0",
-                ])
+                downmix_command.extend(
+                    [
+                        "-map",
+                        f"0:{surround7_stream['index']}",
+                        f"-c:a:{new_index}",
+                        "aac",
+                        f"-ac:a:{new_index}",
+                        "2",
+                        f"-b:a:{new_index}",
+                        "256k",
+                        f"-metadata:s:a:{new_index}",
+                        "title=2.0",
+                    ]
+                )
                 new_index += 1
 
         logger.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
