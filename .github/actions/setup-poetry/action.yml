@@ -32,7 +32,7 @@ runs:
           shell: bash
           run: |
               mkdir -p ${HOME}/.config/vid-cleaner/
-              cp src/vid_cleaner/config/default_config.toml ${HOME}/.config/vid-cleaner/config.toml
+              cp src/vid_cleaner/default_config.toml ${HOME}/.config/vid-cleaner/config.toml
 
         # ----------------------------------------------
         #    Install python and checkout repository
