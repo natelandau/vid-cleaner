@@ -11,8 +11,8 @@ import typer
 from loguru import logger
 from rich.progress import Progress
 
-from vid_cleaner.config import Config
-from vid_cleaner.constants import APP_DIR, BUFFER_SIZE
+from vid_cleaner.config import VidCleanerConfig
+from vid_cleaner.constants import BUFFER_SIZE
 from vid_cleaner.utils import errors
 
 
@@ -69,14 +69,15 @@ def query_tmdb(search: str) -> dict:  # pragma: no cover
     Returns:
         dict: The Movie Database API response
     """
-    config = Config(config_path=APP_DIR / "config.toml")
-    if not config.get("tmdb_api_key", pass_none=True):
+    tmdb_api_key = VidCleanerConfig().tmdb_api_key
+
+    if not tmdb_api_key:
         return {}
 
     url = f"https://api.themoviedb.org/3/find/{search}"
 
     params = {
-        "api_key": config.get("tmdb_api_key"),
+        "api_key": tmdb_api_key,
         "language": "en-US",
         "external_source": "imdb_id",
     }
@@ -107,17 +108,15 @@ def query_radarr(search: str) -> dict:  # pragma: no cover
     Returns:
         dict: Radarr API response
     """
-    config = Config(config_path=APP_DIR / "config.toml")
+    radarr_url = VidCleanerConfig().radarr_url
+    radarr_api_key = VidCleanerConfig().radarr_api_key
 
-    if not config.get("radarr_api_key", pass_none=True):
-        return {}
-    if not config.get("radarr_url", pass_none=True):
+    if not radarr_api_key or not radarr_url:
         return {}
 
-    radarr_url = config.get("radarr_url")
     url = f"{radarr_url}/api/v3/parse"
     params = {
-        "apikey": config.get("radarr_api_key"),
+        "apikey": radarr_api_key,
         "title": search,
     }
 
@@ -144,17 +143,15 @@ def query_sonarr(search: str) -> dict:  # pragma: no cover
     Returns:
         dict: Sonarr API response
     """
-    config = Config(config_path=APP_DIR / "config.toml")
+    sonarr_url = VidCleanerConfig().sonarr_url
+    sonarr_api_key = VidCleanerConfig().sonarr_api_key
 
-    if not config.get("sonarr_api_key", pass_none=True):
-        return {}
-    if not config.get("sonarr_url", pass_none=True):
+    if not sonarr_api_key or not sonarr_url:
         return {}
 
-    sonarr_url = config.get("sonarr_url")
     url = f"{sonarr_url}/api/v3/parse"
     params = {
-        "apikey": config.get("sonarr_api_key"),
+        "apikey": sonarr_api_key,
         "title": search,
     }
 

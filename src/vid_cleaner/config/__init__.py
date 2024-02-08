@@ -1,5 +1,5 @@
 """Configuration module."""
 
-from vid_cleaner.config.config import Config
+from .config import VidCleanerConfig
 
-__all__ = ["Config"]
+__all__ = ["VidCleanerConfig"]

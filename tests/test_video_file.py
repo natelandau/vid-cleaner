@@ -8,7 +8,6 @@ import typer
 from iso639 import Lang
 
 from vid_cleaner.models import VideoFile  # Replace with the actual import
-from vid_cleaner.utils import console
 
 
 @pytest.fixture()
