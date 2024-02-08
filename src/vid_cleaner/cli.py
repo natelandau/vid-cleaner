@@ -24,7 +24,23 @@ from vid_cleaner.utils import (
 
 typer.rich_utils.STYLE_HELPTEXT = ""
 
-app = typer.Typer(add_completion=False, no_args_is_help=True, rich_markup_mode="rich")
+app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    rich_markup_mode="rich",
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+
+
+def docstring_parameter(*sub):  # type: ignore [no-untyped-def]
+    """Decorator to format docstring with parameters."""
+
+    def dec(obj):  # type: ignore [no-untyped-def]
+        """Format docstring with parameters."""
+        obj.__doc__ = obj.__doc__.format(*sub)
+        return obj
+
+    return dec
 
 
 def version_callback(value: bool) -> None:
@@ -173,6 +189,7 @@ def clip_command(
             logger.success(f"{out_file}")
 
 
+@docstring_parameter(CONFIG_PATH)
 @app.command("clean")
 def clean_command(
     files: Annotated[
@@ -270,7 +287,7 @@ def clean_command(
 ) -> None:
     """Transcode video files to different formats or configurations.
 
-    This command is versatile and allows for a range of transcoding options for video files with various options. You can select various audio and video settings, manage subtitles, and choose the output file format.
+    Vidcleaner is versatile and allows for a range of transcoding options for video files with various options. You can select various audio and video settings, manage subtitles, and choose the output file format.
 
     The defaults for this command will:
 
@@ -280,7 +297,7 @@ def clean_command(
     * Keep original audio if it is not the default language
     * Drop all subtitles unless the original audio is not in the default language, in which case the default subtitles are retained
 
-    The defaults can be overridden by using the various options available.
+    The defaults can be overridden by using the various command line options or by editing the configuration file located at [code]{0}[/code]
 
     [bold underline]Usage Examples[/bold underline]
 
@@ -334,6 +351,7 @@ def clean_command(
             logger.success(f"{out_file}")
 
 
+@docstring_parameter(CONFIG_PATH)
 @app.callback()
 def main(
     log_file: Annotated[
@@ -388,6 +406,8 @@ def main(
     - [bold]Keep subtitles[/bold] if original audio is not in desired language
     - [bold]Downmix audio[/bold] to stereo
     - [bold]Convert[/bold] video files to H265 or VP9
+
+    The defaults can be overridden by using the various command line options or by editing the configuration file located at [code]{0}[/code]
 
     [bold underline]Usage Examples[/bold underline]
 
