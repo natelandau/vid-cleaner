@@ -38,7 +38,6 @@ def instantiate_logger(
         format="<level>{level: <8}</level> | <level>{message}</level> <fg #c5c5c5>({name}:{function}:{line})</fg #c5c5c5>"
         if LogLevel(verbosity) in {LogLevel.DEBUG, LogLevel.TRACE}
         else "<level>{level: <8}</level> | <level>{message}</level>",
-        enqueue=True,
     )
     if log_to_file:
         logger.add(
@@ -48,7 +47,6 @@ def instantiate_logger(
             rotation="50 MB",
             retention=2,
             compression="zip",
-            enqueue=True,
         )
 
     # Intercept standard sh logs and redirect to Loguru

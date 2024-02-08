@@ -1,16 +1,18 @@
 """vid-cleaner CLI."""
-
 import re
+import shutil
 from pathlib import Path
 from typing import Annotated, Optional
 
 import typer
+from confz import validate_all_configs
 from loguru import logger
+from pydantic import ValidationError
 from rich.table import Table
 
 from vid_cleaner.__version__ import __version__
-from vid_cleaner.config import Config
-from vid_cleaner.constants import APP_DIR
+from vid_cleaner.config import VidCleanerConfig
+from vid_cleaner.constants import CONFIG_PATH
 from vid_cleaner.models import VideoFile
 from vid_cleaner.utils import (
     console,
@@ -22,8 +24,23 @@ from vid_cleaner.utils import (
 
 typer.rich_utils.STYLE_HELPTEXT = ""
 
-app = typer.Typer(add_completion=False, no_args_is_help=True, rich_markup_mode="rich")
-config = Config(config_path=APP_DIR / "config.toml")
+app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    rich_markup_mode="rich",
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+
+
+def docstring_parameter(*sub):  # type: ignore [no-untyped-def]
+    """Decorator to format docstring with parameters."""
+
+    def dec(obj):  # type: ignore [no-untyped-def]
+        """Format docstring with parameters."""
+        obj.__doc__ = obj.__doc__.format(*sub)
+        return obj
+
+    return dec
 
 
 def version_callback(value: bool) -> None:
@@ -172,6 +189,7 @@ def clip_command(
             logger.success(f"{out_file}")
 
 
+@docstring_parameter(CONFIG_PATH)
 @app.command("clean")
 def clean_command(
     files: Annotated[
@@ -239,11 +257,13 @@ def clean_command(
         ),
     ] = False,
     langs: Annotated[
-        str,
+        Optional[str],
         typer.Option(
-            help="Languages to keep. Comma separated language codes", rich_help_panel="Audio"
+            help="Languages to keep. Comma separated language codes",
+            rich_help_panel="Audio",
+            show_default=False,
         ),
-    ] = ",".join(config.get("keep-languages", default=["eng"])),  # type: ignore [arg-type]
+    ] = None,
     h265: Annotated[
         bool, typer.Option("--h265", help="Convert to H265", rich_help_panel="Video")
     ] = False,
@@ -267,7 +287,7 @@ def clean_command(
 ) -> None:
     """Transcode video files to different formats or configurations.
 
-    This command is versatile and allows for a range of transcoding options for video files with various options. You can select various audio and video settings, manage subtitles, and choose the output file format.
+    Vidcleaner is versatile and allows for a range of transcoding options for video files with various options. You can select various audio and video settings, manage subtitles, and choose the output file format.
 
     The defaults for this command will:
 
@@ -277,7 +297,7 @@ def clean_command(
     * Keep original audio if it is not the default language
     * Drop all subtitles unless the original audio is not in the default language, in which case the default subtitles are retained
 
-    The defaults can be overridden by using the various options available.
+    The defaults can be overridden by using the various command line options or by editing the configuration file located at [code]{0}[/code]
 
     [bold underline]Usage Examples[/bold underline]
 
@@ -287,6 +307,8 @@ def clean_command(
     [#999999]Downmix audio to stereo and keep all subtitles:[/#999999]
     vidcleaner clean --downmix --keep-subs <video_file>
     """
+    languages = langs or ",".join(VidCleanerConfig().keep_languages)
+
     for video in files:
         logger.info(f"⇨ {video.path.name}")
 
@@ -297,7 +319,7 @@ def clean_command(
         video.reorder_streams(dry_run=dry_run)
 
         video.process_streams(
-            langs_to_keep=langs.split(","),
+            langs_to_keep=languages.split(","),
             drop_original_audio=drop_original_audio,
             keep_commentary=keep_commentary,
             downmix_stereo=downmix_stereo,
@@ -329,33 +351,50 @@ def clean_command(
             logger.success(f"{out_file}")
 
 
+@docstring_parameter(CONFIG_PATH)
 @app.callback()
 def main(
-    log_file: Path = typer.Option(
-        config.get("log_file", default=f"{APP_DIR}/vid-cleaner.log"),
-        help="Path to log file",
-        show_default=True,
-        dir_okay=False,
-        file_okay=True,
-        exists=False,
-    ),
-    log_to_file: bool = typer.Option(
-        config.get("log_to_file", default=False),
-        "--log-to-file",
-        help="Log to file",
-        show_default=True,
-    ),
-    verbosity: int = typer.Option(
-        0,
-        "-v",
-        "--verbose",
-        show_default=True,
-        help="""Set verbosity level(0=INFO, 1=DEBUG, 2=TRACE)""",
-        count=True,
-    ),
-    version: Optional[bool] = typer.Option(  # noqa: ARG001
-        None, "--version", help="Print version and exit", callback=version_callback, is_eager=True
-    ),
+    log_file: Annotated[
+        Optional[Path],
+        typer.Option(
+            help="Path to log file",
+            show_default=False,
+            dir_okay=False,
+            file_okay=True,
+            exists=False,
+            rich_help_panel="Output Settings",
+        ),
+    ] = None,
+    log_to_file: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--log-to-file",
+            help="Log to file",
+            show_default=True,
+            rich_help_panel="Output Settings",
+        ),
+    ] = None,
+    verbosity: Annotated[
+        int,
+        typer.Option(
+            "-v",
+            "--verbose",
+            show_default=True,
+            help="""Set verbosity level(0=INFO, 1=DEBUG, 2=TRACE)""",
+            count=True,
+            rich_help_panel="Output Settings",
+        ),
+    ] = 0,
+    version: Annotated[  # noqa: ARG001
+        Optional[bool],
+        typer.Option(
+            "--version",
+            is_eager=True,
+            callback=version_callback,
+            help="Print version and exit",
+            rich_help_panel="Output Settings",
+        ),
+    ] = None,
 ) -> None:
     """Transcode video files to different formats or configurations using ffmpeg. This script provides a simple CLI for common video transcoding tasks.
 
@@ -367,6 +406,8 @@ def main(
     - [bold]Keep subtitles[/bold] if original audio is not in desired language
     - [bold]Downmix audio[/bold] to stereo
     - [bold]Convert[/bold] video files to H265 or VP9
+
+    The defaults can be overridden by using the various command line options or by editing the configuration file located at [code]{0}[/code]
 
     [bold underline]Usage Examples[/bold underline]
 
@@ -384,6 +425,21 @@ def main(
     """  # noqa: D301
     # Instantiate Logging
     instantiate_logger(verbosity, log_file, log_to_file)
+
+    # Create a default configuration file if one does not exist
+    if not CONFIG_PATH.exists():
+        CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        default_config_file = Path(__file__).parent.resolve() / "default_config.toml"
+        shutil.copy(default_config_file, CONFIG_PATH)
+
+    # Load and validate configuration
+    try:
+        validate_all_configs()
+    except ValidationError as e:
+        logger.error(f"Invalid configuration file: {CONFIG_PATH}")
+        for error in e.errors():
+            console.print(f"           [red]{error['loc'][0]}: {error['msg']}[/red]")
+        raise typer.Exit(code=1) from e
 
 
 if __name__ == "__main__":

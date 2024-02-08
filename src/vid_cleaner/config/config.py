@@ -1,116 +1,43 @@
 """Instantiate Configuration class and set default values."""
 
-import shutil
 from pathlib import Path
-from typing import Any
+from typing import Annotated, ClassVar
 
-import tomllib
-import typer
-from loguru import logger
-from rich import print as rprint
+from confz import BaseConfig, CLArgSource, ConfigSources, FileSource
+from pydantic import BeforeValidator
+
+from vid_cleaner.constants import APP_DIR, CONFIG_PATH
 
 PATH_CONFIG_DEFAULT = Path(__file__).parent / "default_config.toml"
 
 
-class Config:
-    """Representation of a configuration file."""
+def pass_log_to_file(value: str) -> bool:
+    """Confz does not work well with Typer options. Confz requires a value for each CLI option, but Typer does not. To workaround this, if --log-to-file is passed, we set the value to "True" regardless of what follows the CLI option."""
+    if value:
+        return True
 
-    def __init__(
-        self,
-        config_path: Path | None = None,
-        context: dict[str, Any] = {},
-    ) -> None:
-        """Initialize configuration file."""
-        self.config_path = config_path.expanduser().resolve() if config_path else None
-        self.context = context
+    return False
 
-        if not config_path or not self.config_path.exists():
-            self._create_config()
 
-        self.config = self._load_config()
+LOG_TO_FILE = Annotated[
+    bool,
+    BeforeValidator(pass_log_to_file),
+]
 
-    def __repr__(self) -> str:
-        """Return string representation of Config.
 
-        Returns:
-            str: The string representation of the Config object.
-        """
-        return f"{self.config}"
+class VidCleanerConfig(BaseConfig):  # type: ignore [misc]
+    """Configuration class for vid - cleaner."""
 
-    def _create_config(self) -> None:
-        """Create a configuration file from the default when it does not exist.
+    log_to_file: LOG_TO_FILE = False
+    log_file: Path = APP_DIR / "vid_cleaner.log"
+    keep_languages: frozenset[str] = frozenset(["eng"])
+    radarr_api_key: str = ""
+    radarr_url: str = ""
+    sonarr_api_key: str = ""
+    sonarr_url: str = ""
+    tmdb_api_key: str = ""
 
-        Raises:
-            typer.Exit: If no configuration file is specified.
-        """
-        if self.config_path is None:
-            logger.error("No configuration file specified")
-            raise typer.Exit(code=1)
-
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(PATH_CONFIG_DEFAULT, self.config_path)
-        logger.success(f"Created default configuration file at {self.config_path}")
-        logger.info(f"Please edit {self.config_path} before continuing")
-        rprint(f"{self.config_path} created. Please edit before continuing.")
-        raise typer.Exit(code=1)
-
-    def _load_config(self) -> dict[str, Any]:
-        """Load the configuration file.
-
-        This method reads the configuration file specified by `self.config_path`
-        and returns the parsed configuration as a dictionary. It also adds the
-        context items to the configuration dictionary.
-
-        Returns:
-            A dictionary containing the parsed configuration.
-
-        Raises:
-            typer.Exit: If the configuration file is empty or malformed.
-        """
-        logger.trace(f"Loading configuration from {self.config_path}")
-        with self.config_path.open("rb") as f:
-            try:
-                config = tomllib.load(f)
-            except tomllib.TOMLDecodeError as e:
-                logger.exception(f"Could not parse '{self.config_path}'")
-                raise typer.Exit(code=1) from e
-
-        if config == {}:
-            logger.error(f"Configuration file '{self.config_path}' is empty or malformed")
-            raise typer.Exit(code=1)
-
-        # Add context to config
-        for key, value in self.context.items():
-            config[key] = value
-
-        return config
-
-    def get(
-        self, key: str, default: str | bool | list[str] | None = None, pass_none: bool = False
-    ) -> str | int | bool | list[str | int] | None:
-        """Get a value from the configuration file.
-
-        Args:
-            key (str): The name of the config variable.
-            default (str, optional): The default value to use if the key is not set. Defaults to None.
-            pass_none (bool, optional): Whether to pass None if the key does not exist. Defaults to False.
-
-        Returns:
-            str | int | bool | list[str | int] | None: The value of the config variable.
-
-        Raises:
-            typer.Exit: If the config variable is not set and `pass_none` is False.
-        """
-        value = self.config.get(key, default)
-
-        if value is None and not pass_none:
-            logger.error(f"Config variable {key} is not set.")
-            raise typer.Exit(code=1)
-
-        if not value and not isinstance(value, bool):
-            return None
-
-        if isinstance(value, str):
-            return value.strip().lstrip('"').rstrip('"')
-
-        return value
+    CONFIG_SOURCES: ClassVar[ConfigSources | None] = [
+        FileSource(file=CONFIG_PATH),
+        CLArgSource(remap={"log-file": "log_file", "log-to-file": "log_to_file"}),
+    ]

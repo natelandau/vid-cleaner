@@ -28,6 +28,7 @@ class AudioLayout(Enum):
 SYMBOL_CHECK = "✔"
 
 APP_DIR = Path(typer.get_app_dir("vid-cleaner"))
+CONFIG_PATH = APP_DIR / "config.toml"
 EXCLUDED_VIDEO_CODECS = {"mjpeg", "mjpg", "png"}
 FFMPEG_APPEND: list[str] = ["-max_muxing_queue_size", "9999"]
 FFMPEG_PREPEND: list[str] = ["-y", "-hide_banner"]
