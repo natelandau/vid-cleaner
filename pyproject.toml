@@ -41,22 +41,20 @@
         commitizen     = "^3.13.0"
         coverage       = "^7.3.1"
         mypy           = "^1.7.1"
-        pdoc           = "^14.0.0"
         poethepoet     = "^0.24.4"
         pre-commit     = "^3.5.0"
         ruff           = "^0.2.1"
         shellcheck-py  = "^0.9.0.5"
         types-requests = "^2.31.0.10"
         typos          = "^1.16.23"
-        vulture        = "^2.10"
 
 [tool.commitizen]
     bump_message               = "bump(release): v$current_version → v$new_version"
     changelog_merge_prerelease = true
     tag_format                 = "v$version"
     update_changelog_on_bump   = true
-    version                    = "0.3.0"
-    version_files              = ["pyproject.toml:version", "src/vid_cleaner/__version__.py:__version__"]
+    version_files              = ["src/vid_cleaner/constants.py:VERSION"]
+    version_provider           = "poetry"
 
 [tool.coverage.report] # https://coverage.readthedocs.io/en/latest/config.html#report
     exclude_lines = [
@@ -148,9 +146,6 @@
     target-version = "py310"
 
     [tool.ruff.lint]
-        # Avoiding flagging (and removing) `V101` from any `# noqa`
-        # directives, despite Ruff's lack of support for `vulture`.
-        external = ["V"]
         ignore = [
             "B006",    # mutable-argument-default
             "B008",    # function-call-in-default-argument
@@ -249,26 +244,7 @@
     quote-style               = "double"
     skip-magic-trailing-comma = false
 
-[tool.vulture] # https://pypi.org/project/vulture/
-    # exclude = ["file*.py", "dir/"]
-    # ignore_decorators = ["@app.route", "@require_*"]
-    ignore_names = ["args", "kwargs", "request", "version"]
-    # make_whitelist = true
-    min_confidence = 80
-    paths          = ["src", "tests"]
-    sort_by_size   = true
-    verbose        = false
-
 [tool.poe.tasks]
-
-    [tool.poe.tasks.docs]
-        cmd = """
-    pdoc
-      --docformat google
-      --output-directory docs
-      src/vid_cleaner
-    """
-        help = "Generate this package's docs"
 
     [tool.poe.tasks.lint]
         help = "Lint this package"
@@ -287,9 +263,6 @@
 
         [[tool.poe.tasks.lint.sequence]]
             shell = "typos"
-
-        [[tool.poe.tasks.lint.sequence]]
-            shell = "vulture src/ tests/ --exclude src/valentina/cogs/test_cog.py"
 
         [[tool.poe.tasks.lint.sequence]]
             shell = "yamllint ."

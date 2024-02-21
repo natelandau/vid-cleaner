@@ -10,9 +10,8 @@ from loguru import logger
 from pydantic import ValidationError
 from rich.table import Table
 
-from vid_cleaner.__version__ import __version__
 from vid_cleaner.config import VidCleanerConfig
-from vid_cleaner.constants import CONFIG_PATH
+from vid_cleaner.constants import CONFIG_PATH, VERSION
 from vid_cleaner.models import VideoFile
 from vid_cleaner.utils import (
     console,
@@ -46,7 +45,7 @@ def docstring_parameter(*sub):  # type: ignore [no-untyped-def]
 def version_callback(value: bool) -> None:
     """Print version and exit."""
     if value:
-        console.print(f"{__package__}: v{__version__}")
+        console.print(f"{__package__}: v{VERSION}")
         raise typer.Exit()
 
 

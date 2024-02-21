@@ -12,7 +12,7 @@ from vid_cleaner.utils import console
 
 logger.remove()  # Remove default logger
 
-FIXTURE_CONFIG = Path(__file__).resolve().parent.parent / "fixtures/configs/default_config.toml"
+FIXTURE_CONFIG = Path(__file__).resolve().parent.parent / "src/vid_cleaner/default_config.toml"
 
 
 @pytest.fixture(autouse=True)
