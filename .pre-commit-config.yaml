@@ -66,11 +66,6 @@ repos:
             exclude: tests/
           - id: ruff-format
 
-    - repo: "https://github.com/jendrikseipp/vulture"
-      rev: "v2.10"
-      hooks:
-          - id: vulture
-
     - repo: "https://github.com/crate-ci/typos"
       rev: v1.18.1
       hooks:
