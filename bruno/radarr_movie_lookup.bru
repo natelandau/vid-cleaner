@@ -1,0 +1,16 @@
+meta {
+  name: radarr_movie_lookup
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{process.env.RADARR_URL}}/api/v3/movie/lookup?term=godzilla minus one&apikey={{process.env.RADARR_API_KEY}}
+  body: none
+  auth: none
+}
+
+query {
+  term: godzilla minus one
+  apikey: {{process.env.RADARR_API_KEY}}
+}

@@ -1,0 +1,9 @@
+{
+  "ignore": [
+    "node_modules",
+    ".git"
+  ],
+  "name": "vidcleaner bruno",
+  "type": "collection",
+  "version": "1"
+}
