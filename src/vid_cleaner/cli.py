@@ -1,4 +1,5 @@
 """vid-cleaner CLI."""
+
 import re
 import shutil
 from pathlib import Path
