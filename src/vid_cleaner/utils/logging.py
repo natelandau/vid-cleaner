@@ -2,55 +2,97 @@
 
 import logging
 import sys
+from enum import Enum
 from pathlib import Path
 
 from loguru import logger
 
-from vid_cleaner.constants import LogLevel
+from .console import console
+
+
+class LogLevel(Enum):
+    """Log levels for vid-cleaner."""
+
+    INFO = 0
+    DEBUG = 1
+    TRACE = 2
+    WARNING = 3
+    ERROR = 4
+
+
+def log_formatter(record: dict) -> str:
+    """Use rich to style log messages."""
+    color_map = {
+        "TRACE": "turquoise2",
+        "DEBUG": "cyan",
+        "INFO": "bold",
+        "SUCCESS": "bold green",
+        "WARNING": "bold yellow",
+        "ERROR": "bold red",
+        "CRITICAL": "bold white on red",
+    }
+    line_start_map = {
+        "INFO": "",
+        "DEBUG": "🐞 ",
+        "TRACE": ":wrench: ",
+        "WARNING": "⚠️ ",
+        "SUCCESS": "✅ ",
+        "ERROR": "❌ ",
+        "CRITICAL": "💀 ",
+        "EXCEPTION": "",
+    }
+
+    name = record["level"].name
+    lvl_color = color_map.get(name, "cyan")
+    line_start = line_start_map.get(name, f"{name: <8} | ")
+
+    msg = f"[{lvl_color}]{line_start}{{message}}[/{lvl_color}]"
+    debug = f"[#c5c5c5]({record['name']}:{record['function']}:{record['line']})[/#c5c5c5]"
+
+    return f"{msg} {debug}" if name in {"DEBUG", "TRACE"} else msg
 
 
 def instantiate_logger(
     verbosity: int, log_file: Path, log_to_file: bool
 ) -> None:  # pragma: no cover
-    """Instantiate the Loguru logger for vid-cleaner.
+    """Instantiate the Loguru logger for brewup.
 
-    This function initializes the Loguru logger for the vid-cleaner application.
-    It configures the logger with the specified verbosity level, log file path,
+    Configure the logger with the specified verbosity level, log file path,
     and whether to log to a file.
 
     Args:
         verbosity (int): The verbosity level of the logger. Valid values are:
-            - 0: No log messages will be displayed.
-            - 1: Only log messages with severity level INFO and above will be displayed.
-            - 2: Only log messages with severity level DEBUG and above will be displayed.
-            - 3: Only log messages with severity level TRACE and above will be displayed.
+            - 0: Only log messages with severity level INFO and above will be displayed.
+            - 1: Only log messages with severity level DEBUG and above will be displayed.
+            - 2: Only log messages with severity level TRACE and above will be displayed.
+            > 2: Include debug from installed libraries
         log_file (Path): The path to the log file where the log messages will be written.
         log_to_file (bool): Whether to log the messages to the file specified by `log_file`.
 
     Returns:
         None
     """
+    level = verbosity if verbosity < 3 else 2  # noqa: PLR2004
+
     logger.remove()
     logger.add(
-        sys.stdout,
-        level=LogLevel(verbosity).name,
+        console.print,
+        level=LogLevel(level).name,
         colorize=True,
-        format="<level>{level: <8}</level> | <level>{message}</level> <fg #c5c5c5>({name}:{function}:{line})</fg #c5c5c5>"
-        if LogLevel(verbosity) in {LogLevel.DEBUG, LogLevel.TRACE}
-        else "<level>{level: <8}</level> | <level>{message}</level>",
+        format=log_formatter,  # type: ignore [arg-type]
     )
     if log_to_file:
         logger.add(
             log_file,
-            level=LogLevel(verbosity).name,
+            level=LogLevel(level).name,
             format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {message} ({name})",
             rotation="50 MB",
             retention=2,
             compression="zip",
         )
 
-    # Intercept standard sh logs and redirect to Loguru
-    if LogLevel(verbosity) in {LogLevel.DEBUG, LogLevel.TRACE}:
+    if verbosity > 2:  # noqa: PLR2004
+        # Intercept standard sh logs and redirect to Loguru
         logging.getLogger("sh").setLevel(level="INFO")
         logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
 

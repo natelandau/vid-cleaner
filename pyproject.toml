@@ -14,7 +14,7 @@
     version     = "0.3.0"
 
     [tool.poetry.scripts] # https://python-poetry.org/docs/pyproject/#scripts
-        vidcleaner = "vid_cleaner.cli:app"
+        vidcleaner = "vid_cleaner.vid_cleaner:app"
 
     [tool.poetry.dependencies]
         confz                 = "^2.0.1"
@@ -42,10 +42,10 @@
         mypy           = "^1.9.0"
         poethepoet     = "^0.25.0"
         pre-commit     = "^3.6.2"
+        pytest-asyncio = "^0.23.5.post1"
         ruff           = "^0.3.2"
         types-requests = "^2.31.0.20240311"
         typos          = "^1.19.0"
-    pytest-asyncio = "^0.23.5.post1"
 
 [tool.commitizen]
     bump_message               = "bump(release): v$current_version → v$new_version"

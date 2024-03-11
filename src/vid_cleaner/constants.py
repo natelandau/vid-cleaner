@@ -6,16 +6,6 @@ from pathlib import Path
 import typer
 
 
-class LogLevel(Enum):
-    """Log levels for vid-cleaner."""
-
-    INFO = 0
-    DEBUG = 1
-    TRACE = 2
-    WARNING = 3
-    ERROR = 4
-
-
 class AudioLayout(Enum):
     """Audio layouts for vid-cleaner. Values are the number of streams."""
 
