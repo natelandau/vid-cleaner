@@ -192,6 +192,7 @@ def clip_command(
 @docstring_parameter(CONFIG_PATH)
 @app.command("clean")
 def clean_command(
+    ctx: typer.Context,
     files: Annotated[
         list[VideoFile],
         typer.Argument(
@@ -307,6 +308,8 @@ def clean_command(
     [#999999]Downmix audio to stereo and keep all subtitles:[/#999999]
     vidcleaner clean --downmix --keep-subs <video_file>
     """
+    verbosity = ctx.meta["verbosity"]
+
     languages = langs or ",".join(VidCleanerConfig().keep_languages)
 
     for video in files:
@@ -327,6 +330,7 @@ def clean_command(
             keep_local_subtitles=keep_local_subtitles,
             subs_drop_local=subs_drop_local,
             dry_run=dry_run,
+            verbosity=verbosity,
         )
 
         if video_1080:
@@ -354,6 +358,7 @@ def clean_command(
 @docstring_parameter(CONFIG_PATH)
 @app.callback()
 def main(
+    ctx: typer.Context,
     log_file: Annotated[
         Optional[Path],
         typer.Option(
@@ -425,6 +430,7 @@ def main(
     """  # noqa: D301
     # Instantiate Logging
     instantiate_logger(verbosity, log_file, log_to_file)
+    ctx.meta["verbosity"] = verbosity
 
     # Create a default configuration file if one does not exist
     if not CONFIG_PATH.exists():
