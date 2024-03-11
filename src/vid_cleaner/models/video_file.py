@@ -287,12 +287,15 @@ class VideoFile:
         logger.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
         return downmix_command
 
-    def _find_original_language(self) -> Lang:  # pragma: no cover
+    def _find_original_language(self, verbosity: int) -> Lang:  # pragma: no cover
         """Determine the original language of the video.
 
         Query various sources like IMDb, TMDB, Radarr, and Sonarr to identify the original language.
         Perform this operation only once and cache the result. Return the determined language or
         None if it cannot be found.
+
+        Args:
+            verbosity (int): The verbosity level of the logger.
 
         Returns:
             Lang: An object representing the original language, or None if not found.
@@ -304,11 +307,12 @@ class VideoFile:
         original_language = None
 
         # Try to find the IMDb ID
-        match = re.search(r"(tt\d{7})", self.stem)
+        match = re.search(r"(tt\d+)", self.stem)
         imdb_id = match.group(0) if match else self._query_arr_apps_for_imdb_id()
 
         # Query TMDB for the original language
-        response = query_tmdb(imdb_id) if imdb_id else None
+        response = query_tmdb(imdb_id, verbosity=verbosity) if imdb_id else None
+
         if response and (tmdb_response := response.get("movie_results", [{}])[0]):
             original_language = tmdb_response.get("original_language")
             logger.trace(f"TMDB: Original language: {original_language}")
@@ -455,6 +459,7 @@ class VideoFile:
         keep_commentary: bool,
         keep_all_subtitles: bool,
         keep_local_subtitles: bool,
+        verbosity: int,
         subs_drop_local: bool = False,
     ) -> list[str]:
         """Construct a command list for processing subtitle streams.
@@ -469,6 +474,7 @@ class VideoFile:
             keep_all_subtitles (bool): Flag to keep all subtitles regardless of language.
             keep_local_subtitles (bool): Flag to keep subtitles with 'undetermined' language or in the specified list.
             subs_drop_local (bool, optional): Drop subtitles if the original language is not in the list. Defaults to False.
+            verbosity (int): The verbosity level of the logger.
 
         Returns:
             list[str]: A list of strings forming part of an ffmpeg command for subtitle processing.
@@ -479,7 +485,7 @@ class VideoFile:
 
         # Find original language
         if not subs_drop_local:
-            original_language = self._find_original_language()
+            original_language = self._find_original_language(verbosity=verbosity)
 
         # Return no streams if no languages are specified
         if not keep_all_subtitles and not keep_local_subtitles and subs_drop_local:
@@ -527,6 +533,7 @@ class VideoFile:
         drop_original_audio: bool,
         keep_commentary: bool,
         downmix_stereo: bool,
+        verbosity: int,
     ) -> tuple[list[str], list[str]]:
         """Construct commands for processing audio streams.
 
@@ -539,6 +546,7 @@ class VideoFile:
             drop_original_audio (bool): Flag to drop the original audio track.
             keep_commentary (bool): Flag to keep or discard commentary audio tracks.
             downmix_stereo (bool): Flag to downmix to stereo if required.
+            verbosity (int): The verbosity level of the logger.
 
         Returns:
             tuple[list[str], list[str]]: A tuple containing two lists of strings forming part of an ffmpeg command for audio processing.
@@ -549,7 +557,7 @@ class VideoFile:
 
         # Add original language to list of languages to keep
         if not drop_original_audio:
-            original_language = self._find_original_language()
+            original_language = self._find_original_language(verbosity=verbosity)
             if original_language and original_language not in langs:
                 langs.append(original_language)
 
@@ -710,6 +718,7 @@ class VideoFile:
         keep_all_subtitles: bool,
         keep_local_subtitles: bool,
         subs_drop_local: bool,
+        verbosity: int,
         dry_run: bool = False,
     ) -> Path:
         """Process the video file according to specified audio and subtitle preferences.
@@ -725,6 +734,7 @@ class VideoFile:
             keep_all_subtitles (bool): Flag to keep all subtitle tracks, regardless of language.
             keep_local_subtitles (bool): Flag to keep subtitles with 'undetermined' language or in the specified list.
             subs_drop_local (bool): Flag to drop subtitles if the original language is not in the list.
+            verbosity (int): The verbosity level of the logger.
 
         Returns:
             Path: Path to the processed video file.
@@ -738,19 +748,21 @@ class VideoFile:
 
         video_map_command = self._process_video(video_streams)
         audio_map_command, downmix_command = self._process_audio(
-            audio_streams,
-            langs_to_keep,
-            drop_original_audio,
-            keep_commentary,
-            downmix_stereo,
+            streams=audio_streams,
+            langs_to_keep=langs_to_keep,
+            drop_original_audio=drop_original_audio,
+            keep_commentary=keep_commentary,
+            downmix_stereo=downmix_stereo,
+            verbosity=verbosity,
         )
         subtitle_map_command = self._process_subtitles(
-            subtitle_streams,
-            langs_to_keep,
-            keep_commentary,
-            keep_all_subtitles,
-            keep_local_subtitles,
-            subs_drop_local,
+            streams=subtitle_streams,
+            langs_to_keep=langs_to_keep,
+            keep_commentary=keep_commentary,
+            keep_all_subtitles=keep_all_subtitles,
+            keep_local_subtitles=keep_local_subtitles,
+            verbosity=verbosity,
+            subs_drop_local=subs_drop_local,
         )
 
         # Run ffmpeg

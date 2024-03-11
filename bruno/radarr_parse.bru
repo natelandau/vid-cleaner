@@ -1,0 +1,16 @@
+meta {
+  name: radarr_parse
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{process.env.RADARR_URL}}/api/v3/parse?title=Argylle (2024) [imdb-tt15009428][WEBDL-1080p][EAC3 5.1][h264]-SupermanPeacemakerWalterWhite.mkv&apikey={{process.env.RADARR_API_KEY}}
+  body: none
+  auth: none
+}
+
+query {
+  title: Argylle (2024) [imdb-tt15009428][WEBDL-1080p][EAC3 5.1][h264]-SupermanPeacemakerWalterWhite.mkv
+  apikey: {{process.env.RADARR_API_KEY}}
+}

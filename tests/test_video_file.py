@@ -207,6 +207,7 @@ def test_process__subtitles_strip_all(video_file):
             keep_all_subtitles=False,
             keep_local_subtitles=False,
             subs_drop_local=True,
+            verbosity=0,
         )
         == []
     )
@@ -229,6 +230,7 @@ def test_process__subtitles_keep_all(video_file):
         keep_all_subtitles=True,
         keep_local_subtitles=False,
         subs_drop_local=True,
+        verbosity=0,
     )
 
     assert command == ["-map", "0:0", "-map", "0:1", "-map", "0:2"]
@@ -251,6 +253,7 @@ def test_process__subtitles_keep_local(video_file):
         keep_all_subtitles=False,
         keep_local_subtitles=True,
         subs_drop_local=True,
+        verbosity=0,
     )
 
     assert command == ["-map", "0:0", "-map", "0:1"]
@@ -273,6 +276,7 @@ def test_process__subtitles_strip_commentary(video_file):
         keep_all_subtitles=False,
         keep_local_subtitles=True,
         subs_drop_local=True,
+        verbosity=0,
     )
 
     assert command == ["-map", "0:0"]
@@ -305,6 +309,7 @@ def test__process_subtitles_keep_not_original(video_file, mocker, lang, result):
         keep_all_subtitles=False,
         keep_local_subtitles=False,
         subs_drop_local=False,
+        verbosity=0,
     )
 
     assert command == result
@@ -336,6 +341,7 @@ def test__process_audio_keep_commentary(video_file, mocker):
         drop_original_audio=False,
         keep_commentary=True,
         downmix_stereo=False,
+        verbosity=0,
     )
 
     assert command == (["-map", "0:0", "-map", "0:2", "-map", "0:3", "-map", "0:4"], [])
@@ -367,6 +373,7 @@ def test__process_audio_drop_original(video_file, mocker):
         drop_original_audio=True,
         keep_commentary=True,
         downmix_stereo=False,
+        verbosity=0,
     )
 
     assert command == (["-map", "0:0", "-map", "0:2", "-map", "0:3"], [])
@@ -397,6 +404,7 @@ def test__process_audio_drop_commentary(video_file, mocker):
         drop_original_audio=False,
         keep_commentary=False,
         downmix_stereo=False,
+        verbosity=0,
     )
 
     assert command == (["-map", "0:0", "-map", "0:2", "-map", "0:4"], [])
@@ -427,6 +435,7 @@ def test__process_audio_downmix_not_needed(video_file, mocker):
         drop_original_audio=False,
         keep_commentary=False,
         downmix_stereo=True,
+        verbosity=0,
     )
 
     assert command == (["-map", "0:0", "-map", "0:2", "-map", "0:4"], [])
@@ -456,6 +465,7 @@ def test__process_audio_downmix_6channel(video_file, mocker):
         drop_original_audio=False,
         keep_commentary=False,
         downmix_stereo=True,
+        verbosity=0,
     )
 
     assert command == (
@@ -517,6 +527,7 @@ def test__process_audio_downmix_8channel(video_file, mocker):
         drop_original_audio=False,
         keep_commentary=False,
         downmix_stereo=True,
+        verbosity=0,
     )
 
     assert command == (

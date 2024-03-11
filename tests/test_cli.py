@@ -6,7 +6,7 @@ import re
 from typer.testing import CliRunner
 
 from tests.pytest_functions import strip_ansi
-from vid_cleaner.cli import app
+from vid_cleaner.vid_cleaner import app
 
 runner = CliRunner()
 

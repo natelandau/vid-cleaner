@@ -15,6 +15,8 @@ from vid_cleaner.config import VidCleanerConfig
 from vid_cleaner.constants import BUFFER_SIZE
 from vid_cleaner.utils import errors
 
+from .console import console
+
 
 def existing_file_path(path: str) -> Path:
     """Check if the given path exists and is a file.
@@ -59,12 +61,12 @@ def ffprobe(path: Path) -> dict:  # pragma: no cover
     return probe
 
 
-def query_tmdb(search: str) -> dict:  # pragma: no cover
+def query_tmdb(search: str, verbosity: int) -> dict:  # pragma: no cover
     """Query The Movie Database API for a movie title.
 
     Args:
         search (str): IMDB id (tt____) to search for
-        api_key (str): The Movie Database API key
+        verbosity (int): Verbosity level
 
     Returns:
         dict: The Movie Database API response
@@ -82,6 +84,10 @@ def query_tmdb(search: str) -> dict:  # pragma: no cover
         "external_source": "imdb_id",
     }
 
+    if verbosity > 1:
+        args = "&".join([f"{k}={v}" for k, v in params.items()])
+        logger.trace(f"TMDB: Querying {url}?{args}")
+
     try:
         response = requests.get(url, params=params, timeout=15)
     except Exception as e:  # noqa: BLE001
@@ -95,6 +101,8 @@ def query_tmdb(search: str) -> dict:  # pragma: no cover
         return {}
 
     logger.trace("TMDB: Response received")
+    if verbosity > 1:
+        console.log(response.json())
     return response.json()
 
 

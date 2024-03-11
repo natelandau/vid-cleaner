@@ -1,0 +1,17 @@
+meta {
+  name: tmdb_get_movie_info
+  type: http
+  seq: 1
+}
+
+get {
+  url: https://api.themoviedb.org/3/find/tt14230458?api_key={{process.env.TMDB_API_KEY}}&language=en-US&external_source=imdb_id
+  body: none
+  auth: none
+}
+
+query {
+  api_key: {{process.env.TMDB_API_KEY}}
+  language: en-US
+  external_source: imdb_id
+}
