@@ -1,3 +1,14 @@
+## v0.3.1 (2024-03-11)
+
+### Fix
+
+- find correct tmdb movie information (#23)
+
+### Refactor
+
+- move version to constants (#22)
+- **config**: migrate to confz package (#21)
+
 ## v0.3.0 (2023-12-23)
 
 ### Feat
