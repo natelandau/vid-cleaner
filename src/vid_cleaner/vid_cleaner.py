@@ -1,6 +1,5 @@
 """vid-cleaner CLI."""
 
-import re
 import shutil
 from pathlib import Path
 from typing import Annotated, Optional
@@ -9,17 +8,14 @@ import typer
 from confz import validate_all_configs
 from loguru import logger
 from pydantic import ValidationError
-from rich.table import Table
 
-from vid_cleaner.config import VidCleanerConfig
+from vid_cleaner.cli import clean, clip, inspect
 from vid_cleaner.constants import CONFIG_PATH, VERSION
 from vid_cleaner.models import VideoFile
 from vid_cleaner.utils import (
     console,
     existing_file_path,
-    ffprobe,
     instantiate_logger,
-    tmp_to_output,
 )
 
 typer.rich_utils.STYLE_HELPTEXT = ""
@@ -83,46 +79,7 @@ def inspect_command(
     and audio channel details. This command is useful for understanding the
     composition of a video file before performing operations like clipping or transcoding.
     """
-    for video in files:
-        probe = ffprobe(video.path)
-
-        if json:
-            console.print(probe)
-            return
-
-        if "title" in probe["format"]["tags"]:
-            name = probe["format"]["tags"]["title"]
-        elif "filename" in probe["format"]:
-            name = probe["format"]["filename"]
-        else:
-            name = video.stem
-
-        table = Table(title=name)
-        table.add_column("#")
-        table.add_column("Stream")
-        table.add_column("Type")
-        table.add_column("Language")
-        table.add_column("Channels")
-        table.add_column("Channel Layout")
-        table.add_column("Title")
-
-        for i, stream in enumerate(probe["streams"]):
-            language = stream["tags"].get("language", "-")
-            channels = stream.get("channels", "-")
-            layout = stream.get("channel_layout", "-")
-            title = stream["tags"].get("title", "-")
-
-            table.add_row(
-                str(i),
-                stream["codec_type"],
-                stream.get("codec_name", "-"),
-                language,
-                str(channels),
-                layout,
-                title,
-            )
-
-        console.print(table)
+    inspect(files, json_output=json)
 
 
 @app.command("clip")
@@ -166,27 +123,7 @@ def clip_command(
 
     Use the [code]--overwrite[/code] option to overwrite the output file if it already exists.
     """
-    time_pattern = re.compile(r"^\d{2}:\d{2}:\d{2}$")
-
-    if not time_pattern.match(start):
-        msg = "Start must be in format HH:MM:SS"  # type: ignore [unreachable]
-        raise typer.BadParameter(msg)
-
-    if not time_pattern.match(duration):
-        msg = "Duration must be in format HH:MM:SS"  # type: ignore [unreachable]
-        raise typer.BadParameter(msg)
-
-    for video in files:
-        logger.info(f"⇨ {video.path.name}")
-
-        video.clip(start, duration, dry_run=dry_run)
-
-        if not dry_run:
-            out_file = tmp_to_output(
-                video.current_tmp_file, stem=video.stem, new_file=out, overwrite=overwrite
-            )
-            video.cleanup()
-            logger.success(f"{out_file}")
+    clip(files, start, duration, out, overwrite, dry_run)
 
 
 @docstring_parameter(CONFIG_PATH)
@@ -231,7 +168,9 @@ def clean_command(
     drop_original_audio: Annotated[
         bool,
         typer.Option(
-            "--drop-original", help="Drop original language audio", rich_help_panel="Audio"
+            "--drop-original",
+            help="Drop original language audio if not in config",
+            rich_help_panel="Audio",
         ),
     ] = False,
     keep_all_subtitles: Annotated[
@@ -308,51 +247,24 @@ def clean_command(
     [#999999]Downmix audio to stereo and keep all subtitles:[/#999999]
     vidcleaner clean --downmix --keep-subs <video_file>
     """
-    verbosity = ctx.meta["verbosity"]
-
-    languages = langs or ",".join(VidCleanerConfig().keep_languages)
-
-    for video in files:
-        logger.info(f"⇨ {video.path.name}")
-
-        if h265 and vp9:
-            msg = "Cannot convert to both H265 and VP9"
-            raise typer.BadParameter(msg)
-
-        video.reorder_streams(dry_run=dry_run)
-
-        video.process_streams(
-            langs_to_keep=languages.split(","),
-            drop_original_audio=drop_original_audio,
-            keep_commentary=keep_commentary,
-            downmix_stereo=downmix_stereo,
-            keep_all_subtitles=keep_all_subtitles,
-            keep_local_subtitles=keep_local_subtitles,
-            subs_drop_local=subs_drop_local,
-            dry_run=dry_run,
-            verbosity=verbosity,
-        )
-
-        if video_1080:
-            video.video_to_1080p(force=force, dry_run=dry_run)
-
-        if h265:
-            video._convert_to_h265(force=force, dry_run=dry_run)
-
-        if vp9:
-            video._convert_to_vp9(force=force, dry_run=dry_run)
-
-        if not dry_run:
-            out_file = tmp_to_output(
-                video.current_tmp_file, stem=video.stem, new_file=out, overwrite=replace
-            )
-            video.cleanup()
-
-            if replace and out_file != video.path:
-                logger.debug(f"Delete: {video.path}")
-                video.path.unlink()
-
-            logger.success(f"{out_file}")
+    clean(
+        files=files,
+        out=out,
+        replace=replace,
+        downmix_stereo=downmix_stereo,
+        drop_original_audio=drop_original_audio,
+        keep_all_subtitles=keep_all_subtitles,
+        keep_commentary=keep_commentary,
+        keep_local_subtitles=keep_local_subtitles,
+        subs_drop_local=subs_drop_local,
+        langs=langs,
+        h265=h265,
+        vp9=vp9,
+        video_1080=video_1080,
+        force=force,
+        dry_run=dry_run,
+        verbosity=ctx.meta["verbosity"],
+    )
 
 
 @docstring_parameter(CONFIG_PATH)

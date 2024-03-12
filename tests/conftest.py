@@ -1,18 +1,53 @@
 # type: ignore
 """Shared fixtures."""
 
+import json
 from pathlib import Path
 
 import pytest
 from confz import DataSource, FileSource
 from loguru import logger
 
-from vid_cleaner.config import VidCleanerConfig
+from vid_cleaner.models.video_file import VideoFile
 from vid_cleaner.utils import console
 
 logger.remove()  # Remove default logger
 
 FIXTURE_CONFIG = Path(__file__).resolve().parent.parent / "src/vid_cleaner/default_config.toml"
+
+
+@pytest.fixture()
+def mock_ffmpeg(mocker):
+    """Fixture to mock the FfmpegProgress class to effectively mock the ffmpeg command and its progress output.
+
+    Usage:
+        def test_something(mock_ffmpeg):
+            # Mock the FfmpegProgress class
+            mock_ffmpeg_progress = mock_ffmpeg()
+
+            # Test the functionality
+            do_something()
+            mock_ffmpeg.assert_called_once() # Confirm that the ffmpeg command was called once
+            args, _ = mock_ffmpeg.call_args # Grab the ffmpeg command arguments
+            command = " ".join(args[0]) # Join the arguments into a single string
+            assert command == "ffmpeg -i input.mp4 output.mp4" # Check the command
+
+    """
+    mock_ffmpeg_progress = mocker.patch(
+        "vid_cleaner.models.video_file.FfmpegProgress", autospec=True
+    )
+    mock_instance = mock_ffmpeg_progress.return_value
+    mock_instance.run_command_with_progress.return_value = iter([0, 25, 50, 75, 100])
+    return mock_ffmpeg_progress
+
+
+@pytest.fixture()
+def mock_video(tmp_path):
+    """Fixture to return a VideoFile instance with a specified path."""
+    # GIVEN a VideoFile instance with a specified path
+    test_path = Path(tmp_path / "test_video.mp4")
+    test_path.touch()  # Create a dummy file
+    return VideoFile(test_path)
 
 
 @pytest.fixture(autouse=True)
@@ -22,49 +57,42 @@ def _change_test_dir(monkeypatch, tmp_path):
 
 
 @pytest.fixture()
-def mock_config():  # noqa: PT004
-    """Override configuration file with mock configuration for use in tests. To override a default use the `mock_specific_config` fixture.
+def mock_config(tmp_path):
+    """Mock specific configuration data for use in tests by accepting arbitrary keyword arguments.
 
-    Returns:
-        VidCleanerConfig: The mock configuration.
+    The function dynamically collects provided keyword arguments, filters out any that are None,
+    and prepares data sources with the overridden configuration for file processing.
+
+    Usage:
+        def test_something(mock_config):
+            # Override the configuration with specific values
+            with VidCleanerConfig.change_config_sources(config_data(some_key="some_value")):
+                    # Test the functionality
+                    result = do_something()
+                    assert result
     """
-    with VidCleanerConfig.change_config_sources([FileSource(FIXTURE_CONFIG)]):
-        yield
 
+    def _inner(**kwargs):
+        """Collects provided keyword arguments, omitting any that are None, and prepares data sources with the overridden configuration.
 
-@pytest.fixture()
-def mock_specific_config():
-    """Mock specific configuration data for use in tests."""
+        Args:
+            **kwargs: Arbitrary keyword arguments representing configuration settings.
 
-    def _inner(
-        log_to_file: bool | None = None,
-        log_file: str | None = None,
-        keep_languages: list[str] | None = None,
-        radarr_api_key: str | None = None,
-        radarr_url: str | None = None,
-        sonarr_api_key: str | None = None,
-        sonarr_url: str | None = None,
-        tmdb_api_key: str | None = None,
-    ):
-        override_data = {}
-        if log_to_file:
-            override_data["log_to_file"] = log_to_file
-        if log_file:
-            override_data["log_file"] = log_file
-        if keep_languages:
-            override_data["keep_languages"] = keep_languages
-        if radarr_api_key:
-            override_data["radarr_api_key"] = radarr_api_key
-        if radarr_url:
-            override_data["radarr_url"] = radarr_url
-        if sonarr_api_key:
-            override_data["sonarr_api_key"] = sonarr_api_key
-        if sonarr_url:
-            override_data["sonarr_url"] = sonarr_url
-        if tmdb_api_key:
-            override_data["tmdb_api_key"] = tmdb_api_key
+        Returns:
+            list: A list containing a FileSource initialized with the fixture configuration and a DataSource with the overridden data.
+        """
+        # Filter out None values from kwargs
+        override_data = {key: value for key, value in kwargs.items() if value is not None}
 
-        return [FileSource(FIXTURE_CONFIG), DataSource(data=override_data)]
+        # If a 'config.toml' file exists in the test directory, use it as the configuration source
+        if Path(tmp_path / "config.toml").exists():
+            config_file_source = str(tmp_path / "config.toml")
+        else:
+            # Check for 'config_file' in kwargs and use it if present, else default to FIXTURE_CONFIG
+            config_file_source = kwargs.get("config_file", FIXTURE_CONFIG)
+
+        # Return a list of data sources with the overridden configuration
+        return [FileSource(config_file_source), DataSource(data=override_data)]
 
     return _inner
 
@@ -99,3 +127,23 @@ def debug():
         return True
 
     return _debug_inner
+
+
+@pytest.fixture()
+def mock_ffprobe():
+    """Return mocked JSON response from ffprobe."""
+
+    def _inner(filename: str):
+        fixture = Path(__file__).resolve().parent / "fixtures/ffprobe" / filename
+
+        cleaned_content = []  # Remove comments from JSON
+        with fixture.open() as f:
+            for line in f.readlines():
+                # Remove comments
+                if "//" in line:
+                    continue
+                cleaned_content.append(line)
+
+        return json.loads("".join(line for line in cleaned_content))
+
+    return _inner
