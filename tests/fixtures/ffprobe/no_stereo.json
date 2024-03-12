@@ -1,0 +1,101 @@
+{
+    // Contains a maximal example of the output of ffprobe
+    // Add or remove fields as needed for additional fixtures
+    "format": {
+        "bit_rate": "26192239",
+        "duration": "60.268000",
+        "filename": "test_movie.mkv",
+        "format_long_name": "Matroska / WebM",
+        "format_name": "matroska,webm",
+        "size": "197319234",
+        "start_time": "0.000000",
+        "tags": {
+            "ENCODER": "Lavf60.3.100",
+            "title": "Test Move"
+        }
+    },
+    "streams": [
+        // 0: 1080p H264 video
+        {
+            "index": 0,
+            "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+            "codec_name": "h264",
+            "codec_type": "video",
+            "coded_height": 1080,
+            "coded_width": 1920,
+            "height": 1080,
+            "sample_aspect_ratio": "1:1",
+            "start_time": "0.000000",
+            "tags": {
+                "BPS": "16232147",
+                "DURATION": "00:01:00.226000000",
+                "NUMBER_OF_BYTES": "15505439888",
+                "NUMBER_OF_FRAMES": "183221",
+                "language": "eng",
+                "title": "Test Movie"
+            },
+            "width": 1920
+        },
+        // Audio Streams
+        // ############################################################################
+        // 1: 7.1 TrueHD, eng
+        {
+            "index": 1,
+            "codec_name": "truehd",
+            "codec_long_name": "TrueHD",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 8,
+            "channel_layout": "7.1",
+            "start_time": "0.000000",
+            "bits_per_raw_sample": "24",
+            "tags": {
+                "language": "eng",
+                "BPS": "3123209",
+                "NUMBER_OF_FRAMES": "11766956",
+                "NUMBER_OF_BYTES": "3828195236",
+                "SOURCE_ID": "001100",
+                "DURATION": "00:01:00.000000000"
+            }
+        },
+        // 2: 5.1 AC3, eng
+        {
+            "index": 2,
+            "codec_name": "ac3",
+            "codec_long_name": "ATSC A/52A (AC-3)",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 6,
+            "channel_layout": "5.1(side)",
+            "bit_rate": "448000",
+            "tags": {
+                "language": "eng",
+                "BPS": "448000",
+                "NUMBER_OF_FRAMES": "306432",
+                "NUMBER_OF_BYTES": "549126144",
+                "SOURCE_ID": "001100",
+                "DURATION": "00:01:00.000000000"
+            }
+        },
+        // :5 stereo AC3, eng (Commentary)
+        {
+            "index": 3,
+            "codec_name": "ac3",
+            "codec_long_name": "ATSC A/52A (AC-3)",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 2,
+            "channel_layout": "stereo",
+            "bit_rate": "224000",
+            "tags": {
+                "language": "eng",
+                "BPS": "224000",
+                "NUMBER_OF_FRAMES": "306432",
+                "NUMBER_OF_BYTES": "274563072",
+                "SOURCE_ID": "001106",
+                "DURATION": "00:01:00.000000000",
+                "title": "Director's commentary"
+            }
+        }
+    ]
+}

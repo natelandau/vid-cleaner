@@ -5,7 +5,7 @@ default_stages: [commit, manual]
 fail_fast: true
 repos:
     - repo: "https://github.com/commitizen-tools/commitizen"
-      rev: v3.18.2
+      rev: v3.18.3
       hooks:
           - id: commitizen
           - id: commitizen-branch
@@ -33,7 +33,7 @@ repos:
           - id: check-case-conflict
           - id: check-docstring-first
           - id: check-json
-            exclude: .devcontainer/|.vscode/
+            exclude: .devcontainer/|.vscode/|tests/
           - id: check-merge-conflict
           - id: check-shebang-scripts-are-executable
           - id: check-symlinks

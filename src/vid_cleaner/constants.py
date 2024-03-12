@@ -6,6 +6,14 @@ from pathlib import Path
 import typer
 
 
+class CodecTypes(str, Enum):
+    """Codec types for vid-cleaner."""
+
+    AUDIO = "audio"
+    VIDEO = "video"
+    SUBTITLE = "subtitle"
+
+
 class AudioLayout(Enum):
     """Audio layouts for vid-cleaner. Values are the number of streams."""
 

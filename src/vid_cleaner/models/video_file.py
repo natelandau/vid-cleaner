@@ -4,12 +4,15 @@ import atexit
 import re
 import uuid
 from pathlib import Path
+from typing import Optional
 
 import typer
 from ffmpeg_progress_yield import FfmpegProgress
 from iso639 import Lang
 from loguru import logger
+from pydantic import BaseModel
 from rich.progress import Progress
+from rich.table import Table
 
 from vid_cleaner.constants import (
     APP_DIR,
@@ -19,6 +22,7 @@ from vid_cleaner.constants import (
     H265_CODECS,
     SYMBOL_CHECK,
     AudioLayout,
+    CodecTypes,
 )
 from vid_cleaner.utils import console, ffprobe, query_radarr, query_sonarr, query_tmdb
 
@@ -33,6 +37,114 @@ def cleanup_on_exit(video_file: "VideoFile") -> None:  # pragma: no cover
         None
     """
     video_file.cleanup()
+
+
+class VideoStream(BaseModel):
+    """VideoStream model."""
+
+    index: int
+    codec_name: str
+    codec_long_name: str
+    codec_type: CodecTypes
+    duration: Optional[str]
+    width: Optional[int]
+    height: Optional[int]
+    bps: Optional[int]
+    sample_rate: Optional[int]
+    language: Optional[str]
+    channels: Optional[AudioLayout]
+    channel_layout: Optional[str]
+    layout: Optional[str]
+    title: Optional[str]
+
+
+class VideoProbe(BaseModel):
+    """VideoProbe model."""
+
+    name: str
+    streams: list[VideoStream]
+    format_name: Optional[str]
+    format_long_name: Optional[str]
+    duration: Optional[str]
+    start_time: Optional[float]
+    size: Optional[int]
+    bit_rate: Optional[int]
+    json_data: dict
+
+    @classmethod
+    def parse_probe_response(cls, json_obj: dict, stem: str) -> "VideoProbe":
+        """Parse ffprobe json object."""
+        # Find name
+        if "title" in json_obj["format"]["tags"]:
+            name = json_obj["format"]["tags"]["title"]
+        elif "filename" in json_obj["format"]:
+            name = json_obj["format"]["filename"]
+        else:
+            name = stem
+
+        # Find streams
+        streams = [
+            VideoStream(
+                index=stream["index"],
+                codec_name=stream["codec_name"],
+                codec_long_name=stream["codec_long_name"],
+                codec_type=CodecTypes(stream["codec_type"].lower()),
+                duration=stream.get("duration", None),
+                width=stream.get("width", None),
+                height=stream.get("height", None),
+                bps=stream.get("tags", {}).get("BPS", None),
+                sample_rate=stream.get("sample_rate", None),
+                language=stream.get("language", None)
+                or stream.get("tags", {}).get("language", None),
+                channels=AudioLayout(stream.get("channels"))
+                if stream.get("channels", False)
+                else None,
+                channel_layout=stream.get("channel_layout", None),
+                layout=stream.get("layout", None),
+                title=stream.get("tags", {}).get("title", None),
+            )
+            for stream in json_obj["streams"]
+        ]
+
+        return cls(
+            name=name,
+            format_name=json_obj["format"].get("format_name", None),
+            format_long_name=json_obj["format"].get("format_long_name", None),
+            duration=json_obj["format"].get("duration", None),
+            start_time=json_obj["format"].get("start_time", None),
+            size=json_obj["format"].get("size", None),
+            bit_rate=json_obj["format"].get("bit_rate", None),
+            streams=streams,
+            json_data=json_obj,
+        )
+
+    def as_table(self) -> Table:
+        """Return the video probe as a rich table."""
+        table = Table(title=self.name)
+        table.add_column("#")
+        table.add_column("Type")
+        table.add_column("Codec Name")
+        table.add_column("Language")
+        table.add_column("Channels")
+        table.add_column("Channel Layout")
+        table.add_column("Width")
+        table.add_column("Height")
+        table.add_column("Title")
+
+        for stream in self.streams:
+            table.add_row(
+                str(stream.index),
+                stream.codec_type.value,
+                stream.codec_name,
+                stream.language,
+                str(stream.channels.value) if stream.channels else "",
+                stream.channel_layout if stream.channel_layout else "",
+                str(stream.width) if stream.width else "",
+                str(stream.height) if stream.height else "",
+                stream.title if stream.title else "",
+            )
+
+        return table
 
 
 class VideoFile:
@@ -82,9 +194,9 @@ class VideoFile:
         probe = self._get_probe()
         video_stream = [  # noqa: RUF015
             stream
-            for stream in probe["streams"]
-            if stream["codec_type"].lower() == "video"
-            and stream["codec_name"].lower() not in EXCLUDED_VIDEO_CODECS
+            for stream in probe.streams
+            if stream.codec_type == CodecTypes.VIDEO
+            and stream.codec_name.lower() not in EXCLUDED_VIDEO_CODECS
         ][0]
 
         # Fail if no video stream is found
@@ -93,7 +205,7 @@ class VideoFile:
             return input_path
 
         # Return if video is already H.265
-        if not force and video_stream["codec_name"].lower() in H265_CODECS:
+        if not force and video_stream.codec_name.lower() in H265_CODECS:
             logger.warning(
                 "H265 ENCODE: Video already H.265 or VP9. Run with `--force` to re-encode. Skipping"
             )
@@ -103,9 +215,7 @@ class VideoFile:
         # ############################
         # Check if duration info is filled, if so times it by 0.0166667 to get time in minutes.
         # If not filled then get duration of stream 0 and do the same.
-        stream_duration = float(probe["format"].get("duration", None)) or float(
-            video_stream.get("duration", None)
-        )
+        stream_duration = float(probe.duration) or float(video_stream.duration)
         if not stream_duration:
             logger.error("Could not calculate video duration")
             return input_path
@@ -114,7 +224,9 @@ class VideoFile:
 
         # Work out currentBitrate using "Bitrate = file size / (number of minutes * .0075)"
         # Used from here https://blog.frame.io/2017/03/06/calculate-video-bitrates/
+
         stat = input_path.stat()
+        logger.trace(f"File size: {stat}")
         file_size_megabytes = stat.st_size / 1000000
 
         current_bitrate = int(file_size_megabytes / (duration * 0.0075))
@@ -124,7 +236,6 @@ class VideoFile:
 
         # Build FFMPEG Command
         command: list[str] = ["-map", "0", "-c:v", "libx265"]
-
         # Create bitrate command
         command.extend(
             [
@@ -141,7 +252,6 @@ class VideoFile:
 
         # Copy audio and subtitles
         command.extend(["-c:a", "copy", "-c:s", "copy"])
-
         # Run ffmpeg
         return self._run_ffmpeg(command, title="Convert to H.265", step="h265", dry_run=dry_run)
 
@@ -169,9 +279,9 @@ class VideoFile:
         probe = self._get_probe()
         video_stream = [  # noqa: RUF015
             stream
-            for stream in probe["streams"]
-            if stream["codec_type"].lower() == "video"
-            and stream["codec_name"].lower() not in EXCLUDED_VIDEO_CODECS
+            for stream in probe.streams
+            if stream.codec_type == CodecTypes.VIDEO
+            and stream.codec_name.lower() not in EXCLUDED_VIDEO_CODECS
         ][0]
 
         # Fail if no video stream is found
@@ -180,7 +290,7 @@ class VideoFile:
             return input_path
 
         # Return if video is already H.265
-        if not force and video_stream["codec_name"].lower() in H265_CODECS:
+        if not force and video_stream.codec_name.lower() in H265_CODECS:
             logger.warning(
                 "VP9 ENCODE: Video already H.265 or VP9. Run with `--force` to re-encode. Skipping"
             )
@@ -212,7 +322,7 @@ class VideoFile:
         )
 
     @staticmethod
-    def _downmix_to_stereo(streams: list[dict]) -> list[str]:
+    def _downmix_to_stereo(streams: list[VideoStream]) -> list[str]:
         """Generate a partial ffmpeg command to downmix audio streams to stereo if needed.
 
         Analyze the provided audio streams and construct a command to downmix 5.1 or 7.1 audio
@@ -220,7 +330,7 @@ class VideoFile:
         from surround sound streams.
 
         Args:
-            streams (list[dict]): List of audio stream dictionaries.
+            streams (list[VideoStream]): List of audio stream dictionaries.
 
         Returns:
             list[str]: A list of strings forming part of an ffmpeg command for audio downmixing.
@@ -232,11 +342,11 @@ class VideoFile:
         surround7 = []  # index of 7.1 streams
 
         for stream in streams:
-            if stream["channels"] == AudioLayout.STEREO.value:
+            if stream.channels == AudioLayout.STEREO:
                 has_stereo = True
-            if stream["channels"] == AudioLayout.SURROUND5.value:
+            if stream.channels == AudioLayout.SURROUND5:
                 surround5.append(stream)
-            if stream["channels"] == AudioLayout.SURROUND7.value:
+            if stream.channels == AudioLayout.SURROUND7:
                 surround7.append(stream)
 
         if not has_stereo and surround5:
@@ -244,7 +354,7 @@ class VideoFile:
                 downmix_command.extend(
                     [
                         "-map",
-                        f"0:{surround5_stream['index']}",
+                        f"0:{surround5_stream.index}",
                         f"-c:a:{new_index}",
                         "aac",
                         f"-ac:a:{new_index}",
@@ -271,7 +381,7 @@ class VideoFile:
                 downmix_command.extend(
                     [
                         "-map",
-                        f"0:{surround7_stream['index']}",
+                        f"0:{surround7_stream.index}",
                         f"-c:a:{new_index}",
                         "aac",
                         f"-ac:a:{new_index}",
@@ -336,24 +446,19 @@ class VideoFile:
         self.ran_language_check = True
         return language
 
-    def _get_probe(self, key: str | None = None) -> dict:  # pragma: no cover
+    def _get_probe(self) -> VideoProbe:  # pragma: no cover
         """Retrieve the ffprobe probe information for the video.
 
         Fetch detailed information about the video file using ffprobe. Optionally filter
         the information by a specific key.
 
-        Args:
-            key (str | None, optional): A specific key to filter the probe information. Default is None.
 
         Returns:
-            dict: The ffprobe probe information.
+            VideoProbe: The ffprobe probe information.
         """
         input_path, _ = self._get_input_and_output()
 
-        if key:
-            return ffprobe(input_path)[key]
-
-        return ffprobe(input_path)
+        return VideoProbe.parse_probe_response(ffprobe(input_path), self.stem)
 
     def _get_input_and_output(
         self, suffix: str | None = None, step: str | None = None
@@ -393,7 +498,7 @@ class VideoFile:
         return input_file, output_file
 
     @staticmethod
-    def _process_video(streams: list[dict]) -> list[str]:
+    def _process_video(streams: list[VideoStream]) -> list[str]:
         """Create a command list for processing video streams.
 
         Iterate through the provided video streams and construct a list of ffmpeg commands
@@ -407,10 +512,10 @@ class VideoFile:
         """
         command: list[str] = []
         for stream in streams:
-            if stream["codec_name"].lower() in EXCLUDED_VIDEO_CODECS:
+            if stream.codec_name.lower() in EXCLUDED_VIDEO_CODECS:
                 continue
 
-            command.extend(["-map", f"0:{stream['index']}"])
+            command.extend(["-map", f"0:{stream.index}"])
 
         logger.trace(f"PROCESS VIDEO: {command}")
         return command
@@ -424,9 +529,9 @@ class VideoFile:
 
         video_stream = [  # noqa: RUF015
             stream
-            for stream in probe["streams"]
-            if stream["codec_type"].lower() == "video"
-            and stream["codec_name"].lower() not in EXCLUDED_VIDEO_CODECS
+            for stream in probe.streams
+            if stream.codec_type == CodecTypes.VIDEO
+            and stream.codec_type.value not in EXCLUDED_VIDEO_CODECS
         ][0]
 
         # Fail if no video stream is found
@@ -435,7 +540,7 @@ class VideoFile:
             return input_path
 
         # Return if video is not 4K
-        if not force and video_stream.get("width", 0) <= 1920:  # noqa: PLR2004
+        if not force and getattr(video_stream, "width", 0) <= 1920:  # noqa: PLR2004
             logger.info(f"{SYMBOL_CHECK} No convert to 1080p needed")
             return input_path
 
@@ -454,7 +559,7 @@ class VideoFile:
 
     def _process_subtitles(
         self,
-        streams: list[dict],
+        streams: list[VideoStream],
         langs_to_keep: list[str],
         keep_commentary: bool,
         keep_all_subtitles: bool,
@@ -468,7 +573,7 @@ class VideoFile:
         and other criteria. Build an ffmpeg command list accordingly.
 
         Args:
-            streams (list[dict]): A list of subtitle stream dictionaries.
+            streams (list[VideoStream]): A list of subtitle stream objects.
             langs_to_keep (list[str]): Languages of subtitles to keep.
             keep_commentary (bool): Flag to keep or discard commentary subtitles.
             keep_all_subtitles (bool): Flag to keep all subtitles regardless of language.
@@ -494,41 +599,40 @@ class VideoFile:
         for stream in streams:
             if (
                 not keep_commentary
-                and "title" in stream["tags"]
-                and re.search(r"commentary|sdh|description", stream["tags"]["title"], re.IGNORECASE)
+                and stream.title is not None
+                and re.search(r"commentary|sdh|description", stream.title, re.IGNORECASE)
             ):
+                logger.trace(rf"PROCESS SUBTITLES: Remove stream #{stream.index} \[commentary]")
                 continue
 
             if keep_all_subtitles:
-                command.extend(["-map", f"0:{stream['index']}"])
+                command.extend(["-map", f"0:{stream.index}"])
                 continue
 
-            if "tags" in stream and "language" in stream["tags"]:
+            if stream.language:
                 if keep_local_subtitles and (
-                    stream["tags"]["language"].lower() == "und"
-                    or Lang(stream["tags"]["language"]) in langs
+                    stream.language.lower() == "und" or Lang(stream.language) in langs
                 ):
-                    command.extend(["-map", f"0:{stream['index']}"])
+                    command.extend(["-map", f"0:{stream.index}"])
                     continue
 
                 if (
                     not subs_drop_local
                     and langs
                     and original_language not in langs
-                    and (
-                        stream["tags"]["language"].lower == "und"
-                        or Lang(stream["tags"]["language"]) in langs
-                    )
+                    and (stream.language.lower == "und" or Lang(stream.language) in langs)
                 ):
-                    command.extend(["-map", f"0:{stream['index']}"])
+                    command.extend(["-map", f"0:{stream.index}"])
                     continue
+
+            logger.trace(f"PROCESS SUBTITLES: Remove stream #{stream.index}")
 
         logger.trace(f"PROCESS SUBTITLES: {command}")
         return command
 
     def _process_audio(
         self,
-        streams: list[dict],
+        streams: list[VideoStream],
         langs_to_keep: list[str],
         drop_original_audio: bool,
         keep_commentary: bool,
@@ -541,7 +645,7 @@ class VideoFile:
         Generate ffmpeg commands for keeping or altering audio streams as required.
 
         Args:
-            streams (list[dict]): A list of audio stream dictionaries.
+            streams (list[VideoStream]): A list of audio stream objects.
             langs_to_keep (list[str]): Languages of audio to keep.
             drop_original_audio (bool): Flag to drop the original audio track.
             keep_commentary (bool): Flag to keep or discard commentary audio tracks.
@@ -552,6 +656,7 @@ class VideoFile:
             tuple[list[str], list[str]]: A tuple containing two lists of strings forming part of an ffmpeg command for audio processing.
         """
         command: list[str] = []
+
         # Turn language codes into iso639 objects
         langs = [Lang(lang) for lang in langs_to_keep]
 
@@ -564,29 +669,32 @@ class VideoFile:
         streams_to_keep = []
         for stream in streams:
             # Keep unknown language streams
-            if "tags" not in stream or "language" not in stream["tags"]:
-                command.extend(["-map", f"0:{stream['index']}"])
+            if not stream.language:
+                command.extend(["-map", f"0:{stream.index}"])
                 streams_to_keep.append(stream)
                 continue
 
             # Remove commentary streams
             if (
                 not keep_commentary
-                and "title" in stream["tags"]
-                and re.search(r"commentary|sdh|description", stream["tags"]["title"], re.IGNORECASE)
+                and stream.title
+                and re.search(r"commentary|sdh|description", stream.title, re.IGNORECASE)
             ):
+                logger.trace(rf"PROCESS AUDIO: Remove stream #{stream.index} \[commentary]")
                 continue
 
             # Keep streams with specified languages
-            if stream["tags"]["language"] == "und" or Lang(stream["tags"]["language"]) in langs:
-                command.extend(["-map", f"0:{stream['index']}"])
+            if stream.language == "und" or Lang(stream.language) in langs:
+                command.extend(["-map", f"0:{stream.index}"])
                 streams_to_keep.append(stream)
                 continue
+
+            logger.trace(f"PROCESS AUDIO: Remove stream #{stream.index}")
 
         # Failsafe to cancel processing if all streams would be removed following this plugin. We don't want no audio.
         if not command:
             for stream in streams:
-                command.extend(["-map", f"0:{stream['index']}"])
+                command.extend(["-map", f"0:{stream.index}"])
                 streams_to_keep.append(stream)
 
         # Downmix to stereo if needed
@@ -739,12 +847,11 @@ class VideoFile:
         Returns:
             Path: Path to the processed video file.
         """
-        streams = self._get_probe("streams")
-        video_streams = [stream for stream in streams if stream["codec_type"].lower() == "video"]
-        audio_streams = [stream for stream in streams if stream["codec_type"].lower() == "audio"]
-        subtitle_streams = [
-            stream for stream in streams if stream["codec_type"].lower() == "subtitle"
-        ]
+        probe = self._get_probe()
+
+        video_streams = [s for s in probe.streams if s.codec_type == CodecTypes.VIDEO]
+        audio_streams = [s for s in probe.streams if s.codec_type == CodecTypes.AUDIO]
+        subtitle_streams = [s for s in probe.streams if s.codec_type == CodecTypes.SUBTITLE]
 
         video_map_command = self._process_video(video_streams)
         audio_map_command, downmix_command = self._process_audio(
@@ -788,33 +895,29 @@ class VideoFile:
         Returns:
             Path: Path to the video file with reordered streams.
         """
-        streams = self._get_probe("streams")
+        probe = self._get_probe()
 
-        # Categorize streams
-        categorized_streams: dict[str, list[dict]] = {"video": [], "audio": [], "subtitle": []}
-        for stream in streams:
-            codec_type = stream["codec_type"]
-            if codec_type in categorized_streams and (
-                codec_type != "video" or stream["codec_name"].lower() not in EXCLUDED_VIDEO_CODECS
-            ):
-                categorized_streams[codec_type].append(stream)
+        video_streams = [
+            s
+            for s in probe.streams
+            if s.codec_type == CodecTypes.VIDEO
+            and s.codec_name.lower() not in EXCLUDED_VIDEO_CODECS
+        ]
+        audio_streams = [s for s in probe.streams if s.codec_type == CodecTypes.AUDIO]
+        subtitle_streams = [s for s in probe.streams if s.codec_type == CodecTypes.SUBTITLE]
 
         # Fail if no video or audio streams are found
-        if not categorized_streams["video"]:
+        if not video_streams:
             logger.error("No video streams found")
             raise typer.Exit(1)
-        if not categorized_streams["audio"]:
+        if not audio_streams:
             logger.error("No audio streams found")
             raise typer.Exit(1)
 
         # Check if reordering is needed
         reorder = any(
-            stream["index"] != i
-            for i, stream in enumerate(
-                categorized_streams["video"]
-                + categorized_streams["audio"]
-                + categorized_streams["subtitle"]
-            )
+            stream.index != i
+            for i, stream in enumerate(video_streams + audio_streams + subtitle_streams)
         )
 
         if not reorder:
@@ -822,15 +925,25 @@ class VideoFile:
             input_path, _ = self._get_input_and_output()
             return input_path
 
-        # Build ffmpeg command
-        command = sum(
-            [
-                ["-map", f"0:{stream['index']}"]
-                for stream_type in categorized_streams
-                for stream in categorized_streams[stream_type]
-            ],
-            start=["-c", "copy"],
-        )
+        # Initial command parts
+        initial_command = ["-c", "copy"]
+
+        # Build the command list using list comprehension and concatenation
+        command = initial_command + [
+            item
+            for stream_list in [video_streams, audio_streams, subtitle_streams]
+            for stream in stream_list
+            for item in ["-map", f"0:{stream.index}"]
+        ]
 
         # Run ffmpeg
         return self._run_ffmpeg(command, title="Reorder streams", step="reorder", dry_run=dry_run)
+
+    def as_stream_table(self) -> Table:
+        """Return the video probe as a rich table."""
+        probe = self._get_probe()
+        return probe.as_table()
+
+    def ffprobe_json(self) -> dict:
+        """Return the ffprobe json response."""
+        return self._get_probe().json_data
