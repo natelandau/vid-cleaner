@@ -13,7 +13,9 @@ from vid_cleaner.utils import tmp_to_output
 def clip(
     files: list[VideoFile], start: str, duration: str, out: Path, overwrite: bool, dry_run: bool
 ) -> None:
-    """Clips video files based on the specified start time and duration.
+    """Clips video files based on the specified start time and duration, saving the output in a given directory.
+
+    This function processes each video in the provided list, clipping it according to the specified start time and duration. The resulting clips are saved in the specified output directory. The function supports overwriting existing files and performing a dry run, where no actual clipping occurs.
 
     Args:
         files: A list of VideoFile objects to be clipped.
@@ -24,7 +26,7 @@ def clip(
         dry_run: A boolean indicating if the clip operation should be simulated (no actual clipping).
 
     Raises:
-        typer.BadParameter: If either 'start' or 'duration' does not match the expected time format.
+        typer.BadParameter: If either 'start' or 'duration' does not match the expected HH:MM:SS time format.
     """
     time_pattern = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 

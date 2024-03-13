@@ -22,7 +22,23 @@ class LogLevel(Enum):
 
 
 def log_formatter(record: dict) -> str:
-    """Use rich to style log messages."""
+    """Format log records for output with styling based on log level.
+
+    This function takes a log record dictionary and returns a formatted string using the Rich
+    library's syntax for text styling. It assigns different colors and icons to log messages
+    based on their severity level (e.g., DEBUG, INFO, ERROR). For DEBUG and TRACE levels, it
+    includes additional information like the logger name, function, and line number.
+
+    Args:
+        record: A dictionary containing log record information. Expected keys include 'level',
+                'message', 'name', 'function', and 'line'. The 'level' key should have a 'name'
+                attribute indicating the log level as a string.
+
+    Returns:
+        A formatted and styled string representing the log record, ready to be printed or
+        displayed. The string includes styling directives that are compatible with the Rich
+        library.
+    """
     color_map = {
         "TRACE": "turquoise2",
         "DEBUG": "cyan",
@@ -57,22 +73,22 @@ def log_formatter(record: dict) -> str:
 def instantiate_logger(
     verbosity: int, log_file: Path, log_to_file: bool
 ) -> None:  # pragma: no cover
-    """Instantiate the Loguru logger for brewup.
+    """Initialize and configure the logging system for the application.
 
-    Configure the logger with the specified verbosity level, log file path,
-    and whether to log to a file.
+    This function sets up the Loguru logger with a specified verbosity level and optionally
+    directs the log output to both the console and a file. It supports different verbosity
+    levels for controlling the amount of log information produced and can also capture logs
+    from installed libraries when verbosity is high enough.
 
     Args:
-        verbosity (int): The verbosity level of the logger. Valid values are:
-            - 0: Only log messages with severity level INFO and above will be displayed.
-            - 1: Only log messages with severity level DEBUG and above will be displayed.
-            - 2: Only log messages with severity level TRACE and above will be displayed.
-            > 2: Include debug from installed libraries
-        log_file (Path): The path to the log file where the log messages will be written.
-        log_to_file (bool): Whether to log the messages to the file specified by `log_file`.
-
-    Returns:
-        None
+        verbosity: Controls the amount of detail in the logs. Levels are as follows:
+            - 0 for INFO and above,
+            - 1 for DEBUG and above,
+            - 2 for TRACE and above,
+            - Greater than 2 includes DEBUG logs from installed libraries.
+        log_file: The file path where logs should be written if `log_to_file` is True.
+        log_to_file: A boolean indicating whether logs should also be saved to the file specified
+                     by `log_file`.
     """
     level = verbosity if verbosity < 3 else 2  # noqa: PLR2004
 
