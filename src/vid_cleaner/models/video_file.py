@@ -170,157 +170,6 @@ class VideoFile:
         # Register cleanup on exit
         atexit.register(cleanup_on_exit, self)
 
-    def _convert_to_h265(
-        self,
-        force: bool = False,
-        dry_run: bool = False,
-    ) -> Path:
-        """Convert the video to H.265 codec format.
-
-        Check if conversion is necessary and perform it if so. This involves calculating the
-        bitrate, building the ffmpeg command, and running it. Return the path to the converted
-        video or the original video if conversion isn't needed.
-
-        Args:
-            force (bool, optional): Flag to force conversion even if the video is already H.265. Defaults to False.
-            dry_run (bool, optional): Run in dry run mode. Defaults to False.
-
-        Returns:
-            Path: Path to the converted or original video file.
-        """
-        input_path, _ = self._get_input_and_output()
-
-        # Get ffprobe probe
-        probe = self._get_probe()
-        video_stream = [  # noqa: RUF015
-            stream
-            for stream in probe.streams
-            if stream.codec_type == CodecTypes.VIDEO
-            and stream.codec_name.lower() not in EXCLUDED_VIDEO_CODECS
-        ][0]
-
-        # Fail if no video stream is found
-        if not video_stream:
-            logger.error("No video stream found")
-            return input_path
-
-        # Return if video is already H.265
-        if not force and video_stream.codec_name.lower() in H265_CODECS:
-            logger.warning(
-                "H265 ENCODE: Video already H.265 or VP9. Run with `--force` to re-encode. Skipping"
-            )
-            return input_path
-
-        # Calculate Bitrate
-        # ############################
-        # Check if duration info is filled, if so times it by 0.0166667 to get time in minutes.
-        # If not filled then get duration of stream 0 and do the same.
-        stream_duration = float(probe.duration) or float(video_stream.duration)
-        if not stream_duration:
-            logger.error("Could not calculate video duration")
-            return input_path
-
-        duration = stream_duration * 0.0166667
-
-        # Work out currentBitrate using "Bitrate = file size / (number of minutes * .0075)"
-        # Used from here https://blog.frame.io/2017/03/06/calculate-video-bitrates/
-
-        stat = input_path.stat()
-        logger.trace(f"File size: {stat}")
-        file_size_megabytes = stat.st_size / 1000000
-
-        current_bitrate = int(file_size_megabytes / (duration * 0.0075))
-        target_bitrate = int(file_size_megabytes / (duration * 0.0075) / 2)
-        min_bitrate = int(current_bitrate * 0.7)
-        max_bitrate = int(current_bitrate * 1.3)
-
-        # Build FFMPEG Command
-        command: list[str] = ["-map", "0", "-c:v", "libx265"]
-        # Create bitrate command
-        command.extend(
-            [
-                "-b:v",
-                f"{target_bitrate}k",
-                "-minrate",
-                f"{min_bitrate}k",
-                "-maxrate",
-                f"{max_bitrate}k",
-                "-bufsize",
-                f"{current_bitrate}k",
-            ]
-        )
-
-        # Copy audio and subtitles
-        command.extend(["-c:a", "copy", "-c:s", "copy"])
-        # Run ffmpeg
-        return self._run_ffmpeg(command, title="Convert to H.265", step="h265", dry_run=dry_run)
-
-    def _convert_to_vp9(
-        self,
-        force: bool = False,
-        dry_run: bool = False,
-    ) -> Path:
-        """Convert the video to the VP9 codec format.
-
-        Verify if conversion is required and proceed with it using ffmpeg. This method specifically
-        targets the VP9 video codec. Return the path to the converted video or the original video
-        if conversion is not necessary.
-
-        Args:
-            dry_run (bool, optional): Run in dry run mode. Defaults to False.
-            force (bool, optional): Flag to force conversion even if the video is already VP9. Defaults to False.
-
-        Returns:
-            Path: Path to the converted or original video file.
-        """
-        input_path, _ = self._get_input_and_output()
-
-        # Get ffprobe probe
-        probe = self._get_probe()
-        video_stream = [  # noqa: RUF015
-            stream
-            for stream in probe.streams
-            if stream.codec_type == CodecTypes.VIDEO
-            and stream.codec_name.lower() not in EXCLUDED_VIDEO_CODECS
-        ][0]
-
-        # Fail if no video stream is found
-        if not video_stream:
-            logger.error("No video stream found")
-            return input_path
-
-        # Return if video is already H.265
-        if not force and video_stream.codec_name.lower() in H265_CODECS:
-            logger.warning(
-                "VP9 ENCODE: Video already H.265 or VP9. Run with `--force` to re-encode. Skipping"
-            )
-            return input_path
-
-        # Build ffmpeg command
-        command: list[str] = [
-            "-map",
-            "0",
-            "-c:v",
-            "libvpx-vp9",
-            "-b:v",
-            "0",
-            "-crf",
-            "30",
-            "-c:a",
-            "libvorbis",
-            "-dn",
-            "-map_chapters",
-            "-1",
-        ]
-
-        # Copy subtitles
-        command.extend(["-c:s", "copy"])
-
-        # Run ffmpeg
-        return self._run_ffmpeg(
-            command, title="Convert to vp9", suffix=".webm", step="vp9", dry_run=dry_run
-        )
-
     @staticmethod
     def _downmix_to_stereo(streams: list[VideoStream]) -> list[str]:
         """Generate a partial ffmpeg command to downmix audio streams to stereo if needed.
@@ -452,7 +301,6 @@ class VideoFile:
         Fetch detailed information about the video file using ffprobe. Optionally filter
         the information by a specific key.
 
-
         Returns:
             VideoProbe: The ffprobe probe information.
         """
@@ -519,43 +367,6 @@ class VideoFile:
 
         logger.trace(f"PROCESS VIDEO: {command}")
         return command
-
-    def video_to_1080p(self, force: bool = False, dry_run: bool = False) -> Path:
-        """Convert the video to 1080p resolution."""
-        input_path, _ = self._get_input_and_output()
-
-        # Get ffprobe probe
-        probe = self._get_probe()
-
-        video_stream = [  # noqa: RUF015
-            stream
-            for stream in probe.streams
-            if stream.codec_type == CodecTypes.VIDEO
-            and stream.codec_type.value not in EXCLUDED_VIDEO_CODECS
-        ][0]
-
-        # Fail if no video stream is found
-        if not video_stream:
-            logger.error("No video stream found")
-            return input_path
-
-        # Return if video is not 4K
-        if not force and getattr(video_stream, "width", 0) <= 1920:  # noqa: PLR2004
-            logger.info(f"{SYMBOL_CHECK} No convert to 1080p needed")
-            return input_path
-
-        # Build ffmpeg command
-        command: list[str] = [
-            "-filter:v",
-            "scale=width=1920:height=-2",
-            "-c:a",
-            "copy",
-            "-c:s",
-            "copy",
-        ]
-
-        # Run ffmpeg
-        return self._run_ffmpeg(command, title="Convert to 1080p", step="1080p", dry_run=dry_run)
 
     def _process_subtitles(
         self,
@@ -817,6 +628,157 @@ class VideoFile:
         # Run ffmpeg
         return self._run_ffmpeg(ffmpeg_command, title="Clip video", step="clip", dry_run=dry_run)
 
+    def convert_to_h265(
+        self,
+        force: bool = False,
+        dry_run: bool = False,
+    ) -> Path:
+        """Convert the video to H.265 codec format.
+
+        Check if conversion is necessary and perform it if so. This involves calculating the
+        bitrate, building the ffmpeg command, and running it. Return the path to the converted
+        video or the original video if conversion isn't needed.
+
+        Args:
+            force (bool, optional): Flag to force conversion even if the video is already H.265. Defaults to False.
+            dry_run (bool, optional): Run in dry run mode. Defaults to False.
+
+        Returns:
+            Path: Path to the converted or original video file.
+        """
+        input_path, _ = self._get_input_and_output()
+
+        # Get ffprobe probe
+        probe = self._get_probe()
+        video_stream = [  # noqa: RUF015
+            stream
+            for stream in probe.streams
+            if stream.codec_type == CodecTypes.VIDEO
+            and stream.codec_name.lower() not in EXCLUDED_VIDEO_CODECS
+        ][0]
+
+        # Fail if no video stream is found
+        if not video_stream:
+            logger.error("No video stream found")
+            return input_path
+
+        # Return if video is already H.265
+        if not force and video_stream.codec_name.lower() in H265_CODECS:
+            logger.warning(
+                "H265 ENCODE: Video already H.265 or VP9. Run with `--force` to re-encode. Skipping"
+            )
+            return input_path
+
+        # Calculate Bitrate
+        # ############################
+        # Check if duration info is filled, if so times it by 0.0166667 to get time in minutes.
+        # If not filled then get duration of stream 0 and do the same.
+        stream_duration = float(probe.duration) or float(video_stream.duration)
+        if not stream_duration:
+            logger.error("Could not calculate video duration")
+            return input_path
+
+        duration = stream_duration * 0.0166667
+
+        # Work out currentBitrate using "Bitrate = file size / (number of minutes * .0075)"
+        # Used from here https://blog.frame.io/2017/03/06/calculate-video-bitrates/
+
+        stat = input_path.stat()
+        logger.trace(f"File size: {stat}")
+        file_size_megabytes = stat.st_size / 1000000
+
+        current_bitrate = int(file_size_megabytes / (duration * 0.0075))
+        target_bitrate = int(file_size_megabytes / (duration * 0.0075) / 2)
+        min_bitrate = int(current_bitrate * 0.7)
+        max_bitrate = int(current_bitrate * 1.3)
+
+        # Build FFMPEG Command
+        command: list[str] = ["-map", "0", "-c:v", "libx265"]
+        # Create bitrate command
+        command.extend(
+            [
+                "-b:v",
+                f"{target_bitrate}k",
+                "-minrate",
+                f"{min_bitrate}k",
+                "-maxrate",
+                f"{max_bitrate}k",
+                "-bufsize",
+                f"{current_bitrate}k",
+            ]
+        )
+
+        # Copy audio and subtitles
+        command.extend(["-c:a", "copy", "-c:s", "copy"])
+        # Run ffmpeg
+        return self._run_ffmpeg(command, title="Convert to H.265", step="h265", dry_run=dry_run)
+
+    def convert_to_vp9(
+        self,
+        force: bool = False,
+        dry_run: bool = False,
+    ) -> Path:
+        """Convert the video to the VP9 codec format.
+
+        Verify if conversion is required and proceed with it using ffmpeg. This method specifically
+        targets the VP9 video codec. Return the path to the converted video or the original video
+        if conversion is not necessary.
+
+        Args:
+            dry_run (bool, optional): Run in dry run mode. Defaults to False.
+            force (bool, optional): Flag to force conversion even if the video is already VP9. Defaults to False.
+
+        Returns:
+            Path: Path to the converted or original video file.
+        """
+        input_path, _ = self._get_input_and_output()
+
+        # Get ffprobe probe
+        probe = self._get_probe()
+        video_stream = [  # noqa: RUF015
+            stream
+            for stream in probe.streams
+            if stream.codec_type == CodecTypes.VIDEO
+            and stream.codec_name.lower() not in EXCLUDED_VIDEO_CODECS
+        ][0]
+
+        # Fail if no video stream is found
+        if not video_stream:
+            logger.error("No video stream found")
+            return input_path
+
+        # Return if video is already H.265
+        if not force and video_stream.codec_name.lower() in H265_CODECS:
+            logger.warning(
+                "VP9 ENCODE: Video already H.265 or VP9. Run with `--force` to re-encode. Skipping"
+            )
+            return input_path
+
+        # Build ffmpeg command
+        command: list[str] = [
+            "-map",
+            "0",
+            "-c:v",
+            "libvpx-vp9",
+            "-b:v",
+            "0",
+            "-crf",
+            "30",
+            "-c:a",
+            "libvorbis",
+            "-dn",
+            "-map_chapters",
+            "-1",
+        ]
+
+        # Copy subtitles
+        command.extend(["-c:s", "copy"])
+
+        # Run ffmpeg
+        return self._run_ffmpeg(
+            command, title="Convert to vp9", suffix=".webm", step="vp9", dry_run=dry_run
+        )
+
     def process_streams(
         self,
         langs_to_keep: list[str],
@@ -938,6 +900,43 @@ class VideoFile:
 
         # Run ffmpeg
         return self._run_ffmpeg(command, title="Reorder streams", step="reorder", dry_run=dry_run)
+
+    def video_to_1080p(self, force: bool = False, dry_run: bool = False) -> Path:
+        """Convert the video to 1080p resolution."""
+        input_path, _ = self._get_input_and_output()
+
+        # Get ffprobe probe
+        probe = self._get_probe()
+
+        video_stream = [  # noqa: RUF015
+            stream
+            for stream in probe.streams
+            if stream.codec_type == CodecTypes.VIDEO
+            and stream.codec_type.value not in EXCLUDED_VIDEO_CODECS
+        ][0]
+
+        # Fail if no video stream is found
+        if not video_stream:
+            logger.error("No video stream found")
+            return input_path
+
+        # Return if video is not 4K
+        if not force and getattr(video_stream, "width", 0) <= 1920:  # noqa: PLR2004
+            logger.info(f"{SYMBOL_CHECK} No convert to 1080p needed")
+            return input_path
+
+        # Build ffmpeg command
+        command: list[str] = [
+            "-filter:v",
+            "scale=width=1920:height=-2",
+            "-c:a",
+            "copy",
+            "-c:s",
+            "copy",
+        ]
+
+        # Run ffmpeg
+        return self._run_ffmpeg(command, title="Convert to 1080p", step="1080p", dry_run=dry_run)
 
     def as_stream_table(self) -> Table:
         """Return the video probe as a rich table."""

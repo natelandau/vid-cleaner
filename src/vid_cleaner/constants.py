@@ -6,6 +6,18 @@ from pathlib import Path
 import typer
 
 
+class VideoContainerTypes(str, Enum):
+    """Video container types for vid-cleaner."""
+
+    MKV = ".mkv"
+    MP4 = ".mp4"
+    AVI = ".avi"
+    WEBM = ".webm"
+    MOV = ".mov"
+    WMV = ".wmv"
+    M4V = ".m4v"
+
+
 class CodecTypes(str, Enum):
     """Codec types for vid-cleaner."""
 

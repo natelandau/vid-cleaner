@@ -183,15 +183,18 @@ def _copyfileobj(
     callback: Callable,
     length: int,
 ) -> None:
-    """Copy from src_bytes to dest_bytes.
+    """Copy bytes from a source file to a destination file, with callback support.
+
+    This function reads bytes from a source file and writes them to a destination file in chunks,
+    calling a specified callback function after each chunk is written. It continues this process
+    until all bytes are copied or the end of the source file is reached.
 
     Args:
-        src_bytes (io.BufferedReader): Source file
-        dest_bytes (io.BufferedWriter): Destination file
-        callback (Callable): Callback to call after every length bytes copied
-        total (int): Total number of bytes to copy
-        length (int): How many bytes to copy at once
-
+        src_bytes: The source file from which to read bytes. Must support the buffer protocol.
+        dest_bytes: The destination file to which bytes are written. Must support the buffer protocol.
+        callback: A callable that is invoked after each chunk of bytes is copied. The callable
+                  should accept a single argument, which is the total number of bytes copied so far.
+        length: The size of each chunk of bytes to be read and written at a time.
     """
     copied = 0
     while True:
@@ -210,24 +213,33 @@ def copy_with_callback(
     callback: Callable | None = None,
     buffer_size: int = BUFFER_SIZE,
 ) -> Path:
-    """Copy file with a callback.
+    """Copy a file from a source to a destination, with optional progress callback.
+
+    This function copies a file from a specified source path to a destination path. During the
+    copy operation, it can optionally call a provided callback function after each chunk of data
+    is copied, allowing for progress tracking or other notifications. The size of the chunks copied
+    at each step can be customized.
 
     Args:
-        src (Path): Path to source file
-        dest (Path): Path to destination file
-        callback (Callable, optional): Callable callback that will be called after every buffer_size bytes copied. Defaults to None.
-        buffer_size (int, optional): How many bytes to copy at once (between calls to callback). Defaults to BUFFER_SIZE (4mb).
+        src: The path of the source file to copy.
+        dest: The path of the destination file or directory. If a directory is provided, the source
+              file will be copied into this directory with the same filename.
+        callback: An optional callable that is invoked after each chunk of data is copied. The callback
+                  receives one argument: the number of bytes copied so far. If not provided, no callback
+                  is called.
+        buffer_size: The size of each chunk of data to copy, in bytes. This determines how often the
+                     callback function is called, if provided.
 
     Returns:
-        Path: Path to destination file
-
+        The path to the copied destination file.
 
     Raises:
-        FileNotFoundError: If source file does not exist
-        SameFileError: If source and destination are the same file
-        ValueError: If callback is not callable
+        FileNotFoundError: If the source file does not exist.
+        SameFileError: If the source and destination paths refer to the same file.
+        ValueError: If the `callback` is provided but is not callable.
 
-    Note: Does not copy extended attributes, resource forks or other metadata.
+    Note:
+        This function does not copy file metadata such as extended attributes or resource forks.
     """
     if not src.is_file():
         msg = f"src file `{src}` doesn't exist"
@@ -257,18 +269,21 @@ def tmp_to_output(
     overwrite: bool = False,
     new_file: Path | None = None,
 ) -> Path:
-    """Copy a temporary file to an output file.
+    """Copy a temporary file to an output location with optional renaming and overwrite control.
 
-    If no output file is given, the name and directory of the source file will be used.  If overwrite is False, a number will be appended to the stem if the output file already exists.
+    This function copies a temporary file to a specified output location. If the output file path is not provided, the function uses the current working directory and the provided stem for the file name. If the target file exists and overwrite is False, the function will append a number to the stem to create a unique filename.
 
     Args:
-        tmp_file (Path): Path to input file
-        stem (str): Stem of output file
-        new_file (Path, optional): Path to output file. Defaults to None.
-        overwrite (bool, optional): Overwrite output file if it exists. Defaults to False.
+        tmp_file: The path to the temporary input file to be copied.
+        stem: The base name (stem) to use for the output file if `new_file` is not provided. If `new_file` is provided, `stem` is ignored.
+        overwrite: A flag to indicate whether to overwrite the output file if it already exists. If False and the file exists, a number is appended to the file's stem to avoid overwriting.
+        new_file: An optional path to the output file. If provided, this path is used as the target for the copy operation, and `stem` is ignored.
 
     Returns:
-        Path: Path to output file
+        The path to the output file where the temporary file has been copied.
+
+    Note:
+        This function uses a progress bar to indicate the copy progress and handles file naming conflicts by appending a number to the file stem if `overwrite` is False.
     """
     # When a path is given, use that
     if new_file:
