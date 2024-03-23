@@ -13,10 +13,7 @@ PATH_CONFIG_DEFAULT = Path(__file__).parent / "default_config.toml"
 
 def pass_opt_without_value(value: str) -> bool:
     """Confz does not work well with Typer options. Confz requires a value for each CLI option, but Typer does not. To workaround this, for example, if --log-to-file is passed, we set the value to "True" regardless of what follows the CLI option."""
-    if value:
-        return True
-
-    return False
+    return bool(value)
 
 
 OPT_BOOLEAN = Annotated[
