@@ -10,7 +10,7 @@ from loguru import logger
 from pydantic import ValidationError
 
 from vid_cleaner.cli import clean, clip, inspect
-from vid_cleaner.constants import CONFIG_PATH, VERSION
+from vid_cleaner.constants import CONFIG_PATH, VERSION, VideoContainerTypes
 from vid_cleaner.models import VideoFile
 from vid_cleaner.utils import (
     console,
@@ -49,8 +49,8 @@ def version_callback(value: bool) -> None:
 def parse_video_input(path: str) -> VideoFile:
     """Takes a string of a path and converts it to a VideoFile object."""
     file_path = existing_file_path(path)
-    if file_path.suffix not in {".mkv", ".mp4", ".avi", "vp9", ".webm", ".mov", ".wmv"}:
-        msg = f"File type '{file_path.suffix}' is not supported"
+    if file_path.suffix not in VideoContainerTypes.__members__.values():
+        msg = f"Vidcleaner supports {', '.join(VideoContainerTypes.__members__.values())} files.  '{file_path.suffix}' is not supported."
         raise typer.BadParameter(msg)
 
     return VideoFile(file_path)
