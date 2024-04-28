@@ -1,3 +1,10 @@
+## v0.3.2 (2024-04-28)
+
+### Fix
+
+- add support for `.m4v` files (#25)
+- improve stream handling (#24)
+
 ## v0.3.1 (2024-03-11)
 
 ### Fix
