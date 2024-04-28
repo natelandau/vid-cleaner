@@ -1,0 +1,8 @@
+[default]
+    default.locale = "en_us"
+
+    [default.extend-words]
+        vidcleaner = "vidcleaner" # Package name
+
+[files]
+    extend-exclude = ["*_cache", ".venv", "tests/fixtures"]

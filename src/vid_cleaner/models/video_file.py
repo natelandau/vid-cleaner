@@ -138,10 +138,10 @@ class VideoProbe(BaseModel):
                 stream.codec_name,
                 stream.language,
                 str(stream.channels.value) if stream.channels else "",
-                stream.channel_layout if stream.channel_layout else "",
+                stream.channel_layout or "",
                 str(stream.width) if stream.width else "",
                 str(stream.height) if stream.height else "",
-                stream.title if stream.title else "",
+                stream.title or "",
             )
 
         return table
@@ -327,7 +327,7 @@ class VideoFile:
         input_file = self.tmp_files[-1] if self.tmp_files else self.path
 
         # Get the output file name
-        suffix = suffix if suffix else self.suffix
+        suffix = suffix or self.suffix
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
 
         # Create a new tmp file name
