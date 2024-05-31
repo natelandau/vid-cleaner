@@ -10,12 +10,12 @@ updates:
           prefix: "ci"
           prefix-development: "ci"
           include: scope
-      reviewers:
-          - "natelandau"
       groups:
-          ci-dependencies:
+          ci-deps:
               patterns:
                   - "*"
+      reviewers:
+          - "natelandau"
     - package-ecosystem: pip
       directory: /
       schedule:
@@ -28,6 +28,8 @@ updates:
       allow:
           - dependency-type: production
       groups:
-          runtime-dependencies:
+          runtime-deps:
               patterns:
                   - "*"
+      reviewers:
+          - "natelandau"
