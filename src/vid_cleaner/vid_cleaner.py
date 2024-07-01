@@ -28,10 +28,10 @@ app = typer.Typer(
 )
 
 
-def docstring_parameter(*sub):  # type: ignore [no-untyped-def]
+def docstring_parameter(*sub):  # type: ignore [no-untyped-def]  # noqa: ANN002, ANN201
     """Decorator to format docstring with parameters."""
 
-    def dec(obj):  # type: ignore [no-untyped-def]
+    def dec(obj):  # type: ignore [no-untyped-def]  # noqa: ANN001, ANN202
         """Format docstring with parameters."""
         obj.__doc__ = obj.__doc__.format(*sub)
         return obj

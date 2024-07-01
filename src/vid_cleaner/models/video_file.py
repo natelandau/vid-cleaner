@@ -150,7 +150,7 @@ class VideoProbe(BaseModel):
 class VideoFile:
     """VideoFile model."""
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path) -> None:
         """Initialize VideoFile."""
         self.path = path.expanduser().resolve()
         self.name = path.name

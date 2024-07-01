@@ -96,7 +96,7 @@ def query_tmdb(search: str, verbosity: int) -> dict:  # pragma: no cover
 
     if response.status_code != 200:  # noqa: PLR2004
         logger.error(
-            f"Error querying The Movie Database API: {response.status_code} {response.reason}"
+            f"Error querying The Movie Database API: {response.status_code} {response.reason}",
         )
         return {}
 
