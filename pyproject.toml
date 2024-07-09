@@ -44,7 +44,7 @@
         poethepoet     = "^0.25.0"
         pre-commit     = "^3.7.0"
         pytest-asyncio = "^0.23.5.post1"
-        ruff           = "^0.5.0"
+        ruff           = ">=0.5.1"
         types-requests = "^2.31.0.20240311"
         typos          = "^1.20.10"
         yamllint       = "^1.35.1"
