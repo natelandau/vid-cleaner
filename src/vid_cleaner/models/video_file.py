@@ -86,8 +86,8 @@ class VideoProbe(BaseModel):
         streams = [
             VideoStream(
                 index=stream["index"],
-                codec_name=stream["codec_name"],
-                codec_long_name=stream["codec_long_name"],
+                codec_name=stream.get("codec_name", ""),
+                codec_long_name=stream.get("codec_long_name", ""),
                 codec_type=CodecTypes(stream["codec_type"].lower()),
                 duration=stream.get("duration", None),
                 width=stream.get("width", None),
