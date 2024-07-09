@@ -16,41 +16,48 @@ runner = CliRunner()
 
 
 @pytest.mark.parametrize(
-    ("args", "command_expected"),
+    ("args", "command_expected", "process_output"),
     [
         pytest.param(
             [],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
+            "✔ Drop subtitles",
             id="Defaults (only keep local audio,no commentary)",
         ),
         pytest.param(
             ["--downmix"],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
+            "✔ Downmix stereo, Drop subtitles",
             id="Don't convert audio to stereo when stereo exists",
         ),
         pytest.param(
             ["--keep-commentary"],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:5",
+            "✔ Keep commentary, Drop subtitles",
             id="Keep commentary",
         ),
         pytest.param(
             ["--drop-original"],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
+            "✔ Drop original audio, Drop subtitles",
             id="Keep local language from config even when dropped",
         ),
         pytest.param(
             ["--langs", "fr,es"],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4 -map 0:8",
+            "✔ Drop subtitles",
             id="Keep specified languages",
         ),
         pytest.param(
             ["--keep-subs"],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:6 -map 0:7 -map 0:8",
+            "✔ Keep subtitles",
             id="Keep all subtitles",
         ),
         pytest.param(
             ["--keep-local-subs"],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:6",
+            "✔ Drop subtitles, Keep local subtitles",
             id="Keep local subtitles",
         ),
     ],
@@ -64,6 +71,7 @@ def test_clean_video_process_streams(
     debug,
     args,
     command_expected,
+    process_output,
 ):
     """Test cleaning a video that does not need streams reordered or video converted."""
     # GIVEN a video in english with correct stream order
@@ -89,26 +97,29 @@ def test_clean_video_process_streams(
     assert result.exit_code == 0
     assert command_expected in command
     assert "✔ No streams to reorder" in output
-    assert "✔ Process video" in output
+    assert process_output in output
     assert "✅ cleaned_video.mkv" in output
 
 
 @pytest.mark.parametrize(
-    ("args", "command_expected"),
+    ("args", "command_expected", "process_output"),
     [
         pytest.param(
             [],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4 -map 0:6",
+            "✔ Drop subtitles",
             id="Defaults keep local and original audio, local subs",
         ),
         pytest.param(
             ["--drop-original"],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:6",
+            "✔ Drop original audio, Drop subtitles",
             id="Drop original audio (keeps local audio)",
         ),
         pytest.param(
             ["--drop-local-subs"],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4",
+            "✔ Drop subtitles, Drop local subtitles",
             id="Drop local subs",
         ),
     ],
@@ -122,6 +133,7 @@ def test_clean_video_foreign_language(
     debug,
     args,
     command_expected,
+    process_output,
 ):
     """Test cleaning is in a foreign language."""
     # GIVEN a video in french with correct stream order
@@ -147,21 +159,23 @@ def test_clean_video_foreign_language(
     assert result.exit_code == 0
     assert command_expected in command
     assert "✔ No streams to reorder" in output
-    assert "✔ Process video" in output
+    assert process_output in output
     assert "✅ cleaned_video.mkv" in output
 
 
 @pytest.mark.parametrize(
-    ("args", "command_expected"),
+    ("args", "command_expected", "process_output"),
     [
         pytest.param(
             [],
             "-map 0:0 -map 0:1 -map 0:2",
+            "✔ Drop subtitles",
             id="Defaults, drops commentary",
         ),
         pytest.param(
             ["--downmix"],
             "-map 0:1 -map 0:2 -c copy -map 0:2 -c:a:0 aac -ac:a:0 2 -b:a:0 256k -filter:a:0",
+            "✔ Downmix stereo, Drop subtitles",
             id="Defaults",
         ),
     ],
@@ -175,6 +189,7 @@ def test_clean_video_downmix(
     debug,
     args,
     command_expected,
+    process_output,
 ):
     """Test cleaning a video that does not have a stereo audio stream."""
     # GIVEN a video in english with correct stream order
@@ -200,17 +215,18 @@ def test_clean_video_downmix(
     assert result.exit_code == 0
     assert command_expected in command
     assert "✔ No streams to reorder" in output
-    assert "✔ Process video" in output
+    assert process_output in output
     assert "✅ cleaned_video.mkv" in output
 
 
 @pytest.mark.parametrize(
-    ("args", "first_command_expected", "second_command_expected"),
+    ("args", "first_command_expected", "second_command_expected", "process_output"),
     [
         pytest.param(
             [],
             "-c copy -map 0:2 -map 0:1 -map 0:3 -map 0:0",
             "-map 0:2 -map 0:1 -map 0:3",
+            "✔ Drop subtitles",
             id="Defaults, reorder streams, then process streams",
         ),
     ],
@@ -225,6 +241,7 @@ def test_clean_reorganize_streams(
     args,
     first_command_expected,
     second_command_expected,
+    process_output,
 ):
     """Test cleaning a video that does not have streams in the right order."""
     # GIVEN a video with the streams out of order
@@ -255,23 +272,25 @@ def test_clean_reorganize_streams(
     assert first_command_expected in first_command
     assert second_command_expected in second_command
     assert "✔ Reorder streams" in output
-    assert "✔ Process video" in output
+    assert process_output in output
     assert "✅ cleaned_video.mkv" in output
 
 
 @pytest.mark.parametrize(
-    ("args", "first_command_expected", "second_command_expected"),
+    ("args", "first_command_expected", "second_command_expected", "process_output"),
     [
         pytest.param(
             ["--h265"],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
             "-map 0 -c:v libx265 -b:v 0k -minrate 0k -maxrate 0k -bufsize 0k -c:a copy -c:s copy",
+            "✔ Drop subtitles",
             id="Convert to h265",
         ),
         pytest.param(
             ["--vp9"],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
             "-map 0 -c:v libvpx-vp9 -b:v 0 -crf 30 -c:a libvorbis -dn -map_chapters -1 -c:s copy",
+            "✔ Drop subtitles",
             id="Convert to vp9",
         ),
     ],
@@ -286,6 +305,7 @@ def test_convert_video(
     args,
     first_command_expected,
     second_command_expected,
+    process_output,
 ):
     """Test converting a video stream to a different format."""
     # GIVEN a video in english with correct stream order
@@ -319,5 +339,5 @@ def test_convert_video(
     assert first_command_expected in first_command
     assert second_command_expected in second_command
     assert "✔ No streams to reorder" in output
-    assert "✔ Process video" in output
+    assert process_output in output
     assert "✅ cleaned_video.mkv" in output
