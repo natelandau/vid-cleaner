@@ -834,6 +834,19 @@ class VideoFile:
             subs_drop_local=subs_drop_local,
         )
 
+        # Add flags to title
+        title_flags = []
+        title_flags.append("Drop original audio") if drop_original_audio else None
+        title_flags.append("Keep commentary") if keep_commentary else None
+        title_flags.append("Downmix stereo") if downmix_stereo else None
+        title_flags.append("Keep subtitles") if keep_all_subtitles else title_flags.append(
+            "Drop subtitles"
+        )
+        title_flags.append("Keep local subtitles") if keep_local_subtitles else None
+        title_flags.append("Drop local subtitles") if subs_drop_local else None
+
+        title = f"{', '.join(title_flags)}" if title_flags else "Process video"
+
         # Run ffmpeg
         return self._run_ffmpeg(
             video_map_command
@@ -841,7 +854,7 @@ class VideoFile:
             + subtitle_map_command
             + ["-c", "copy"]
             + downmix_command,
-            title="Process video",
+            title=title,
             step="process",
             dry_run=dry_run,
         )
