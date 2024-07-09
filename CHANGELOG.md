@@ -1,3 +1,10 @@
+## v0.3.3 (2024-07-09)
+
+### Fix
+
+- display video process steps (#30)
+- don't crash with `attachment` streams (#29)
+
 ## v0.3.2 (2024-04-28)
 
 ### Fix
