@@ -424,6 +424,7 @@ class VideoFile:
                 if keep_local_subtitles and (
                     stream.language.lower() == "und" or Lang(stream.language) in langs
                 ):
+                    logger.trace(f"PROCESS SUBTITLES: Keep stream #{stream.index} (local language)")
                     command.extend(["-map", f"0:{stream.index}"])
                     continue
 
@@ -433,6 +434,9 @@ class VideoFile:
                     and original_language not in langs
                     and (stream.language.lower == "und" or Lang(stream.language) in langs)
                 ):
+                    logger.trace(
+                        f"PROCESS SUBTITLES: Keep stream #{stream.index} (original language)"
+                    )
                     command.extend(["-map", f"0:{stream.index}"])
                     continue
 
@@ -836,16 +840,20 @@ class VideoFile:
 
         # Add flags to title
         title_flags = []
-        title_flags.append("Drop original audio") if drop_original_audio else None
-        title_flags.append("Keep commentary") if keep_commentary else None
-        title_flags.append("Downmix stereo") if downmix_stereo else None
-        title_flags.append("Keep subtitles") if keep_all_subtitles else title_flags.append(
-            "Drop subtitles"
-        )
-        title_flags.append("Keep local subtitles") if keep_local_subtitles else None
-        title_flags.append("Drop local subtitles") if subs_drop_local else None
 
-        title = f"{', '.join(title_flags)}" if title_flags else "Process video"
+        if audio_map_command:
+            title_flags.append("drop original audio") if drop_original_audio else None
+            title_flags.append("keep commentary") if keep_commentary else None
+            title_flags.append("downmix to stereo") if downmix_stereo else None
+
+        if subtitle_map_command:
+            title_flags.append("keep subtitles") if keep_all_subtitles else title_flags.append(
+                "drop unwanted subtitles"
+            )
+            title_flags.append("keep local subtitles") if keep_local_subtitles else None
+            title_flags.append("drop local subtitles") if subs_drop_local else None
+
+        title = f"Process file ({', '.join(title_flags)})" if title_flags else "Process file"
 
         # Run ffmpeg
         return self._run_ffmpeg(
