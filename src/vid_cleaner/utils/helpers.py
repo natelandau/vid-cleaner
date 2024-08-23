@@ -51,6 +51,9 @@ def ffprobe(path: Path) -> dict:  # pragma: no cover
 
     Returns:
         dict: A dictionary containing information about the video file.
+
+    Raises:
+        typer.Exit: If an error occurs while probing the video file.
     """
     try:
         probe = python_ffmpeg.probe(path)

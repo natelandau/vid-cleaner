@@ -32,9 +32,6 @@ def cleanup_on_exit(video_file: "VideoFile") -> None:  # pragma: no cover
 
     Args:
         video_file (VideoFile): The VideoFile object to perform cleanup on.
-
-    Returns:
-        None
     """
     video_file.cleanup()
 
@@ -73,7 +70,11 @@ class VideoProbe(BaseModel):
 
     @classmethod
     def parse_probe_response(cls, json_obj: dict, stem: str) -> "VideoProbe":
-        """Parse ffprobe json object."""
+        """Parse ffprobe json object.
+
+        Returns:
+            VideoProbe: A VideoProbe object.
+        """
         # Find name
         if "title" in json_obj["format"]["tags"]:
             name = json_obj["format"]["tags"]["title"]
@@ -877,6 +878,9 @@ class VideoFile:
 
         Returns:
             Path: Path to the video file with reordered streams.
+
+        Raises:
+            typer.Exit: If no video or audio streams are found in the video file.
         """
         probe = self._get_probe()
 
@@ -923,7 +927,13 @@ class VideoFile:
         return self._run_ffmpeg(command, title="Reorder streams", step="reorder", dry_run=dry_run)
 
     def video_to_1080p(self, force: bool = False, dry_run: bool = False) -> Path:
-        """Convert the video to 1080p resolution."""
+        """Convert the video to 1080p resolution.
+
+        Returns:
+          Path: to the converted video file if the video is not already 1080p. If the video is already 1080p, the original video file path is returned.
+
+
+        """
         input_path, _ = self._get_input_and_output()
 
         # Get ffprobe probe

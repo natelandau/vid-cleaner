@@ -27,6 +27,7 @@ def clip(
 
     Raises:
         typer.BadParameter: If either 'start' or 'duration' does not match the expected HH:MM:SS time format.
+        typer.Exit: If the operation completes successfully.
     """
     time_pattern = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 

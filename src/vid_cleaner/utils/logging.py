@@ -1,4 +1,4 @@
-"""Logging utilities for vid-cleaner."""
+"""Logging utilities for vid-cleaner."""  # noqa: A005
 
 import logging
 import sys
