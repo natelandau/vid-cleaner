@@ -34,20 +34,31 @@ def docstring_parameter(*sub):  # type: ignore [no-untyped-def]  # noqa: ANN002,
     def dec(obj):  # type: ignore [no-untyped-def]  # noqa: ANN001, ANN202
         """Format docstring with parameters."""
         obj.__doc__ = obj.__doc__.format(*sub)
-        return obj
+        return obj  # noqa: DOC201
 
-    return dec
+    return dec  # noqa: DOC201
 
 
 def version_callback(value: bool) -> None:
-    """Print version and exit."""
+    """Print version and exit.
+
+    Raises:
+        typer.Exit: Exit the application
+    """
     if value:
         console.print(f"{__package__}: v{VERSION}")
         raise typer.Exit()
 
 
 def parse_video_input(path: str) -> VideoFile:
-    """Takes a string of a path and converts it to a VideoFile object."""
+    """Takes a string of a path and converts it to a VideoFile object.
+
+    Returns:
+        VideoFile: A VideoFile object
+
+    Raises:
+        typer.BadParameter: If the file is not a supported video
+    """
     file_path = existing_file_path(path)
     if file_path.suffix not in VideoContainerTypes.__members__.values():
         msg = f"Vidcleaner supports {', '.join(VideoContainerTypes.__members__.values())} files.  '{file_path.suffix}' is not supported."
@@ -357,7 +368,7 @@ def main(
         logger.error(f"Invalid configuration file: {CONFIG_PATH}")
         for error in e.errors():
             console.print(f"           [red]{error['loc'][0]}: {error['msg']}[/red]")
-        raise typer.Exit(code=1) from e
+        raise typer.Exit(code=1) from e  # noqa: DOC501
 
 
 if __name__ == "__main__":

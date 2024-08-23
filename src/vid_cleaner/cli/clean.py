@@ -52,6 +52,7 @@ def clean(
 
     Raises:
         typer.BadParameter: If both h265 and vp9 flags are set to True.
+        typer.Exit: If the operation completes successfully.
     """
     if h265 and vp9:
         msg = "Cannot convert to both H265 and VP9"

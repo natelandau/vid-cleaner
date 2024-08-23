@@ -1,4 +1,4 @@
-"""Inspect command."""
+"""Inspect command."""  # noqa: A005
 
 import typer
 
