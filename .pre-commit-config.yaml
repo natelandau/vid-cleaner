@@ -83,13 +83,6 @@ repos:
             pass_filenames: true
             types: [text]
 
-          - id: poetry-check
-            name: poetry check
-            entry: poetry check
-            language: system
-            files: pyproject.toml
-            pass_filenames: false
-
           - id: mypy
             name: mypy
             entry: mypy --config-file pyproject.toml

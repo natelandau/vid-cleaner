@@ -36,10 +36,10 @@ Run `vidcleaner --help` to see the available commands and options.
 
 ## Setup: Once per project
 
-1. Install Python 3.11 and [Poetry](https://python-poetry.org)
+1. Install Python 3.11 and [uv](https://docs.astral.sh/uv/)
 2. Clone this repository. `git clone https://github.com/natelandau/vid-cleaner`
-3. Install the Poetry environment with `poetry install`.
-4. Activate your Poetry environment with `poetry shell`.
+3. Install the virtual environment with `uv venv`.
+4. Activate your virtual environment with `source .venv/bin/activate`.
 5. Install the pre-commit hooks with `pre-commit install --install-hooks`.
 
 ## Developing
@@ -49,6 +49,5 @@ Run `vidcleaner --help` to see the available commands and options.
 -   Run `poe` from within the development environment to print a list of [Poe the Poet](https://github.com/nat-n/poethepoet) tasks available to run on this project. Common commands:
     -   `poe lint` runs all linters
     -   `poe test` runs all tests with Pytest
--   Run `poetry add {package}` from within the development environment to install a run time dependency and add it to `pyproject.toml` and `poetry.lock`.
--   Run `poetry remove {package}` from within the development environment to uninstall a run time dependency and remove it from `pyproject.toml` and `poetry.lock`.
--   Run `poetry update` from within the development environment to upgrade all dependencies to the latest versions allowed by `pyproject.toml`.
+-   Run `uv add {package}` from within the development environment to install a run time dependency and add it to `pyproject.toml` and `uv.lock`.
+-   Run `uv remove {package}` from within the development environment to uninstall a run time dependency and remove it from `pyproject.toml` and `uv.lock`.

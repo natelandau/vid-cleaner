@@ -1,53 +1,54 @@
-[build-system]
-    build-backend = "poetry.core.masonry.api"
-    requires      = ["poetry-core>=1.0.0"]
-
-[tool.poetry]
-    authors     = ["Nate Landau <github@natenate.org>"]
+[project]
+    authors = [{ name = "Nate Landau", email = "github@natenate.org" }]
+    dependencies = [
+        "confz>=2.0.1",
+        "ffmpeg-progress-yield>=0.7.9",
+        "ffmpeg-progress>=0.0.4",
+        "ffmpeg-python>=0.2.0",
+        "iso639-lang>=2.2.3",
+        "loguru>=0.7.2",
+        "requests>=2.32.3",
+        "rich>=13.7.1",
+        "shellingham>=1.5.4",
+        "typer>=0.12.4",
+    ]
     description = "Tools to transcode, inspect and convert videos."
-    homepage    = "https://github.com/natelandau/vid-cleaner"
-    keywords    = []
-    license     = ""
-    name        = "vid-cleaner"
-    readme      = "README.md"
-    repository  = "https://github.com/natelandau/vid-cleaner"
-    version     = "0.3.3"
+    license = { file = "LICENSE" }
+    name = "vid-cleaner"
+    readme = "README.md"
+    requires-python = ">=3.11"
+    version = "0.3.3"
 
-    [tool.poetry.scripts] # https://python-poetry.org/docs/pyproject/#scripts
+    [project.urls]
+        Homepage   = "https://github.com/natelandau/vid-cleaner"
+        Repository = "https://github.com/natelandau/vid-cleaner"
+
+    [project.scripts]
         vidcleaner = "vid_cleaner.vid_cleaner:app"
 
-    [tool.poetry.dependencies]
-        confz                 = "^2.0.1"
-        ffmpeg-progress-yield = "^0.7.8"
-        ffmpeg-python         = "^0.2.0"
-        iso639-lang           = "^2.2.3"
-        loguru                = "^0.7.2"
-        python                = "^3.11"
-        requests              = "^2.31.0"
-        rich                  = "^13.7.1"
-        shellingham           = "^1.5.4"
-        typer                 = "^0.12.3"
+[build-system]
+    build-backend = "hatchling.build"
+    requires      = ["hatchling"]
 
-    [tool.poetry.group.test.dependencies]
-        pytest                 = "^8.2.0"
-        pytest-clarity         = "^1.0.1"
-        pytest-env             = "^1.1.3"
-        pytest-mock            = "^3.12.0"
-        pytest-pretty-terminal = "^1.1.0"
-        pytest-sugar           = "^1.0.0"
-        pytest-xdist           = "^3.5.0"
-
-    [tool.poetry.group.dev.dependencies]
-        commitizen     = "^3.24.0"
-        coverage       = "^7.5.0"
-        mypy           = "^1.10.0"
-        poethepoet     = "^0.25.0"
-        pre-commit     = "^3.7.0"
-        pytest-asyncio = "^0.23.5.post1"
-        ruff           = ">=0.5.1"
-        types-requests = "^2.31.0.20240311"
-        typos          = "^1.20.10"
-        yamllint       = "^1.35.1"
+[tool.uv]
+    dev-dependencies = [
+        "commitizen>=3.29.0",
+        "coverage>=7.6.1",
+        "mypy>=1.11.1",
+        "poethepoet>=0.27.0",
+        "pre-commit>=3.8.0",
+        "pytest-clarity>=1.0.1",
+        "pytest-env>=1.1.3",
+        "pytest-mock>=3.14.0",
+        "pytest-pretty-terminal>=1.1.0",
+        "pytest-sugar>=1.0.0",
+        "pytest-xdist>=3.6.1",
+        "pytest>=8.3.2",
+        "ruff>=0.6.2",
+        "types-requests>=2.32.0.20240712",
+        "typos>=1.24.1",
+        "yamllint>=1.35.1",
+    ]
 
 [tool.commitizen]
     bump_message               = "bump(release): v$current_version → v$new_version"
@@ -55,7 +56,7 @@
     tag_format                 = "v$version"
     update_changelog_on_bump   = true
     version_files              = ["src/vid_cleaner/constants.py:VERSION"]
-    version_provider           = "poetry"
+    version_provider           = "pep621"
 
 [tool.coverage.report] # https://coverage.readthedocs.io/en/latest/config.html#report
     exclude_lines = [
@@ -111,7 +112,6 @@
 
 [tool.pytest.ini_options]
     addopts        = "--color=yes --doctest-modules --exitfirst --failed-first --strict-config --strict-markers --junitxml=reports/pytest.xml"
-    asyncio_mode   = "auto"
     filterwarnings = ["error", "ignore::DeprecationWarning"]
     testpaths      = ["src", "tests"]
     xfail_strict   = true
@@ -219,9 +219,6 @@
 
         [[tool.poe.tasks.lint.sequence]]
             shell = "ruff format --check src/ tests/"
-
-        [[tool.poe.tasks.lint.sequence]]
-            shell = "poetry check"
 
         [[tool.poe.tasks.lint.sequence]]
             shell = "mypy --config-file pyproject.toml src/"
