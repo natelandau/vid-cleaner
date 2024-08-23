@@ -37,7 +37,7 @@ notebooks/
 # Node.js
 node_modules/
 
-# Poetry
+# python specific
 .venv/
 dist/
 
