@@ -31,7 +31,7 @@ jobs:
                   egress-policy: block
                   disable-sudo: true
                   allowed-endpoints: >
-                      api.github.com:443 files.pythonhosted.org:443 github.com:443 pypi.org:443 uploads.github.com:443 docker.io:443 githubapp.com:443 docker.com:443 astral.sh:443 objects githubusercontent.com:443
+                      *.cloudflare.docker.com:443 *.codecov.io:443 *.docker.com:443 *.docker.io:443 *.github.com:443 *.googleapis.com:443 *.pythonhosted.org:443 api.snapcraft.io:443 astral.sh:443 codecov.io:443 github.com:443 *.githubusercontent.com:443 pypi.org:443
 
 
             - name: Checkout repository
@@ -107,11 +107,3 @@ jobs:
                       dist/*-${{env.PROJECT_VERSION}}.tar.gz
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-            # ----------------------------------------------
-            # Cleanup cache
-            # ----------------------------------------------
-
-            - name: Minimize uv cache
-              shell: bash
-              run: uv cache prune --ci

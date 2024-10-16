@@ -70,10 +70,17 @@ class VideoProbe(BaseModel):
 
     @classmethod
     def parse_probe_response(cls, json_obj: dict, stem: str) -> "VideoProbe":
-        """Parse ffprobe json object.
+        """Parse ffprobe JSON object and create a VideoProbe instance.
+
+        This method extracts relevant information from the ffprobe JSON output
+        and constructs a VideoProbe object with structured data about the video file.
+
+        Args:
+            json_obj (dict): The JSON object containing ffprobe output.
+            stem (str): The stem of the filename, used as a fallback for the video name.
 
         Returns:
-            VideoProbe: A VideoProbe object.
+            VideoProbe: A VideoProbe object containing parsed information about the video file.
         """
         # Find name
         if "title" in json_obj["format"]["tags"]:
@@ -120,7 +127,13 @@ class VideoProbe(BaseModel):
         )
 
     def as_table(self) -> Table:
-        """Return the video probe as a rich table."""
+        """Return the video probe information as a formatted rich table.
+
+        Returns:
+            Table: A rich Table object containing formatted video probe information.
+                The table includes columns for stream index, type, codec name,
+                language, channels, channel layout, width, height, and title.
+        """
         table = Table(title=self.name)
         table.add_column("#")
         table.add_column("Type")

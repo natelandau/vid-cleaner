@@ -16,7 +16,7 @@ logger.remove()  # Remove default logger
 FIXTURE_CONFIG = Path(__file__).resolve().parent.parent / "src/vid_cleaner/default_config.toml"
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_ffmpeg(mocker):
     """Fixture to mock the FfmpegProgress class to effectively mock the ffmpeg command and its progress output.
 
@@ -41,7 +41,7 @@ def mock_ffmpeg(mocker):
     return mock_ffmpeg_progress
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_video(tmp_path):
     """Fixture to return a VideoFile instance with a specified path."""
     # GIVEN a VideoFile instance with a specified path
@@ -56,7 +56,7 @@ def _change_test_dir(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_config(tmp_path):
     """Mock specific configuration data for use in tests by accepting arbitrary keyword arguments.
 
@@ -97,7 +97,7 @@ def mock_config(tmp_path):
     return _inner
 
 
-@pytest.fixture()
+@pytest.fixture
 def debug():
     """Print debug information to the console. This is used to debug tests while writing them."""
 
@@ -129,7 +129,7 @@ def debug():
     return _debug_inner
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_ffprobe():
     """Return mocked JSON response from ffprobe."""
 
