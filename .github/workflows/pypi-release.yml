@@ -51,11 +51,3 @@ jobs:
             - name: Upload to PyPi
               shell: bash
               run: uvx twine upload dist/*
-
-            # ----------------------------------------------
-            # Cleanup cache
-            # ----------------------------------------------
-
-            - name: Minimize uv cache
-              shell: bash
-              run: uv cache prune --ci

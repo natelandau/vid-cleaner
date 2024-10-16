@@ -210,6 +210,13 @@
     skip-magic-trailing-comma = false
 
 [tool.poe.tasks]
+    [tool.poe.tasks.upgrade]
+        shell = """
+        echo "-- Upgrading packages --" &&
+        uv lock --upgrade &&
+        echo "-- Autoupdating pre-commit --" &&
+        pre-commit autoupdate
+        """
 
     [tool.poe.tasks.lint]
         help = "Lint this package"
@@ -227,7 +234,11 @@
             shell = "typos"
 
         [[tool.poe.tasks.lint.sequence]]
-            shell = "yamllint ."
+            cmd = """
+                pre-commit run
+                    --all-files
+                    --color always
+                """
 
 [tool.poe.tasks.test]
     help = "Test this package"

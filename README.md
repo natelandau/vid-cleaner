@@ -38,8 +38,8 @@ Run `vidcleaner --help` to see the available commands and options.
 
 1. Install Python 3.11 and [uv](https://docs.astral.sh/uv/)
 2. Clone this repository. `git clone https://github.com/natelandau/vid-cleaner`
-3. Install the virtual environment with `uv venv`.
-4. Activate your virtual environment with `source .venv/bin/activate`.
+3. Install the virtual environment with `uv sync`.
+4. Activate your virtual environment with `source .venv/bin/activate`
 5. Install the pre-commit hooks with `pre-commit install --install-hooks`.
 
 ## Developing
@@ -51,3 +51,4 @@ Run `vidcleaner --help` to see the available commands and options.
     -   `poe test` runs all tests with Pytest
 -   Run `uv add {package}` from within the development environment to install a run time dependency and add it to `pyproject.toml` and `uv.lock`.
 -   Run `uv remove {package}` from within the development environment to uninstall a run time dependency and remove it from `pyproject.toml` and `uv.lock`.
+-   Run `uv lock --upgrade` from within the development environment to update all dependencies in `pyproject.toml`.
