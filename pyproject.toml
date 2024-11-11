@@ -38,6 +38,7 @@
         "poethepoet>=0.27.0",
         "pre-commit>=3.8.0",
         "pytest-clarity>=1.0.1",
+        "pytest-cov>=6.0.0",
         "pytest-env>=1.1.3",
         "pytest-mock>=3.14.0",
         "pytest-pretty-terminal>=1.1.0",
@@ -241,13 +242,5 @@
                 """
 
 [tool.poe.tasks.test]
-    help = "Test this package"
-
-    [[tool.poe.tasks.test.sequence]]
-        cmd = "coverage run"
-
-    [[tool.poe.tasks.test.sequence]]
-        cmd = "coverage report"
-
-    [[tool.poe.tasks.test.sequence]]
-        cmd = "coverage xml"
+    cmd  = "pytest --cov --cov-config=pyproject.toml --cov-report=xml --cov-report=term tests/"
+    help = "Test this package and generate coverage reports"

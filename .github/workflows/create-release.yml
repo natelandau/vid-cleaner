@@ -21,30 +21,14 @@ jobs:
             fail-fast: true
             matrix:
                 python-version: ["3.11"]
-        env:
-            # Configure a constant location for the uv cache
-            UV_CACHE_DIR: /tmp/.uv-cache
         steps:
-            - name: Harden Security Runner
-              uses: step-security/harden-runner@v2
-              with:
-                  egress-policy: block
-                  disable-sudo: true
-                  allowed-endpoints: >
-                      *.cloudflare.docker.com:443 *.codecov.io:443 *.docker.com:443 *.docker.io:443 *.github.com:443 *.googleapis.com:443 *.pythonhosted.org:443 api.snapcraft.io:443 astral.sh:443 codecov.io:443 github.com:443 *.githubusercontent.com:443 pypi.org:443
-
-
             - name: Checkout repository
               uses: actions/checkout@v4
               with:
                   fetch-depth: 0
 
-            # ----------------------------------------------
-            # Setup Python, uv, and install project dependencies
-            # ----------------------------------------------
-
             - name: Setup Python, uv, and the package
-              uses: ./.github/actions/uv-python-package
+              uses: ./.github/actions/setup_python_env
 
             # ----------------------------------------------
             #    Grab version number
@@ -73,7 +57,7 @@ jobs:
 
             - name: Run tests
               shell: bash
-              run: uv run coverage run
+              run: uv run poe test
 
             - name: Build the package
               shell: bash
@@ -107,3 +91,24 @@ jobs:
                       dist/*-${{env.PROJECT_VERSION}}.tar.gz
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    publish-to-pypi:
+        runs-on: ubuntu-latest
+        needs: autorelease
+        strategy:
+            matrix:
+                python-version: ["3.11"]
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Setup Python, uv, and the package
+              uses: ./.github/actions/setup_python_env
+
+            - name: Build the package
+              shell: bash
+              run: uvx --from build pyproject-build --installer uv
+
+            - name: Upload to PyPi
+              shell: bash
+              run: uvx twine upload dist/*

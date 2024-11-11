@@ -4,7 +4,7 @@ import atexit
 import re
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Optional, assert_never
 
 import typer
 from ffmpeg_progress_yield import FfmpegProgress
@@ -205,12 +205,17 @@ class VideoFile:
         surround7 = []  # index of 7.1 streams
 
         for stream in streams:
-            if stream.channels == AudioLayout.STEREO:
-                has_stereo = True
-            if stream.channels == AudioLayout.SURROUND5:
-                surround5.append(stream)
-            if stream.channels == AudioLayout.SURROUND7:
-                surround7.append(stream)
+            match stream.channels:
+                case AudioLayout.STEREO:
+                    has_stereo = True
+                case AudioLayout.SURROUND5:
+                    surround5.append(stream)
+                case AudioLayout.SURROUND7:
+                    surround7.append(stream)
+                case AudioLayout.MONO:
+                    pass
+                case _:
+                    assert_never(stream.channels)
 
         if not has_stereo and surround5:
             for surround5_stream in surround5:
