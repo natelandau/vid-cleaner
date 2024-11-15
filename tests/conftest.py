@@ -32,6 +32,8 @@ def mock_ffmpeg(mocker):
             command = " ".join(args[0]) # Join the arguments into a single string
             assert command == "ffmpeg -i input.mp4 output.mp4" # Check the command
 
+    Returns:
+        Mock: A mock object for the FfmpegProgress class.
     """
     mock_ffmpeg_progress = mocker.patch(
         "vid_cleaner.models.video_file.FfmpegProgress", autospec=True
@@ -43,7 +45,11 @@ def mock_ffmpeg(mocker):
 
 @pytest.fixture
 def mock_video(tmp_path):
-    """Fixture to return a VideoFile instance with a specified path."""
+    """Fixture to return a VideoFile instance with a specified path.
+
+    Returns:
+        VideoFile: A VideoFile instance with a specified path.
+    """
     # GIVEN a VideoFile instance with a specified path
     test_path = Path(tmp_path / "test_video.mp4")
     test_path.touch()  # Create a dummy file
@@ -51,7 +57,7 @@ def mock_video(tmp_path):
 
 
 @pytest.fixture(autouse=True)
-def _change_test_dir(monkeypatch, tmp_path):
+def _change_test_dir(monkeypatch, tmp_path) -> None:
     """All tests should run in a temporary directory."""
     monkeypatch.chdir(tmp_path)
 

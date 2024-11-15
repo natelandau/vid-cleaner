@@ -6,7 +6,7 @@ from typing import Annotated, ClassVar
 from confz import BaseConfig, CLArgSource, ConfigSources, FileSource
 from pydantic import BeforeValidator
 
-from vid_cleaner.constants import APP_DIR, CONFIG_PATH
+from vid_cleaner.constants import CONFIG_PATH, PACKAGE_NAME, STATE_DIR
 
 PATH_CONFIG_DEFAULT = Path(__file__).parent / "default_config.toml"
 
@@ -30,7 +30,7 @@ class VidCleanerConfig(BaseConfig):  # type: ignore [misc]
     """Configuration class for vid - cleaner."""
 
     log_to_file: OPT_BOOLEAN = False
-    log_file: Path = APP_DIR / "vid_cleaner.log"
+    log_file: Path = STATE_DIR / f"{PACKAGE_NAME}.log"
     keep_languages: frozenset[str] = frozenset(["eng"])
     radarr_api_key: str = ""
     radarr_url: str = ""
