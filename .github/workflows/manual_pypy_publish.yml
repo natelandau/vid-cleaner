@@ -1,0 +1,37 @@
+---
+name: "Create Release"
+
+on:
+    workflow_dispatch:
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+permissions:
+    contents: write
+
+jobs:
+    publish-to-pypi:
+        runs-on: ubuntu-latest
+        env:
+            TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
+            TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
+            PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        strategy:
+            matrix:
+                python-version: ["3.11"]
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Setup Python, uv, and the package
+              uses: ./.github/actions/setup_python_env
+
+            - name: Build the package
+              shell: bash
+              run: uvx --from build pyproject-build --installer uv
+
+            - name: Upload to PyPi
+              shell: bash
+              run: uvx twine upload dist/*
