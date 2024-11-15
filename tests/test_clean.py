@@ -1,8 +1,6 @@
 # type: ignore
 """Test the inspect command."""
 
-import re
-
 import pytest
 from iso639 import Lang
 from typer.testing import CliRunner

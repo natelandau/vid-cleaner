@@ -362,7 +362,6 @@ def main(
         shutil.copy(default_config_file, CONFIG_PATH)
         logger.info(f"Created default configuration file at '{CONFIG_PATH}'")
         logger.info("Edit this file to configure your default settings. Exiting.")
-        raise typer.Exit()  # noqa: DOC501
 
     # Load and validate configuration
     try:
@@ -371,7 +370,7 @@ def main(
         logger.error(f"Invalid configuration file: {CONFIG_PATH}")
         for error in e.errors():
             console.print(f"           [red]{error['loc'][0]}: {error['msg']}[/red]")
-        raise typer.Exit(code=1) from e
+        raise typer.Exit(code=1) from e  # noqa: DOC501
 
 
 if __name__ == "__main__":
