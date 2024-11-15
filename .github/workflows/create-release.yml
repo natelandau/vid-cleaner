@@ -6,6 +6,11 @@ on:
     push:
         tags:
             - "v*"
+    pull_request:
+        types:
+            - opened
+            - reopened
+            - synchronize
 
 concurrency:
     group: ${{ github.workflow }}-${{ github.ref }}
