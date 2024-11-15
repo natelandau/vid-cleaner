@@ -1,3 +1,10 @@
+## v0.3.4 (2024-11-15)
+
+### Fix
+
+- **config**: use XDG specification for config, state, and cache dirs (#35)
+- improve user messaging (#31)
+
 ## v0.3.3 (2024-07-09)
 
 ### Fix
