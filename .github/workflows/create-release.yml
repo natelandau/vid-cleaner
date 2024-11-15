@@ -96,9 +96,8 @@ jobs:
         runs-on: ubuntu-latest
         needs: autorelease
         env:
-            TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
-            TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-            PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+            TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
+            TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
         strategy:
             matrix:
                 python-version: ["3.11"]

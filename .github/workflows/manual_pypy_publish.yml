@@ -1,5 +1,5 @@
 ---
-name: "Create Release"
+name: "Manual PyPy Publish"
 
 on:
     workflow_dispatch:
@@ -10,7 +10,7 @@ on:
             - synchronize
 
 concurrency:
-    group: ${{ github.workflow }}-${{ github.ref }}
+    group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
     cancel-in-progress: true
 
 permissions:
@@ -20,9 +20,8 @@ jobs:
     publish-to-pypi:
         runs-on: ubuntu-latest
         env:
-            TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
-            TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-            PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+            TWINE_USERNAME: ${{ secrets.TWINE_USERNAME }}
+            TWINE_PASSWORD: ${{ secrets.TWINE_PASSWORD }}
         strategy:
             matrix:
                 python-version: ["3.11"]
