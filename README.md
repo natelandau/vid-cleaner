@@ -28,9 +28,19 @@ To install vid-cleaner, run:
 pip install vid-cleaner
 ```
 
+Running `vidcleaner` for the first time will create a default configuration file in `~/.config/vid-cleaner/config.toml`. Edit this file to configure your default settings.
+
 ## Usage
 
 Run `vidcleaner --help` to see the available commands and options.
+
+### File Locations
+
+Vid-cleaner uses the [XDG specification](https://specifications.freedesktop.org/basedir-spec/latest/) for determining the locations of configuration files, logs, and caches.
+
+-   Configuration file: `~/.config/vid-cleaner/config.toml`
+-   Logs: `~/.local/state/vid-cleaner/vid-cleaner.log`
+-   Cache: `~/.cache/vid-cleaner`
 
 ## Contributing
 

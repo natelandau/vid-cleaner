@@ -15,7 +15,7 @@ from rich.progress import Progress
 from rich.table import Table
 
 from vid_cleaner.constants import (
-    APP_DIR,
+    CACHE_DIR,
     EXCLUDED_VIDEO_CODECS,
     FFMPEG_APPEND,
     FFMPEG_PREPEND,
@@ -173,7 +173,7 @@ class VideoFile:
         self.suffix = path.suffix
         self.suffixes = self.path.suffixes
 
-        self.tmp_dir = APP_DIR / "tmp" / uuid.uuid4().hex
+        self.tmp_dir = CACHE_DIR / uuid.uuid4().hex
         self.container = self.suffix
         self.language: Lang = None
         self.ran_language_check = False

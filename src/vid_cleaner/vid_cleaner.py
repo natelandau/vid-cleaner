@@ -360,6 +360,9 @@ def main(
         CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         default_config_file = Path(__file__).parent.resolve() / "default_config.toml"
         shutil.copy(default_config_file, CONFIG_PATH)
+        logger.info(f"Created default configuration file at '{CONFIG_PATH}'")
+        logger.info("Edit this file to configure your default settings. Exiting.")
+        raise typer.Exit()  # noqa: DOC501
 
     # Load and validate configuration
     try:
@@ -368,7 +371,7 @@ def main(
         logger.error(f"Invalid configuration file: {CONFIG_PATH}")
         for error in e.errors():
             console.print(f"           [red]{error['loc'][0]}: {error['msg']}[/red]")
-        raise typer.Exit(code=1) from e  # noqa: DOC501
+        raise typer.Exit(code=1) from e
 
 
 if __name__ == "__main__":

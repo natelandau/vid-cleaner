@@ -8,6 +8,8 @@ from pathlib import Path
 from loguru import logger
 from rich.markup import escape
 
+from vid_cleaner.config import VidCleanerConfig
+
 from .console import console
 
 
@@ -72,7 +74,7 @@ def log_formatter(record: dict) -> str:
 
 def instantiate_logger(
     verbosity: int,
-    log_file: Path,
+    log_file: Path | None,
     log_to_file: bool,
 ) -> None:  # pragma: no cover
     """Initialize and configure the logging system for the application.
@@ -102,6 +104,9 @@ def instantiate_logger(
         format=log_formatter,  # type: ignore [arg-type]
     )
     if log_to_file:
+        if log_file is None:
+            log_file = VidCleanerConfig().log_file
+
         logger.add(
             log_file,
             level=LogLevel(level).name,
