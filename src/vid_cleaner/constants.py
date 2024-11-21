@@ -34,6 +34,7 @@ class CodecTypes(str, Enum):
     VIDEO = "video"
     SUBTITLE = "subtitle"
     ATTACHMENT = "attachment"
+    DATA = "data"
 
 
 class AudioLayout(Enum):
