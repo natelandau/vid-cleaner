@@ -949,8 +949,6 @@ class VideoFile:
 
         Returns:
           Path: to the converted video file if the video is not already 1080p. If the video is already 1080p, the original video file path is returned.
-
-
         """
         input_path, _ = self._get_input_and_output()
 
