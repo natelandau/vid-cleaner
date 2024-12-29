@@ -34,9 +34,9 @@ def docstring_parameter(*sub):  # type: ignore [no-untyped-def]  # noqa: ANN002,
     def dec(obj):  # type: ignore [no-untyped-def]  # noqa: ANN001, ANN202
         """Format docstring with parameters."""
         obj.__doc__ = obj.__doc__.format(*sub)
-        return obj  # noqa: DOC201
+        return obj
 
-    return dec  # noqa: DOC201
+    return dec
 
 
 def version_callback(value: bool) -> None:
@@ -370,7 +370,7 @@ def main(
         logger.error(f"Invalid configuration file: {CONFIG_PATH}")
         for error in e.errors():
             console.print(f"           [red]{error['loc'][0]}: {error['msg']}[/red]")
-        raise typer.Exit(code=1) from e  # noqa: DOC501
+        raise typer.Exit(code=1) from e
 
 
 if __name__ == "__main__":
