@@ -110,7 +110,7 @@ def clip_command(
     start: Annotated[str, typer.Option(help="Start time 'HH:MM:SS'")] = "00:00:00",
     duration: Annotated[str, typer.Option(help="Duration to clip 'HH:MM:SS'")] = "00:01:00",
     out: Annotated[
-        Path | None,
+        Optional[Path],
         typer.Option(
             "--out",
             "-o",
@@ -154,7 +154,7 @@ def clean_command(
         ),
     ],
     out: Annotated[
-        Path | None,
+        Optional[Path],
         typer.Option(
             "--out",
             "-o",
@@ -208,7 +208,7 @@ def clean_command(
         ),
     ] = False,
     langs: Annotated[
-        str | None,
+        Optional[str],
         typer.Option(
             help="Languages to keep. Comma separated language codes",
             rich_help_panel="Audio",
@@ -283,7 +283,7 @@ def clean_command(
 def main(
     ctx: typer.Context,
     log_file: Annotated[
-        Path | None,
+        Optional[Path],
         typer.Option(
             help="Path to log file",
             show_default=False,
@@ -294,7 +294,7 @@ def main(
         ),
     ] = None,
     log_to_file: Annotated[
-        bool | None,
+        Optional[bool],
         typer.Option(
             "--log-to-file",
             help="Log to file",
@@ -314,7 +314,7 @@ def main(
         ),
     ] = 0,
     version: Annotated[  # noqa: ARG001
-        bool | None,
+        Optional[bool],
         typer.Option(
             "--version",
             is_eager=True,
