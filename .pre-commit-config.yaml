@@ -65,7 +65,7 @@ repos:
         exclude: tests/
         args: [--no-fix]
       - id: ruff-format
-        args: [--no-fix]
+        args: [--check]
 
   - repo: "https://github.com/crate-ci/typos"
     rev: dictgen-v0.3.1
