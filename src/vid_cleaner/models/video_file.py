@@ -24,7 +24,14 @@ from vid_cleaner.constants import (
     AudioLayout,
     CodecTypes,
 )
-from vid_cleaner.utils import console, ffprobe, query_radarr, query_sonarr, query_tmdb
+from vid_cleaner.utils import (
+    channels_to_layout,
+    console,
+    ffprobe,
+    query_radarr,
+    query_sonarr,
+    query_tmdb,
+)
 
 
 def cleanup_on_exit(video_file: "VideoFile") -> None:  # pragma: no cover
@@ -104,9 +111,7 @@ class VideoProbe(BaseModel):
                 sample_rate=stream.get("sample_rate", None),
                 language=stream.get("language", None)
                 or stream.get("tags", {}).get("language", None),
-                channels=AudioLayout(stream.get("channels"))
-                if stream.get("channels", False)
-                else None,
+                channels=channels_to_layout(stream.get("channels", None)),
                 channel_layout=stream.get("channel_layout", None),
                 layout=stream.get("layout", None),
                 title=stream.get("tags", {}).get("title", None),

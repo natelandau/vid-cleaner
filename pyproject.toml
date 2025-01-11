@@ -249,5 +249,5 @@
                 """
 
     [tool.poe.tasks.test]
-        cmd  = "pytest --cov --cov-config=pyproject.toml --cov-report=xml --cov-report=term tests/"
+        cmd  = "pytest --cov --cov-config=pyproject.toml --cov-report=xml --cov-report=term tests/ src/"
         help = "Test this package and generate coverage reports"
