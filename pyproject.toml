@@ -34,8 +34,8 @@
     dev-dependencies = [
         "commitizen>=4.1.0",
         "coverage>=7.6.10",
-        "mypy>=1.14.0",
-        "poethepoet>=0.32.0",
+        "mypy>=1.14.1",
+        "poethepoet>=0.32.1",
         "pre-commit>=4.0.1",
         "pytest-clarity>=1.0.1",
         "pytest-cov>=6.0.0",
@@ -45,9 +45,9 @@
         "pytest-sugar>=1.0.0",
         "pytest-xdist>=3.6.1",
         "pytest>=8.3.4",
-        "ruff>=0.8.4",
+        "ruff>=0.9.1",
         "types-requests>=2.32.0.20241016",
-        "typos>=1.28.4",
+        "typos>=1.29.4",
         "yamllint>=1.35.1",
     ]
 
@@ -171,6 +171,7 @@
             "RSE102",  # Unnecessary parentheses on raised exception"
             "S311",    # suspicious-non-cryptographic-random-usage
             "UP007",   # non-pep604-annotation
+            "UP045",   # Use `X | None` for type annotations
         ]
         per-file-ignores = { "vid_cleaner.py" = [
             "DOC201",
@@ -249,5 +250,5 @@
                 """
 
     [tool.poe.tasks.test]
-        cmd  = "pytest --cov --cov-config=pyproject.toml --cov-report=xml --cov-report=term tests/"
+        cmd  = "pytest --cov --cov-config=pyproject.toml --cov-report=xml --cov-report=term tests/ src/"
         help = "Test this package and generate coverage reports"

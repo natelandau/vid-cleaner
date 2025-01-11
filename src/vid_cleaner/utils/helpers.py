@@ -12,10 +12,43 @@ from loguru import logger
 from rich.progress import Progress
 
 from vid_cleaner.config import VidCleanerConfig
-from vid_cleaner.constants import BUFFER_SIZE
+from vid_cleaner.constants import BUFFER_SIZE, AudioLayout
 from vid_cleaner.utils import errors
 
 from .console import console
+
+
+def channels_to_layout(channels: int) -> AudioLayout | None:
+    """Convert number of audio channels to an AudioLayout enum value.
+
+    Convert a raw channel count into the appropriate AudioLayout enum value for use in audio processing. Handle special cases where 5 channels maps to SURROUND5 (5.1) and 7 channels maps to SURROUND7 (7.1).
+
+    Args:
+        channels (int): Number of audio channels in the stream
+
+    Returns:
+        AudioLayout | None: The corresponding AudioLayout enum value if a valid mapping exists,
+            None if no valid mapping is found
+
+    Examples:
+        >>> channels_to_layout(2)
+        <AudioLayout.STEREO: 2>
+        >>> channels_to_layout(5)
+        <AudioLayout.SURROUND5: 6>
+        >>> channels_to_layout(7)
+        <AudioLayout.SURROUND7: 8>
+        >>> channels_to_layout(3)
+    """
+    if channels in [layout.value for layout in AudioLayout]:
+        return AudioLayout(channels)
+
+    if channels == 5:  # noqa: PLR2004
+        return AudioLayout.SURROUND5
+
+    if channels == 7:  # noqa: PLR2004
+        return AudioLayout.SURROUND7
+
+    return None
 
 
 def existing_file_path(path: str) -> Path:
