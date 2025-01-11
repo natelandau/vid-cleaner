@@ -50,16 +50,16 @@ class VideoStream(BaseModel):
     codec_name: str
     codec_long_name: str
     codec_type: CodecTypes
-    duration: Optional[str]
-    width: Optional[int]
-    height: Optional[int]
-    bps: Optional[int]
-    sample_rate: Optional[int]
-    language: Optional[str]
-    channels: Optional[AudioLayout]
-    channel_layout: Optional[str]
-    layout: Optional[str]
-    title: Optional[str]
+    duration: str | None
+    width: int | None
+    height: int | None
+    bps: int | None
+    sample_rate: int | None
+    language: str | None
+    channels: AudioLayout | None
+    channel_layout: str | None
+    layout: str | None
+    title: str | None
 
 
 class VideoProbe(BaseModel):
@@ -67,12 +67,12 @@ class VideoProbe(BaseModel):
 
     name: str
     streams: list[VideoStream]
-    format_name: Optional[str]
-    format_long_name: Optional[str]
-    duration: Optional[str]
-    start_time: Optional[float]
-    size: Optional[int]
-    bit_rate: Optional[int]
+    format_name: str | None
+    format_long_name: str | None
+    duration: str | None
+    start_time: float | None
+    size: int | None
+    bit_rate: int | None
     json_data: dict
 
     @classmethod
