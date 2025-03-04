@@ -5,7 +5,7 @@ default_stages: [pre-commit, manual]
 fail_fast: true
 repos:
   - repo: "https://github.com/commitizen-tools/commitizen"
-    rev: v4.1.0
+    rev: v4.4.1
     hooks:
       - id: commitizen
       - id: commitizen-branch
@@ -59,7 +59,7 @@ repos:
         entry: yamllint --strict --config-file .yamllint.yml
 
   - repo: "https://github.com/charliermarsh/ruff-pre-commit"
-    rev: "v0.9.1"
+    rev: "v0.9.9"
     hooks:
       - id: ruff
         exclude: tests/
@@ -67,23 +67,25 @@ repos:
       - id: ruff-format
         args: [--check]
 
+  - repo: "https://github.com/gitleaks/gitleaks"
+    rev: v8.24.0
+    hooks:
+      - id: gitleaks
+
+  - repo: "https://github.com/crate-ci/committed"
+    rev: v1.1.7
+    hooks:
+      - id: committed
+        stages: [commit-msg]
+
   - repo: "https://github.com/crate-ci/typos"
-    rev: dictgen-v0.3.1
+    rev: v1.30.1
     hooks:
       - id: typos
+        args: ["--force-exclude"]
 
   - repo: local
     hooks:
-      # This calls a custom pre-commit script.
-      # Disable if you don't have it.
-      - id: stopwords
-        name: stopwords
-        entry: git-stopwords
-        # args: ["-v"]
-        language: system
-        pass_filenames: true
-        types: [text]
-
       - id: mypy
         name: mypy
         entry: mypy --config-file pyproject.toml
@@ -93,7 +95,7 @@ repos:
 
       - id: pytest
         name: pytest
-        entry: poe test
+        entry: duty test
         language: system
         pass_filenames: false
         files: |
@@ -112,5 +114,5 @@ ci:
   autofix_prs: true
   autoupdate_commit_msg: "build: pre-commit autoupdate"
   autoupdate_schedule: quarterly
-  skip: [stopwords, pytest, mypy]
+  skip: [pytest, mypy]
   submodules: false

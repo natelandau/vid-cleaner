@@ -71,27 +71,26 @@ def test_clean_video_process_streams(
     command_expected,
     process_output,
 ):
-    """Test cleaning a video that does not need streams reordered or video converted."""
-    # GIVEN a video in english with correct stream order
+    """Verify that video cleaning correctly processes streams without reordering."""
+    # GIVEN an English video with correctly ordered streams
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
     )
     mocker.patch("vid_cleaner.cli.clean.tmp_to_output", return_value="cleaned_video.mkv")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
-    # WHEN the clean command is invoked
+    # WHEN running the clean command with the specified arguments
     with VidCleanerConfig.change_config_sources(mock_config()):
         result = runner.invoke(app, ["-vv", "clean", *args, str(mock_video.path)])
 
     output = strip_ansi(result.output)
-    # debug("result", output)
 
-    # THEN the video should be clipped
-    mock_ffmpeg.assert_called_once()  # Check that the ffmpeg command was called once
-    args, _ = mock_ffmpeg.call_args  # Grab the ffmpeg command arguments
-    command = " ".join(args[0])  # Join the arguments into a single string
-    # debug("ffmpeg command", command)
+    # THEN verify the ffmpeg command contains expected stream mappings
+    mock_ffmpeg.assert_called_once()
+    args, _ = mock_ffmpeg.call_args
+    command = " ".join(args[0])
 
+    # AND verify the command output indicates successful processing
     assert result.exit_code == 0
     assert command_expected in command
     assert "✔ No streams to reorder" in output
@@ -133,27 +132,26 @@ def test_clean_video_foreign_language(
     command_expected,
     process_output,
 ):
-    """Test cleaning is in a foreign language."""
-    # GIVEN a video in french with correct stream order
+    """Verify that video cleaning correctly processes foreign language videos."""
+    # GIVEN a French video with correctly ordered streams
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
     )
     mocker.patch("vid_cleaner.cli.clean.tmp_to_output", return_value="cleaned_video.mkv")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("fr"))
 
-    # WHEN the clean command is invoked
+    # WHEN running the clean command with the specified arguments
     with VidCleanerConfig.change_config_sources(mock_config()):
         result = runner.invoke(app, ["-vv", "clean", *args, str(mock_video.path)])
 
     output = strip_ansi(result.output)
-    # debug("result", output)
 
-    # THEN the video should be clipped
-    mock_ffmpeg.assert_called_once()  # Check that the ffmpeg command was called once
-    args, _ = mock_ffmpeg.call_args  # Grab the ffmpeg command arguments
-    command = " ".join(args[0])  # Join the arguments into a single string
-    # debug("ffmpeg command", command)
+    # THEN verify the ffmpeg command contains expected stream mappings
+    mock_ffmpeg.assert_called_once()
+    args, _ = mock_ffmpeg.call_args
+    command = " ".join(args[0])
 
+    # AND verify the command output indicates successful processing
     assert result.exit_code == 0
     assert command_expected in command
     assert "✔ No streams to reorder" in output
@@ -189,27 +187,26 @@ def test_clean_video_downmix(
     command_expected,
     process_output,
 ):
-    """Test cleaning a video that does not have a stereo audio stream."""
-    # GIVEN a video in english with correct stream order
+    """Verify that videos without stereo audio are correctly downmixed."""
+    # GIVEN a video in English with correct stream order but no stereo audio
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("no_stereo.json")
     )
     mocker.patch("vid_cleaner.cli.clean.tmp_to_output", return_value="cleaned_video.mkv")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
-    # WHEN the clean command is invoked
+    # WHEN running the clean command with the specified arguments
     with VidCleanerConfig.change_config_sources(mock_config()):
         result = runner.invoke(app, ["-vv", "clean", *args, str(mock_video.path)])
 
     output = strip_ansi(result.output)
-    # debug("result", output)
 
-    # THEN the video should be clipped
-    mock_ffmpeg.assert_called_once()  # Check that the ffmpeg command was called once
-    args, _ = mock_ffmpeg.call_args  # Grab the ffmpeg command arguments
-    command = " ".join(args[0])  # Join the arguments into a single string
-    # debug("ffmpeg command", command)
+    # THEN verify the ffmpeg command contains expected stream mappings
+    mock_ffmpeg.assert_called_once()
+    args, _ = mock_ffmpeg.call_args
+    command = " ".join(args[0])
 
+    # AND verify the command output indicates successful processing
     assert result.exit_code == 0
     assert command_expected in command
     assert "✔ No streams to reorder" in output
@@ -241,34 +238,33 @@ def test_clean_reorganize_streams(
     second_command_expected,
     process_output,
 ):
-    """Test cleaning a video that does not have streams in the right order."""
-    # GIVEN a video with the streams out of order
+    """Verify that videos with incorrect stream order are properly reorganized."""
+    # GIVEN a video with incorrect stream order (video, audio, subtitle streams not in standard order)
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("wrong_order.json")
     )
     mocker.patch("vid_cleaner.cli.clean.tmp_to_output", return_value="cleaned_video.mkv")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
-    # WHEN the clean command is invoked
+    # WHEN running the clean command on the video
     with VidCleanerConfig.change_config_sources(mock_config()):
         result = runner.invoke(app, ["-vv", "clean", *args, str(mock_video.path)])
 
     output = strip_ansi(result.output)
-    # debug("result", output)
 
-    # THEN the video should be clipped
+    # THEN verify ffmpeg is called twice - once to reorder streams and once to process them
     assert mock_ffmpeg.call_count == 2
-    # debug("ffmpeg calls", mock_ffmpeg.mock_calls)
 
+    # AND verify the first ffmpeg command contains expected stream reordering
     first_command = " ".join(mock_ffmpeg.mock_calls[0].args[0])
-    # debug("first command", first_command)
-
-    second_command = " ".join(mock_ffmpeg.mock_calls[2].args[0])
-    # debug("second command", second_command)
-
-    assert result.exit_code == 0
     assert first_command_expected in first_command
+
+    # AND verify the second ffmpeg command contains expected stream processing
+    second_command = " ".join(mock_ffmpeg.mock_calls[2].args[0])
     assert second_command_expected in second_command
+
+    # AND verify the command output indicates successful processing
+    assert result.exit_code == 0
     assert "✔ Reorder streams" in output
     assert process_output in output
     assert "✅ cleaned_video.mkv" in output
@@ -305,8 +301,8 @@ def test_convert_video(
     second_command_expected,
     process_output,
 ):
-    """Test converting a video stream to a different format."""
-    # GIVEN a video in english with correct stream order
+    """Verify video stream conversion with different codecs."""
+    # GIVEN a video file with English audio and properly ordered streams
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
     )
@@ -316,23 +312,24 @@ def test_convert_video(
         VideoFile, "_get_input_and_output", return_value=(mock_video.path, mock_video.path)
     )
 
-    # WHEN the clean command is invoked
+    # WHEN running the clean command with codec conversion arguments
     with VidCleanerConfig.change_config_sources(mock_config()):
         result = runner.invoke(app, ["-vv", "clean", *args, str(mock_video.path)])
 
     output = strip_ansi(result.output)
-    # debug("result", output)
 
-    # THEN the video should be clipped
+    # THEN verify ffmpeg executes two passes
     assert mock_ffmpeg.call_count == 2
-    # debug("ffmpeg calls", mock_ffmpeg.mock_calls)
 
+    # AND verify stream mapping command is correct
     first_command = " ".join(mock_ffmpeg.mock_calls[0].args[0])
-    # debug("first command", first_command)
+    assert first_command_expected in first_command
 
+    # AND verify codec conversion command is correct
     second_command = " ".join(mock_ffmpeg.mock_calls[2].args[0])
-    # debug("second command", second_command)
+    assert second_command_expected in second_command
 
+    # AND verify successful completion with expected output messages
     assert result.exit_code == 0
     assert first_command_expected in first_command
     assert second_command_expected in second_command
