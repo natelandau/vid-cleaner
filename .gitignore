@@ -9,6 +9,7 @@ __pycache__/
 # Coverage.py
 htmlcov/
 reports/
+.reports/
 
 # cruft
 *.rej

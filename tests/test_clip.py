@@ -1,8 +1,6 @@
 # type: ignore
 """Test the inspect command."""
 
-import re
-
 import pytest
 from typer.testing import CliRunner
 
@@ -21,14 +19,16 @@ runner = CliRunner()
     ],
 )
 def test_clip_option_errors(mock_config, debug, mock_video, args, expected):
-    """Test the clip command with invalid time options."""
+    """Verify clip command rejects invalid time format options."""
+    # GIVEN a mock configuration
     with VidCleanerConfig.change_config_sources(mock_config()):
+        # WHEN invoking clip command with invalid time options
         result = runner.invoke(app, ["clip", *args, str(mock_video.path)])
 
+    # THEN verify command fails
     output = strip_ansi(result.output)
-    # debug("result", output)
-
     assert result.exit_code > 0
+    # AND verify error message contains expected text
     assert expected in output
 
 
@@ -44,25 +44,25 @@ def test_clip_option_errors(mock_config, debug, mock_video, args, expected):
 def test_clipping_video(
     mocker, mock_ffprobe, mock_video, mock_config, mock_ffmpeg, debug, args, expected
 ):
-    """Test clipping a video."""
-    # Setup mocks
+    """Verify clip command correctly processes video with given start time and duration."""
+    # GIVEN mocked video metadata and output path
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
     )
     mocker.patch("vid_cleaner.cli.clip.tmp_to_output", return_value="clipped_video.mkv")
 
-    # WHEN the clip command is invoked
+    # WHEN invoking clip command with specified arguments
     with VidCleanerConfig.change_config_sources(mock_config()):
         result = runner.invoke(app, ["clip", *args, str(mock_video.path)])
 
     output = strip_ansi(result.output)
-    # debug("result", output)
 
-    # THEN the video should be clipped
-    mock_ffmpeg.assert_called_once()  # Check that the ffmpeg command was called once
-    args, _ = mock_ffmpeg.call_args  # Grab the ffmpeg command arguments
-    command = " ".join(args[0])  # Join the arguments into a single string
+    # THEN verify ffmpeg was called with correct parameters
+    mock_ffmpeg.assert_called_once()
+    args, _ = mock_ffmpeg.call_args
+    command = " ".join(args[0])
 
+    # AND verify command completed successfully
     assert result.exit_code == 0
     assert expected in command
     assert "✅ clipped_video.mkv" in output
@@ -80,21 +80,24 @@ def test_clipping_video(
 def test_clipping_video_dryrun(
     mocker, mock_ffprobe, mock_video, mock_config, mock_ffmpeg, debug, args, expected
 ):
-    """Test clipping a video."""
-    # Setup mocks
+    """Verify dry-run mode shows expected command without executing ffmpeg."""
+    # GIVEN mocked video metadata and output path
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
     )
     mocker.patch("vid_cleaner.cli.clip.tmp_to_output", return_value="clipped_video.mkv")
 
-    # WHEN the clip command is invoked
+    # WHEN invoking clip command with dry-run flag
     with VidCleanerConfig.change_config_sources(mock_config()):
         result = runner.invoke(app, ["clip", "-n", *args, str(mock_video.path)])
 
     output = strip_ansi(result.output)
 
-    # THEN the video should not be clipped
-    mock_ffmpeg.assert_not_called()  # Check that the ffmpeg command was called once
+    # THEN verify ffmpeg was not called
+    mock_ffmpeg.assert_not_called()
+    # AND verify command completed successfully
     assert result.exit_code == 0
+    # AND verify expected command parameters are shown
     assert expected in output
+    # AND verify no output file was created
     assert "✅ clipped_video.mkv" not in output
