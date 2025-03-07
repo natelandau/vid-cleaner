@@ -36,7 +36,9 @@ DEFAULT_STYLES = [
     PrintStyle(name="NOTICE", style="bold"),
     PrintStyle(name="SUCCESS", style="", prefix="[bold green]✅ Success:[/bold green] "),
     PrintStyle(
-        name="WARNING", style="", prefix="[dark_orange bold]🚧 Warning:[/dark_orange bold] "
+        name="WARNING",
+        style="",
+        prefix="[dark_orange bold]🚧 Warning:[/dark_orange bold] ",
     ),
     PrintStyle(name="ERROR", style="", prefix="[bold red]❌ Error:[/bold red] "),
     PrintStyle(
@@ -49,7 +51,8 @@ DEFAULT_STYLES = [
 
 
 def merge_print_styles(
-    default_styles: list[PrintStyle], user_styles: list[PrintStyle]
+    default_styles: list[PrintStyle],
+    user_styles: list[PrintStyle],
 ) -> list[PrintStyle]:
     """Merge default and user print styles.
 

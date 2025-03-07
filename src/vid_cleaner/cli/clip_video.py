@@ -26,7 +26,7 @@ def main(cmd: VidCleaner, clip_cmd: ClipCommand) -> None:
             "dryrun": cmd.dry_run,
             "out_path": clip_cmd.out,
             "overwrite": clip_cmd.overwrite,
-        }
+        },
     )
     pp.configure(
         debug=cmd.verbosity in {PrintLevel.DEBUG, PrintLevel.TRACE},

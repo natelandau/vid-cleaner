@@ -37,7 +37,7 @@ def main(cmd: VidCleaner, clean_cmd: CleanCommand) -> None:
             "vp9": clean_cmd.vp9,
             "video_1080": clean_cmd.video_1080,
             "force": clean_cmd.force,
-        }
+        },
     )
     pp.configure(
         debug=cmd.verbosity in {PrintLevel.DEBUG, PrintLevel.TRACE},

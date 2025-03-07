@@ -51,7 +51,11 @@ def debug() -> Callable[[str | Path, str, bool, int], bool]:
     """
 
     def _debug_inner(
-        value: str | Path, label: str = "", *, breakpoint: bool = False, width: int = 80
+        value: str | Path,
+        label: str = "",
+        *,
+        breakpoint: bool = False,
+        width: int = 80,
     ) -> bool:
         """Print formatted debug information during test development.
 
@@ -138,7 +142,8 @@ def mock_ffmpeg(mocker):
         Mock: A mock object for the FfmpegProgress class.
     """
     mock_ffmpeg_progress = mocker.patch(
-        "vid_cleaner.models.video_file.FfmpegProgress", autospec=True
+        "vid_cleaner.models.video_file.FfmpegProgress",
+        autospec=True,
     )
     mock_instance = mock_ffmpeg_progress.return_value
     mock_instance.run_command_with_progress.return_value = iter([0, 25, 50, 75, 100])

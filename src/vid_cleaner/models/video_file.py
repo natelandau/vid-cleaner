@@ -240,14 +240,14 @@ class VideoFile:
                         "48000",
                         f"-metadata:s:a:{new_index}",
                         "title=2.0",
-                    ]
+                    ],
                 )
                 new_index += 1
                 has_stereo = True
 
         if not has_stereo and surround7:
             pp.debug(
-                "PROCESS AUDIO: Audio track is 5 channel, no 2 channel exists. Creating 2 channel from 5 channel"
+                "PROCESS AUDIO: Audio track is 5 channel, no 2 channel exists. Creating 2 channel from 5 channel",
             )
 
             for surround7_stream in surround7:
@@ -263,7 +263,7 @@ class VideoFile:
                         "256k",
                         f"-metadata:s:a:{new_index}",
                         "title=2.0",
-                    ]
+                    ],
                 )
                 new_index += 1
 
@@ -327,7 +327,9 @@ class VideoFile:
         return VideoProbe.parse_probe_response(ffprobe(input_path), self.stem)
 
     def _get_input_and_output(
-        self, suffix: str | None = None, step: str | None = None
+        self,
+        suffix: str | None = None,
+        step: str | None = None,
     ) -> tuple[Path, Path]:
         """Determine input and output file paths for processing steps.
 
@@ -645,7 +647,7 @@ class VideoFile:
         # Return if video is already H.265
         if not settings.force and video_stream.codec_name.lower() in H265_CODECS:
             pp.warning(
-                "H265 ENCODE: Video already H.265 or VP9. Run with `--force` to re-encode. Skipping"
+                "H265 ENCODE: Video already H.265 or VP9. Run with `--force` to re-encode. Skipping",
             )
             return input_path
 
@@ -685,7 +687,7 @@ class VideoFile:
                 f"{max_bitrate}k",
                 "-bufsize",
                 f"{current_bitrate}k",
-            ]
+            ],
         )
 
         # Copy audio and subtitles
@@ -720,7 +722,7 @@ class VideoFile:
         # Return if video is already H.265
         if not settings.force and video_stream.codec_name.lower() in H265_CODECS:
             pp.warning(
-                "VP9 ENCODE: Video already H.265 or VP9. Run with `--force` to re-encode. Skipping"
+                "VP9 ENCODE: Video already H.265 or VP9. Run with `--force` to re-encode. Skipping",
             )
             return input_path
 
@@ -775,7 +777,7 @@ class VideoFile:
 
         if subtitle_map_command:
             title_flags.append(
-                "keep subtitles"
+                "keep subtitles",
             ) if settings.keep_all_subtitles else title_flags.append("drop unwanted subtitles")
             title_flags.append("keep local subtitles") if settings.keep_local_subtitles else None
             title_flags.append("drop local subtitles") if settings.subs_drop_local else None

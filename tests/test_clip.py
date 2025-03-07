@@ -4,12 +4,9 @@ from pathlib import Path
 
 import cappa
 import pytest
-from iso639 import Lang
 
-from vid_cleaner.vidcleaner import VidCleaner
-
-from vid_cleaner.models.video_file import VideoFile  # isort: skip
 from vid_cleaner.utils import settings
+from vid_cleaner.vidcleaner import VidCleaner
 
 
 @pytest.mark.parametrize(
@@ -62,7 +59,8 @@ def test_clipping_video(
 
     # And: Mocked video metadata and output path
     mocker.patch(
-        "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
+        "vid_cleaner.models.video_file.ffprobe",
+        return_value=mock_ffprobe("reference.json"),
     )
     mocker.patch("vid_cleaner.cli.clip_video.tmp_to_output", return_value="clipped_video.mkv")
 
@@ -110,7 +108,8 @@ def test_clipping_video_dryrun(
 
     # And: Mocked video metadata and output path
     mocker.patch(
-        "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
+        "vid_cleaner.models.video_file.ffprobe",
+        return_value=mock_ffprobe("reference.json"),
     )
     mocker.patch("vid_cleaner.cli.clip_video.tmp_to_output", return_value="clipped_video.mkv")
 

@@ -16,7 +16,8 @@ def test_inspect_table(tmp_path, clean_stdout, debug, mock_video_path, mock_ffpr
     args = ["inspect", str(mock_video_path)]
     settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
     mocker.patch(
-        "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
+        "vid_cleaner.models.video_file.ffprobe",
+        return_value=mock_ffprobe("reference.json"),
     )
 
     # When: Running inspect command
@@ -38,7 +39,8 @@ def test_inspect_json(tmp_path, clean_stdout, debug, mock_video_path, mock_ffpro
     args = ["inspect", "--json", str(mock_video_path)]
     settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
     mocker.patch(
-        "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
+        "vid_cleaner.models.video_file.ffprobe",
+        return_value=mock_ffprobe("reference.json"),
     )
 
     # When: Running inspect command with JSON flag

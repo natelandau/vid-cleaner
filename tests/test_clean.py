@@ -94,7 +94,8 @@ def test_stream_processing(
 
     # And: Mocked external dependencies
     mocker.patch(
-        "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
+        "vid_cleaner.models.video_file.ffprobe",
+        return_value=mock_ffprobe("reference.json"),
     )
     mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
@@ -160,7 +161,8 @@ def test_clean_video_foreign_language(
 
     # And: Mock external dependencies
     mocker.patch(
-        "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
+        "vid_cleaner.models.video_file.ffprobe",
+        return_value=mock_ffprobe("reference.json"),
     )
     mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("fr")])
@@ -222,7 +224,8 @@ def test_clean_video_downmix(
 
     # And: Mock external dependencies
     mocker.patch(
-        "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("no_stereo.json")
+        "vid_cleaner.models.video_file.ffprobe",
+        return_value=mock_ffprobe("no_stereo.json"),
     )
     mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
@@ -278,7 +281,8 @@ def test_clean_reorganize_streams(
 
     # And: Mock external dependencies
     mocker.patch(
-        "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("wrong_order.json")
+        "vid_cleaner.models.video_file.ffprobe",
+        return_value=mock_ffprobe("wrong_order.json"),
     )
     mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
@@ -346,12 +350,15 @@ def test_convert_video(
 
     # And: Mock external dependencies
     mocker.patch(
-        "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
+        "vid_cleaner.models.video_file.ffprobe",
+        return_value=mock_ffprobe("reference.json"),
     )
     mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
     mocker.patch.object(
-        VideoFile, "_get_input_and_output", return_value=(mock_video_path, mock_video_path)
+        VideoFile,
+        "_get_input_and_output",
+        return_value=(mock_video_path, mock_video_path),
     )
 
     # When: Processing the video file

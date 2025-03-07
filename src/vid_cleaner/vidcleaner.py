@@ -116,7 +116,8 @@ class CleanCommand:
         ),
     ] = None
     overwrite: Annotated[
-        bool, cappa.Arg(help="Overwrite output file if it exists", long=True, show_default=True)
+        bool,
+        cappa.Arg(help="Overwrite output file if it exists", long=True, show_default=True),
     ] = False
     downmix_stereo: Annotated[
         bool,
@@ -131,10 +132,12 @@ class CleanCommand:
         ),
     ] = False
     keep_all_subtitles: Annotated[
-        bool, cappa.Arg(help="Keep all subtitles", long="--keep-subs", show_default=True)
+        bool,
+        cappa.Arg(help="Keep all subtitles", long="--keep-subs", show_default=True),
     ] = False
     keep_commentary: Annotated[
-        bool, cappa.Arg(help="Keep commentary audio", long="--keep-commentary", show_default=True)
+        bool,
+        cappa.Arg(help="Keep commentary audio", long="--keep-commentary", show_default=True),
     ] = False
     keep_local_subtitles: Annotated[
         bool,
@@ -165,7 +168,8 @@ class CleanCommand:
     )
     vp9: Annotated[bool, cappa.Arg(help="Convert to VP9", long="--vp9", show_default=True)] = False
     video_1080: Annotated[
-        bool, cappa.Arg(help="Convert to 1080p", long="--1080p", show_default=True)
+        bool,
+        cappa.Arg(help="Convert to 1080p", long="--1080p", show_default=True),
     ] = False
     force: Annotated[
         bool,
@@ -256,18 +260,22 @@ class ClipCommand:
         ),
     ] = None
     overwrite: Annotated[
-        bool, cappa.Arg(help="Overwrite output file if it exists", long=True, show_default=True)
+        bool,
+        cappa.Arg(help="Overwrite output file if it exists", long=True, show_default=True),
     ] = False
 
 
 @cappa.command(
-    name="cache", help="View and clear the vidcleaner cache", invoke="vid_cleaner.cli.cache.main"
+    name="cache",
+    help="View and clear the vidcleaner cache",
+    invoke="vid_cleaner.cli.cache.main",
 )
 class CacheCommand:
     """Manage the vidcleaner cache."""
 
     clear: Annotated[
-        bool, cappa.Arg(help="Clear the vidcleaner cache", long=True, short=True, show_default=True)
+        bool,
+        cappa.Arg(help="Clear the vidcleaner cache", long=True, short=True, show_default=True),
     ] = False
 
 
