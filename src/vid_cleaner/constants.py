@@ -12,7 +12,9 @@ STATE_DIR = (
 )
 CACHE_DIR = Path(os.getenv("XDG_CACHE_HOME", "~/.cache")).expanduser().absolute() / PACKAGE_NAME
 PROJECT_ROOT_PATH = Path(__file__).parents[2].absolute()
-CONFIG_PATH = CONFIG_DIR / "config.toml"
+PACKAGE_ROOT_PATH = Path(__file__).parents[0].absolute()
+USER_CONFIG_PATH = CONFIG_DIR / "config.toml"
+DEFAULT_CONFIG_PATH = PACKAGE_ROOT_PATH / "default_config.toml"
 
 
 class VideoContainerTypes(str, Enum):
@@ -58,3 +60,14 @@ VERSION = "0.3.6"
 # shutil.copy uses 1024 * 1024 if _WINDOWS else 64 * 1024
 # however, in my testing on MacOS with SSD, I've found a much larger buffer is faster
 BUFFER_SIZE = 4096 * 1024
+
+
+class PrintLevel(Enum):
+    """Define verbosity levels for console output.
+
+    Use these levels to control the amount of information displayed to users. Higher levels include all information from lower levels plus additional details.
+    """
+
+    INFO = 0
+    DEBUG = 1
+    TRACE = 2

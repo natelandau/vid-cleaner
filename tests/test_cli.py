@@ -1,24 +1,26 @@
-# type: ignore
-"""Test vid-cleaner CLI."""
+"""Test the vidcleaner command line interface."""
 
-import re
+import cappa
+import pytest
 
-from typer.testing import CliRunner
-
-from tests.pytest_functions import strip_ansi
-from vid_cleaner.vid_cleaner import app
-
-runner = CliRunner()
+from vid_cleaner.vidcleaner import VidCleaner
 
 
-def test_version():
-    """Verify version flag prints correct version format and exits cleanly."""
-    # GIVEN a CLI app
+@pytest.mark.parametrize(
+    ("subcommand"),
+    [("inspect"), ("clip"), ("clean"), ("cache")],
+)
+def test_vidcleaner_cli_help(clean_stdout, subcommand: str) -> None:
+    """Verify help text displays for each subcommand."""
+    # Given: Command line arguments requesting help
+    args = [subcommand, "--help"] if subcommand else ["--help"]
 
-    # WHEN invoking with --version flag
-    result = runner.invoke(app, ["--version"])
+    # When: Invoking CLI with help flag
+    with pytest.raises(cappa.Exit):
+        cappa.invoke(obj=VidCleaner, argv=args)
 
-    # THEN verify successful exit
-    assert result.exit_code == 0
-    # AND verify version output matches semantic versioning format
-    assert re.match(r"vid_cleaner: v\d+\.\d+\.\d+", strip_ansi(result.output))
+    # Then: Help output contains expected information
+    output = clean_stdout()
+    assert "Usage: vidcleaner" in output
+    assert "--help" in output
+    assert " [-v]" in output

@@ -6,10 +6,15 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-import typer
 
-from vid_cleaner.utils import copy_with_callback, errors, existing_file_path, tmp_to_output
-from vid_cleaner.utils.helpers import _copyfileobj  # noqa: PLC2701
+from vid_cleaner.utils import copy_with_callback, errors, pp, tmp_to_output
+from vid_cleaner.utils.filesystem_utils import _copyfileobj  # noqa: PLC2701
+
+
+@pytest.fixture(autouse=True)
+def _change_test_dir(monkeypatch, tmp_path) -> None:
+    """All tests should run in a temporary directory."""
+    monkeypatch.chdir(tmp_path)
 
 
 def test_copy_with_callback_success(tmp_path):
@@ -137,35 +142,23 @@ def test_tmp_to_output_2(tmp_path):
     assert result.is_file()
 
 
-def test_existing_file_path_1(tmp_path):
-    """Verify existing_file_path returns path for existing file."""
-    # GIVEN existing file
-    file = tmp_path / "test.txt"
-    file.touch()
+def test_all_styles_displays_styles(capsys) -> None:
+    """Display all available print styles."""
+    # Given: A configured pretty print instance
+    pp.configure(debug=True, trace=True)
 
-    # WHEN existing_file_path is called
-    # THEN verify file path is returned
-    assert existing_file_path(file) == file
+    # When: Displaying all styles
+    pp.all_styles()
 
+    # Then: Output contains style information
+    captured = capsys.readouterr()
+    assert "Available styles" in captured.out
+    assert "info" in captured.out
+    assert "debug" in captured.out
+    assert "trace" in captured.out
+    assert "success" in captured.out
+    assert "warning" in captured.out
+    assert "error" in captured.out
 
-def test_existing_file_path_2(tmp_path):
-    """Verify existing_file_path raises BadParameter for non-existent file."""
-    # GIVEN non-existent file path
-    file = tmp_path / "test2.txt"
-
-    # WHEN existing_file_path is called
-    # THEN verify BadParameter is raised
-    with pytest.raises(typer.BadParameter):
-        existing_file_path(file)
-
-
-def test_existing_file_path_3(tmp_path):
-    """Verify existing_file_path raises BadParameter for directory path."""
-    # GIVEN existing directory path
-    directory = tmp_path / "test_dir"
-    directory.mkdir()
-
-    # WHEN existing_file_path is called
-    # THEN verify BadParameter is raised
-    with pytest.raises(typer.BadParameter):
-        existing_file_path(directory)
+    # Reset the print styles
+    pp.configure(debug=False, trace=False)

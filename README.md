@@ -8,10 +8,11 @@ Tools to transcode, inspect and convert videos. This package provides convenienc
 
 -   Remove commentary tracks and subtitles
 -   Remove unwanted audio and subtitle tracks
+-   Integrate with TMDb and Radarr/Sonarr to determine languages of videos
 -   Convert to H.265 or VP9
 -   Convert 4k to 1080p
 -   Downmix from surround to create missing stereo streams with custom filters to improve quality
--   Removes unwanted audio and subtitle tracks, optionally keeping the original language audio track
+-   Remove unwanted audio and subtitle tracks, optionally keeping the original language audio track
 -   Create clips from a video file
 
 ## Install
@@ -25,21 +26,38 @@ Before installing vid-cleaner, the following dependencies must be installed:
 To install vid-cleaner, run:
 
 ```bash
-pip install vid-cleaner
-```
+# With uv
+uv tool install vid-cleaner
 
-Running `vidcleaner` for the first time will create a default configuration file in `~/.config/vid-cleaner/config.toml`. Edit this file to configure your default settings.
+# With pip
+python -m pip install --user vid-cleaner
+```
 
 ## Usage
 
 Run `vidcleaner --help` to see the available commands and options.
+
+### Configuration
+
+Vid-cleaner does not require a configuration file to run. However, the integration with tmd and other tools to determine languages of videos does require a config file. Create a configuration file at `~/.config/vid-cleaner/config.toml` and add the following:
+
+```toml
+# Languages to keep (list of ISO 639-1 codes)
+keep_languages = ["en"]
+
+# External services used to determine the original language of a movie or TV show
+radarr_api_key = ""
+radarr_url     = ""
+sonarr_api_key = ""
+sonarr_url     = ""
+tmdb_api_key   = ""
+```
 
 ### File Locations
 
 Vid-cleaner uses the [XDG specification](https://specifications.freedesktop.org/basedir-spec/latest/) for determining the locations of configuration files, logs, and caches.
 
 -   Configuration file: `~/.config/vid-cleaner/config.toml`
--   Logs: `~/.local/state/vid-cleaner/vid-cleaner.log`
 -   Cache: `~/.cache/vid-cleaner`
 
 ## Contributing

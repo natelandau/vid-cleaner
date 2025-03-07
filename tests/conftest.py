@@ -1,19 +1,125 @@
-# type: ignore
-"""Shared fixtures."""
+"""Shared fixtures for tests."""
 
 import json
+import re
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from confz import DataSource, FileSource
-from loguru import logger
+from rich.console import Console
 
-from vid_cleaner.models.video_file import VideoFile
-from vid_cleaner.utils import console
+console = Console()
 
-logger.remove()  # Remove default logger
 
-FIXTURE_CONFIG = Path(__file__).resolve().parent.parent / "src/vid_cleaner/default_config.toml"
+@pytest.fixture
+def clean_stdout(capsys: pytest.CaptureFixture[str]) -> Callable[[], str]:
+    r"""Return a function that cleans ANSI escape sequences from captured stdout.
+
+    This fixture is useful for testing CLI output where ANSI color codes and other escape sequences need to be stripped to verify the actual text content. The returned callable captures stdout using pytest's capsys fixture and removes all ANSI escape sequences, making it easier to write assertions against the cleaned output.
+
+    Args:
+        capsys (pytest.CaptureFixture[str]): Pytest fixture that captures stdout/stderr streams
+
+    Returns:
+        Callable[[], str]: A function that when called returns the current stdout with all ANSI escape sequences removed
+
+    Example:
+        def test_cli_output(clean_stdout):
+            print("\033[31mRed Text\033[0m")  # Colored output
+            assert clean_stdout() == "Red Text"  # Test against clean text
+    """
+    ansi_chars = re.compile(r"(\x9B|\x1B\[)[0-?]*[ -\/]*[@-~]")
+
+    def _get_clean_stdout() -> str:
+        return ansi_chars.sub("", capsys.readouterr().out)
+
+    return _get_clean_stdout
+
+
+@pytest.fixture
+def debug() -> Callable[[str | Path, str, bool, int], bool]:
+    """Create a debug printing function for test development.
+
+    Return a function that prints formatted debug output with clear visual separation and optional breakpoints. Useful for inspecting variables, file contents, or directory structures during test development.
+
+    Returns:
+        Callable[[str | Path, str, bool, int], bool]: Debug printing function with parameters:
+            - value: Data to debug print (string or Path)
+            - label: Optional header text
+            - breakpoint: Whether to pause execution after printing
+            - width: Maximum output width in characters
+    """
+
+    def _debug_inner(
+        value: str | Path,
+        label: str = "",
+        *,
+        breakpoint: bool = False,
+        width: int = 80,
+    ) -> bool:
+        """Print formatted debug information during test development.
+
+        Format and display debug output with labeled headers and clear visual separation. Supports printing file contents, directory structures, and variable values with optional execution breakpoints.
+
+        Args:
+            value (str | Path): Value to debug print. For Path objects, prints directory tree
+            label (str): Optional header text for context
+            breakpoint (bool, optional): Pause execution after printing. Defaults to False
+            width (int, optional): Maximum output width. Defaults to 80
+
+        Returns:
+            bool: True unless breakpoint is True, then raises pytest.fail()
+        """
+        console.rule(label or "")
+
+        # If a directory is passed, print the contents
+        if isinstance(value, Path) and value.is_dir():
+            for p in value.rglob("*"):
+                console.print(p, width=width)
+        else:
+            console.print(value, width=width)
+
+        console.rule()
+
+        if breakpoint:
+            return pytest.fail("Breakpoint")
+
+        return True
+
+    return _debug_inner
+
+
+@pytest.fixture
+def mock_video_path(tmp_path):
+    """Fixture to return a VideoFile instance with a specified path.
+
+    Returns:
+        VideoFile: A VideoFile instance with a specified path.
+    """
+    # GIVEN a VideoFile instance with a specified path
+    test_path = Path(tmp_path / "test_video.mp4")
+    test_path.touch()  # Create a dummy file
+    return test_path
+
+
+@pytest.fixture
+def mock_ffprobe():
+    """Return mocked JSON response from ffprobe."""
+
+    def _inner(filename: str):
+        fixture = Path(__file__).resolve().parent / "fixtures/ffprobe" / filename
+
+        cleaned_content = []  # Remove comments from JSON
+        with fixture.open() as f:
+            for line in f.readlines():
+                # Remove comments
+                if "//" in line:
+                    continue
+                cleaned_content.append(line)
+
+        return json.loads("".join(line for line in cleaned_content))
+
+    return _inner
 
 
 @pytest.fixture
@@ -36,120 +142,9 @@ def mock_ffmpeg(mocker):
         Mock: A mock object for the FfmpegProgress class.
     """
     mock_ffmpeg_progress = mocker.patch(
-        "vid_cleaner.models.video_file.FfmpegProgress", autospec=True
+        "vid_cleaner.models.video_file.FfmpegProgress",
+        autospec=True,
     )
     mock_instance = mock_ffmpeg_progress.return_value
     mock_instance.run_command_with_progress.return_value = iter([0, 25, 50, 75, 100])
     return mock_ffmpeg_progress
-
-
-@pytest.fixture
-def mock_video(tmp_path):
-    """Fixture to return a VideoFile instance with a specified path.
-
-    Returns:
-        VideoFile: A VideoFile instance with a specified path.
-    """
-    # GIVEN a VideoFile instance with a specified path
-    test_path = Path(tmp_path / "test_video.mp4")
-    test_path.touch()  # Create a dummy file
-    return VideoFile(test_path)
-
-
-@pytest.fixture(autouse=True)
-def _change_test_dir(monkeypatch, tmp_path) -> None:
-    """All tests should run in a temporary directory."""
-    monkeypatch.chdir(tmp_path)
-
-
-@pytest.fixture
-def mock_config(tmp_path):
-    """Mock specific configuration data for use in tests by accepting arbitrary keyword arguments.
-
-    The function dynamically collects provided keyword arguments, filters out any that are None,
-    and prepares data sources with the overridden configuration for file processing.
-
-    Usage:
-        def test_something(mock_config):
-            # Override the configuration with specific values
-            with VidCleanerConfig.change_config_sources(config_data(some_key="some_value")):
-                    # Test the functionality
-                    result = do_something()
-                    assert result
-    """
-
-    def _inner(**kwargs):
-        """Collects provided keyword arguments, omitting any that are None, and prepares data sources with the overridden configuration.
-
-        Args:
-            **kwargs: Arbitrary keyword arguments representing configuration settings.
-
-        Returns:
-            list: A list containing a FileSource initialized with the fixture configuration and a DataSource with the overridden data.
-        """
-        # Filter out None values from kwargs
-        override_data = {key: value for key, value in kwargs.items() if value is not None}
-
-        # If a 'config.toml' file exists in the test directory, use it as the configuration source
-        if Path(tmp_path / "config.toml").exists():
-            config_file_source = str(tmp_path / "config.toml")
-        else:
-            # Check for 'config_file' in kwargs and use it if present, else default to FIXTURE_CONFIG
-            config_file_source = kwargs.get("config_file", FIXTURE_CONFIG)
-
-        # Return a list of data sources with the overridden configuration
-        return [FileSource(config_file_source), DataSource(data=override_data)]
-
-    return _inner
-
-
-@pytest.fixture
-def debug():
-    """Print debug information to the console. This is used to debug tests while writing them."""
-
-    def _debug_inner(label: str, value: str | Path, breakpoint: bool = False):
-        """Print debug information to the console. This is used to debug tests while writing them.
-
-        Args:
-            label (str): The label to print above the debug information.
-            value (str | Path): The value to print. When this is a path, prints all files in the path.
-            breakpoint (bool, optional): Whether to break after printing. Defaults to False.
-
-        Returns:
-            bool: Whether to break after printing.
-        """
-        console.rule(label)
-        if not isinstance(value, Path) or not value.is_dir():
-            console.print(value)
-        else:
-            for p in value.rglob("*"):
-                console.print(p)
-
-        console.rule()
-
-        if breakpoint:
-            return pytest.fail("Breakpoint")
-
-        return True
-
-    return _debug_inner
-
-
-@pytest.fixture
-def mock_ffprobe():
-    """Return mocked JSON response from ffprobe."""
-
-    def _inner(filename: str):
-        fixture = Path(__file__).resolve().parent / "fixtures/ffprobe" / filename
-
-        cleaned_content = []  # Remove comments from JSON
-        with fixture.open() as f:
-            for line in f.readlines():
-                # Remove comments
-                if "//" in line:
-                    continue
-                cleaned_content.append(line)
-
-        return json.loads("".join(line for line in cleaned_content))
-
-    return _inner

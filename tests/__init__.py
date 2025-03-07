@@ -1,1 +1,1 @@
-"""vid-cleaner test suite."""
+"""Tests for vidcleaner."""

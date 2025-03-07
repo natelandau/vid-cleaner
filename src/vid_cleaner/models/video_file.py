@@ -3,19 +3,18 @@
 import atexit
 import re
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, assert_never
+from typing import assert_never
 
-import typer
+import cappa
 from ffmpeg_progress_yield import FfmpegProgress
 from iso639 import Lang
-from loguru import logger
-from pydantic import BaseModel
+from rich.markdown import Markdown
 from rich.progress import Progress
 from rich.table import Table
 
 from vid_cleaner.constants import (
-    CACHE_DIR,
     EXCLUDED_VIDEO_CODECS,
     FFMPEG_APPEND,
     FFMPEG_PREPEND,
@@ -28,9 +27,11 @@ from vid_cleaner.utils import (
     channels_to_layout,
     console,
     ffprobe,
+    pp,
     query_radarr,
     query_sonarr,
     query_tmdb,
+    settings,
 )
 
 
@@ -43,51 +44,52 @@ def cleanup_on_exit(video_file: "VideoFile") -> None:  # pragma: no cover
     video_file.cleanup()
 
 
-class VideoStream(BaseModel):
+@dataclass
+class VideoStream:
     """VideoStream model."""
 
     index: int
     codec_name: str
     codec_long_name: str
     codec_type: CodecTypes
-    duration: Optional[str]
-    width: Optional[int]
-    height: Optional[int]
-    bps: Optional[int]
-    sample_rate: Optional[int]
-    language: Optional[str]
-    channels: Optional[AudioLayout]
-    channel_layout: Optional[str]
-    layout: Optional[str]
-    title: Optional[str]
+    duration: str | None
+    width: int | None
+    height: int | None
+    bps: int | None
+    sample_rate: int | None
+    language: str | None
+    channels: AudioLayout | None
+    channel_layout: str | None
+    layout: str | None
+    title: str | None
 
 
-class VideoProbe(BaseModel):
+@dataclass
+class VideoProbe:
     """VideoProbe model."""
 
     name: str
     streams: list[VideoStream]
-    format_name: Optional[str]
-    format_long_name: Optional[str]
-    duration: Optional[str]
-    start_time: Optional[float]
-    size: Optional[int]
-    bit_rate: Optional[int]
+    format_name: str | None
+    format_long_name: str | None
+    duration: str | None
+    start_time: float | None
+    size: int | None
+    bit_rate: int | None
     json_data: dict
 
     @classmethod
     def parse_probe_response(cls, json_obj: dict, stem: str) -> "VideoProbe":
-        """Parse ffprobe JSON object and create a VideoProbe instance.
+        """Parse ffprobe JSON output into a VideoProbe object.
 
-        This method extracts relevant information from the ffprobe JSON output
-        and constructs a VideoProbe object with structured data about the video file.
+        Extract relevant stream and format information from ffprobe's JSON output and create a structured VideoProbe instance.
 
         Args:
-            json_obj (dict): The JSON object containing ffprobe output.
-            stem (str): The stem of the filename, used as a fallback for the video name.
+            json_obj (dict): Raw ffprobe JSON output
+            stem (str): Base filename without extension
 
         Returns:
-            VideoProbe: A VideoProbe object containing parsed information about the video file.
+            VideoProbe: Structured representation of the video file's properties
         """
         # Find name
         if "title" in json_obj["format"]["tags"]:
@@ -132,12 +134,12 @@ class VideoProbe(BaseModel):
         )
 
     def as_table(self) -> Table:
-        """Return the video probe information as a formatted rich table.
+        """Format video stream information as a Rich table.
+
+        Create a formatted table showing details about video, audio and subtitle streams for display in the terminal.
 
         Returns:
-            Table: A rich Table object containing formatted video probe information.
-                The table includes columns for stream index, type, codec name,
-                language, channels, channel layout, width, height, and title.
+            Table: Rich table containing stream information
         """
         table = Table(title=self.name)
         table.add_column("#")
@@ -178,7 +180,7 @@ class VideoFile:
         self.suffix = path.suffix
         self.suffixes = self.path.suffixes
 
-        self.tmp_dir = CACHE_DIR / uuid.uuid4().hex
+        self.tmp_dir = settings.CACHE_DIR / uuid.uuid4().hex
         self.container = self.suffix
         self.language: Lang = None
         self.ran_language_check = False
@@ -193,9 +195,7 @@ class VideoFile:
     def _downmix_to_stereo(streams: list[VideoStream]) -> list[str]:
         """Generate a partial ffmpeg command to downmix audio streams to stereo if needed.
 
-        Analyze the provided audio streams and construct a command to downmix 5.1 or 7.1 audio
-        streams to stereo. Handle cases where stereo is already present or needs to be created
-        from surround sound streams.
+        Analyze the provided audio streams and construct a command to downmix 5.1 or 7.1 audio streams to stereo. Handle cases where stereo is already present or needs to be created from surround sound streams.
 
         Args:
             streams (list[VideoStream]): List of audio stream dictionaries.
@@ -240,14 +240,14 @@ class VideoFile:
                         "48000",
                         f"-metadata:s:a:{new_index}",
                         "title=2.0",
-                    ]
+                    ],
                 )
                 new_index += 1
                 has_stereo = True
 
         if not has_stereo and surround7:
-            logger.debug(
-                "PROCESS AUDIO: Audio track is 5 channel, no 2 channel exists. Creating 2 channel from 5 channel"
+            pp.debug(
+                "PROCESS AUDIO: Audio track is 5 channel, no 2 channel exists. Creating 2 channel from 5 channel",
             )
 
             for surround7_stream in surround7:
@@ -263,25 +263,20 @@ class VideoFile:
                         "256k",
                         f"-metadata:s:a:{new_index}",
                         "title=2.0",
-                    ]
+                    ],
                 )
                 new_index += 1
 
-        logger.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
+        pp.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
         return downmix_command
 
-    def _find_original_language(self, verbosity: int) -> Lang:  # pragma: no cover
-        """Determine the original language of the video.
+    def _find_original_language(self) -> Lang:  # pragma: no cover
+        """Find the original language of the video content.
 
-        Query various sources like IMDb, TMDB, Radarr, and Sonarr to identify the original language.
-        Perform this operation only once and cache the result. Return the determined language or
-        None if it cannot be found.
-
-        Args:
-            verbosity (int): The verbosity level of the logger.
+        Query external APIs (IMDb, TMDB, Radarr, Sonarr) to determine the original language. Cache results to avoid repeated API calls.
 
         Returns:
-            Lang: An object representing the original language, or None if not found.
+            Lang: The determined original language code
         """
         # Only run the API calls once
         if self.ran_language_check:
@@ -294,14 +289,14 @@ class VideoFile:
         imdb_id = match.group(0) if match else self._query_arr_apps_for_imdb_id()
 
         # Query TMDB for the original language
-        response = query_tmdb(imdb_id, verbosity=verbosity) if imdb_id else None
+        response = query_tmdb(imdb_id) if imdb_id else None
 
         if response and (tmdb_response := response.get("movie_results", [{}])[0]):
             original_language = tmdb_response.get("original_language")
-            logger.trace(f"TMDB: Original language: {original_language}")
+            pp.trace(f"TMDB: Original language: {original_language}")
 
         if not original_language:
-            logger.debug(f"Could not find original language for: {self.name}")
+            pp.debug(f"Could not find original language for: {self.name}")
             return None
 
         # If the original language is pulled as Chinese (cn). iso639 expects 'zh' for Chinese.
@@ -311,7 +306,7 @@ class VideoFile:
         try:
             language = Lang(original_language)
         except Exception:  # noqa: BLE001
-            logger.debug(f"iso639: Could not find language for: {self.name}")
+            pp.debug(f"iso639: Could not find language for: {self.name}")
             return None
 
         # Set language attribute
@@ -322,8 +317,7 @@ class VideoFile:
     def _get_probe(self) -> VideoProbe:  # pragma: no cover
         """Retrieve the ffprobe probe information for the video.
 
-        Fetch detailed information about the video file using ffprobe. Optionally filter
-        the information by a specific key.
+        Fetch detailed information about the video file using ffprobe. Optionally filter the information by a specific key.
 
         Returns:
             VideoProbe: The ffprobe probe information.
@@ -333,12 +327,13 @@ class VideoFile:
         return VideoProbe.parse_probe_response(ffprobe(input_path), self.stem)
 
     def _get_input_and_output(
-        self, suffix: str | None = None, step: str | None = None
+        self,
+        suffix: str | None = None,
+        step: str | None = None,
     ) -> tuple[Path, Path]:
         """Determine input and output file paths for processing steps.
 
-        Calculate the paths based on the current state of the video file, its temporary directory,
-        and any specified suffix or processing step name. Create the necessary directories.
+        Calculate the paths based on the current state of the video file, its temporary directory, and any specified suffix or processing step name. Create the necessary directories.
 
         Args:
             suffix (str | None, optional): Suffix for the output file. Defaults to None.
@@ -364,7 +359,7 @@ class VideoFile:
         # Remove all but the most recent tmp file to reduce the size of tmp files on disk
         for file in self.tmp_dir.iterdir():
             if file != input_file:
-                logger.trace(f"Remove: {file}")
+                pp.trace(f"Remove: {file}")
                 file.unlink()
 
         return input_file, output_file
@@ -373,8 +368,7 @@ class VideoFile:
     def _process_video(streams: list[VideoStream]) -> list[str]:
         """Create a command list for processing video streams.
 
-        Iterate through the provided video streams and construct a list of ffmpeg commands
-        to process them, excluding any streams with codecs in the exclusion list.
+        Iterate through the provided video streams and construct a list of ffmpeg commands to process them, excluding any streams with codecs in the exclusion list.
 
         Args:
             streams (list[dict]): A list of video stream dictionaries.
@@ -389,107 +383,85 @@ class VideoFile:
 
             command.extend(["-map", f"0:{stream.index}"])
 
-        logger.trace(f"PROCESS VIDEO: {command}")
+        pp.trace(f"PROCESS VIDEO: {command}")
         return command
 
     def _process_subtitles(
         self,
         streams: list[VideoStream],
-        langs_to_keep: list[str],
-        keep_commentary: bool,
-        keep_all_subtitles: bool,
-        keep_local_subtitles: bool,
-        verbosity: int,
-        subs_drop_local: bool = False,
     ) -> list[str]:
         """Construct a command list for processing subtitle streams.
 
-        Analyze and filter subtitle streams based on language preferences, commentary options,
-        and other criteria. Build an ffmpeg command list accordingly.
+        Analyze and filter subtitle streams based on language preferences, commentary options, and other criteria. Build an ffmpeg command list accordingly.
 
         Args:
             streams (list[VideoStream]): A list of subtitle stream objects.
-            langs_to_keep (list[str]): Languages of subtitles to keep.
-            keep_commentary (bool): Flag to keep or discard commentary subtitles.
-            keep_all_subtitles (bool): Flag to keep all subtitles regardless of language.
-            keep_local_subtitles (bool): Flag to keep subtitles with 'undetermined' language or in the specified list.
-            subs_drop_local (bool, optional): Drop subtitles if the original language is not in the list. Defaults to False.
-            verbosity (int): The verbosity level of the logger.
 
         Returns:
             list[str]: A list of strings forming part of an ffmpeg command for subtitle processing.
         """
         command: list[str] = []
 
-        langs = [Lang(lang) for lang in langs_to_keep]
+        langs = [Lang(lang) for lang in settings.langs_to_keep]
 
         # Find original language
-        if not subs_drop_local:
-            original_language = self._find_original_language(verbosity=verbosity)
+        if not settings.subs_drop_local:
+            original_language = self._find_original_language()
 
         # Return no streams if no languages are specified
-        if not keep_all_subtitles and not keep_local_subtitles and subs_drop_local:
+        if (
+            not settings.keep_all_subtitles
+            and not settings.keep_local_subtitles
+            and settings.subs_drop_local
+        ):
             return command
 
         for stream in streams:
             if (
-                not keep_commentary
+                not settings.keep_commentary
                 and stream.title is not None
                 and re.search(r"commentary|sdh|description", stream.title, re.IGNORECASE)
             ):
-                logger.trace(rf"PROCESS SUBTITLES: Remove stream #{stream.index} \[commentary]")
+                pp.trace(rf"PROCESS SUBTITLES: Remove stream #{stream.index} \[commentary]")
                 continue
 
-            if keep_all_subtitles:
+            if settings.keep_all_subtitles:
                 command.extend(["-map", f"0:{stream.index}"])
                 continue
 
             if stream.language:
-                if keep_local_subtitles and (
+                if settings.keep_local_subtitles and (
                     stream.language.lower() == "und" or Lang(stream.language) in langs
                 ):
-                    logger.trace(f"PROCESS SUBTITLES: Keep stream #{stream.index} (local language)")
+                    pp.trace(f"PROCESS SUBTITLES: Keep stream #{stream.index} (local language)")
                     command.extend(["-map", f"0:{stream.index}"])
                     continue
 
                 if (
-                    not subs_drop_local
+                    not settings.subs_drop_local
                     and langs
                     and original_language not in langs
                     and (stream.language.lower == "und" or Lang(stream.language) in langs)
                 ):
-                    logger.trace(
-                        f"PROCESS SUBTITLES: Keep stream #{stream.index} (original language)"
-                    )
+                    pp.trace(f"PROCESS SUBTITLES: Keep stream #{stream.index} (original language)")
                     command.extend(["-map", f"0:{stream.index}"])
                     continue
 
-            logger.trace(f"PROCESS SUBTITLES: Remove stream #{stream.index}")
+            pp.trace(f"PROCESS SUBTITLES: Remove stream #{stream.index}")
 
-        logger.trace(f"PROCESS SUBTITLES: {command}")
+        pp.trace(f"PROCESS SUBTITLES: {command}")
         return command
 
     def _process_audio(
         self,
         streams: list[VideoStream],
-        langs_to_keep: list[str],
-        drop_original_audio: bool,
-        keep_commentary: bool,
-        downmix_stereo: bool,
-        verbosity: int,
     ) -> tuple[list[str], list[str]]:
         """Construct commands for processing audio streams.
 
-        Analyze and process audio streams based on language, commentary, and downmixing criteria.
-        Generate ffmpeg commands for keeping or altering audio streams as required.
+        Analyze and process audio streams based on language, commentary, and downmixing criteria. Generate ffmpeg commands for keeping or altering audio streams as required.
 
         Args:
             streams (list[VideoStream]): A list of audio stream objects.
-            langs_to_keep (list[str]): Languages of audio to keep.
-            drop_original_audio (bool): Flag to drop the original audio track.
-            keep_commentary (bool): Flag to keep or discard commentary audio tracks.
-            downmix_stereo (bool): Flag to downmix to stereo if required.
-            verbosity (int): The verbosity level of the logger.
 
         Returns:
             tuple[list[str], list[str]]: A tuple containing two lists of strings forming part of an ffmpeg command for audio processing.
@@ -497,11 +469,11 @@ class VideoFile:
         command: list[str] = []
 
         # Turn language codes into iso639 objects
-        langs = [Lang(lang) for lang in langs_to_keep]
+        langs = [Lang(lang) for lang in settings.langs_to_keep]
 
         # Add original language to list of languages to keep
-        if not drop_original_audio:
-            original_language = self._find_original_language(verbosity=verbosity)
+        if not settings.drop_original_audio:
+            original_language = self._find_original_language()
             if original_language and original_language not in langs:
                 langs.append(original_language)
 
@@ -515,11 +487,11 @@ class VideoFile:
 
             # Remove commentary streams
             if (
-                not keep_commentary
+                not settings.keep_commentary
                 and stream.title
                 and re.search(r"commentary|sdh|description", stream.title, re.IGNORECASE)
             ):
-                logger.trace(rf"PROCESS AUDIO: Remove stream #{stream.index} \[commentary]")
+                pp.trace(rf"PROCESS AUDIO: Remove stream #{stream.index} \[commentary]")
                 continue
 
             # Keep streams with specified languages
@@ -528,7 +500,7 @@ class VideoFile:
                 streams_to_keep.append(stream)
                 continue
 
-            logger.trace(f"PROCESS AUDIO: Remove stream #{stream.index}")
+            pp.trace(f"PROCESS AUDIO: Remove stream #{stream.index}")
 
         # Failsafe to cancel processing if all streams would be removed following this plugin. We don't want no audio.
         if not command:
@@ -537,9 +509,11 @@ class VideoFile:
                 streams_to_keep.append(stream)
 
         # Downmix to stereo if needed
-        downmix_command = self._downmix_to_stereo(streams_to_keep) if downmix_stereo else []
+        downmix_command = (
+            self._downmix_to_stereo(streams_to_keep) if settings.downmix_stereo else []
+        )
 
-        logger.trace(f"PROCESS AUDIO: {command}")
+        pp.trace(f"PROCESS AUDIO: {command}")
         return command, downmix_command
 
     def _query_arr_apps_for_imdb_id(self) -> str | None:
@@ -568,16 +542,13 @@ class VideoFile:
         title: str,
         suffix: str | None = None,
         step: str | None = None,
-        dry_run: bool = False,
     ) -> Path:
         """Execute an ffmpeg command.
 
-        Run the provided ffmpeg command, showing progress and logging information. Determine
-        input and output paths, and manage temporary files related to the operation.
+        Run the provided ffmpeg command, showing progress and logging information. Determine input and output paths, and manage temporary files related to the operation.
 
         Args:
             command (list[str]): The ffmpeg command to execute.
-            dry_run (bool, optional): Run in dry run mode. Defaults to False.
             title (str): Title for logging the process.
             suffix (str | None, optional): Suffix for the output file. Defaults to None.
             step (str | None, optional): Step name for file naming. Defaults to None.
@@ -591,11 +562,12 @@ class VideoFile:
         cmd.extend(command)
         cmd.extend([*FFMPEG_APPEND, str(output_path)])
 
-        logger.trace(f"RUN FFMPEG:\n{' '.join(cmd)}")
+        pp.trace(f"RUN FFMPEG:\n{' '.join(cmd)}")
 
-        if dry_run:
+        if settings.dryrun:
             console.rule(f"{title} (dry run)")
-            console.print(f"[code]{' '.join(cmd)}[/code]")
+            markdown_command = Markdown(f"```console\n{' '.join(cmd)}\n```")
+            console.print(markdown_command)
             return output_path
 
         # Run ffmpeg
@@ -606,7 +578,7 @@ class VideoFile:
             for complete in ff.run_command_with_progress():
                 progress.update(task, completed=complete)
 
-        logger.info(f"{SYMBOL_CHECK} {title}")
+        pp.info(f"{SYMBOL_CHECK} {title}")
 
         # Set current temporary file and return path
         self.current_tmp_file = output_path
@@ -616,36 +588,28 @@ class VideoFile:
     def cleanup(self) -> None:
         """Cleanup temporary files created during video processing.
 
-        Remove all temporary files and directories associated with this VideoFile instance.
-        This includes cleaning up any intermediate files generated during processing.
+        Remove all temporary files and directories associated with this VideoFile instance. This includes cleaning up any intermediate files generated during processing.
         """
         if self.tmp_dir.exists():
-            logger.debug("Clean up temporary files")
+            pp.debug("Clean up temporary files")
 
             # Clean up temporary files
             for file in self.tmp_dir.iterdir():
-                logger.trace(f"Remove: {file}")
+                pp.trace(f"Remove: {file}")
                 file.unlink()
 
             # Clean up temporary directory
-            logger.trace(f"Remove: {self.tmp_dir}")
+            pp.trace(f"Remove: {self.tmp_dir}")
             self.tmp_dir.rmdir()
 
-    def clip(
-        self,
-        start: str,
-        duration: str,
-        dry_run: bool = False,
-    ) -> Path:
+    def clip(self, start: str, duration: str) -> Path:
         """Clip a segment from the video.
 
-        Extract a specific portion of the video based on the given start time and duration.
-        Utilize ffmpeg to perform the clipping operation.
+        Extract a specific portion of the video based on the given start time and duration. Utilize ffmpeg to perform the clipping operation.
 
         Args:
             start (str): Start time of the clip.
             duration (str): Duration of the clip.
-            dry_run (bool, optional): Run in dry run mode. Defaults to False.
 
         Returns:
             Path: Path to the clipped video file.
@@ -654,22 +618,12 @@ class VideoFile:
         ffmpeg_command: list[str] = ["-ss", start, "-t", duration, "-map", "0", "-c", "copy"]
 
         # Run ffmpeg
-        return self._run_ffmpeg(ffmpeg_command, title="Clip video", step="clip", dry_run=dry_run)
+        return self._run_ffmpeg(ffmpeg_command, title="Clip video", step="clip")
 
-    def convert_to_h265(
-        self,
-        force: bool = False,
-        dry_run: bool = False,
-    ) -> Path:
+    def convert_to_h265(self) -> Path:
         """Convert the video to H.265 codec format.
 
-        Check if conversion is necessary and perform it if so. This involves calculating the
-        bitrate, building the ffmpeg command, and running it. Return the path to the converted
-        video or the original video if conversion isn't needed.
-
-        Args:
-            force (bool, optional): Flag to force conversion even if the video is already H.265. Defaults to False.
-            dry_run (bool, optional): Run in dry run mode. Defaults to False.
+        Check if conversion is necessary and perform it if so. This involves calculating the bitrate, building the ffmpeg command, and running it. Return the path to the converted video or the original video if conversion isn't needed.
 
         Returns:
             Path: Path to the converted or original video file.
@@ -687,13 +641,13 @@ class VideoFile:
 
         # Fail if no video stream is found
         if not video_stream:
-            logger.error("No video stream found")
+            pp.error("No video stream found")
             return input_path
 
         # Return if video is already H.265
-        if not force and video_stream.codec_name.lower() in H265_CODECS:
-            logger.warning(
-                "H265 ENCODE: Video already H.265 or VP9. Run with `--force` to re-encode. Skipping"
+        if not settings.force and video_stream.codec_name.lower() in H265_CODECS:
+            pp.warning(
+                "H265 ENCODE: Video already H.265 or VP9. Run with `--force` to re-encode. Skipping",
             )
             return input_path
 
@@ -703,7 +657,7 @@ class VideoFile:
         # If not filled then get duration of stream 0 and do the same.
         stream_duration = float(probe.duration) or float(video_stream.duration)
         if not stream_duration:
-            logger.error("Could not calculate video duration")
+            pp.error("Could not calculate video duration")
             return input_path
 
         duration = stream_duration * 0.0166667
@@ -712,7 +666,7 @@ class VideoFile:
         # Used from here https://blog.frame.io/2017/03/06/calculate-video-bitrates/
 
         stat = input_path.stat()
-        logger.trace(f"File size: {stat}")
+        pp.trace(f"File size: {stat}")
         file_size_megabytes = stat.st_size / 1000000
 
         current_bitrate = int(file_size_megabytes / (duration * 0.0075))
@@ -733,28 +687,18 @@ class VideoFile:
                 f"{max_bitrate}k",
                 "-bufsize",
                 f"{current_bitrate}k",
-            ]
+            ],
         )
 
         # Copy audio and subtitles
         command.extend(["-c:a", "copy", "-c:s", "copy"])
         # Run ffmpeg
-        return self._run_ffmpeg(command, title="Convert to H.265", step="h265", dry_run=dry_run)
+        return self._run_ffmpeg(command, title="Convert to H.265", step="h265")
 
-    def convert_to_vp9(
-        self,
-        force: bool = False,
-        dry_run: bool = False,
-    ) -> Path:
+    def convert_to_vp9(self) -> Path:
         """Convert the video to the VP9 codec format.
 
-        Verify if conversion is required and proceed with it using ffmpeg. This method specifically
-        targets the VP9 video codec. Return the path to the converted video or the original video
-        if conversion is not necessary.
-
-        Args:
-            dry_run (bool, optional): Run in dry run mode. Defaults to False.
-            force (bool, optional): Flag to force conversion even if the video is already VP9. Defaults to False.
+        Verify if conversion is required and proceed with it using ffmpeg. This method specifically targets the VP9 video codec. Return the path to the converted video or the original video if conversion is not necessary.
 
         Returns:
             Path: Path to the converted or original video file.
@@ -772,13 +716,13 @@ class VideoFile:
 
         # Fail if no video stream is found
         if not video_stream:
-            logger.error("No video stream found")
+            pp.error("No video stream found")
             return input_path
 
         # Return if video is already H.265
-        if not force and video_stream.codec_name.lower() in H265_CODECS:
-            logger.warning(
-                "VP9 ENCODE: Video already H.265 or VP9. Run with `--force` to re-encode. Skipping"
+        if not settings.force and video_stream.codec_name.lower() in H265_CODECS:
+            pp.warning(
+                "VP9 ENCODE: Video already H.265 or VP9. Run with `--force` to re-encode. Skipping",
             )
             return input_path
 
@@ -803,36 +747,12 @@ class VideoFile:
         command.extend(["-c:s", "copy"])
 
         # Run ffmpeg
-        return self._run_ffmpeg(
-            command, title="Convert to vp9", suffix=".webm", step="vp9", dry_run=dry_run
-        )
+        return self._run_ffmpeg(command, title="Convert to vp9", suffix=".webm", step="vp9")
 
-    def process_streams(
-        self,
-        langs_to_keep: list[str],
-        drop_original_audio: bool,
-        keep_commentary: bool,
-        downmix_stereo: bool,
-        keep_all_subtitles: bool,
-        keep_local_subtitles: bool,
-        subs_drop_local: bool,
-        verbosity: int,
-        dry_run: bool = False,
-    ) -> Path:
+    def process_streams(self) -> Path:
         """Process the video file according to specified audio and subtitle preferences.
 
         Execute the necessary steps to process the video file, including managing audio and subtitle streams.  Keep or discard audio streams based on specified languages, commentary preferences, and downmix settings. Similarly, filter subtitle streams based on language preferences and criteria such as keeping commentary or local subtitles. Perform the processing using ffmpeg and return the path to the processed video file.
-
-        Args:
-            dry_run (bool, optional): Run in dry run mode. Defaults to False.
-            langs_to_keep (list[str]): List of language codes for audio and subtitles to retain.
-            drop_original_audio (bool): Flag to determine whether to drop the original audio track.
-            keep_commentary (bool): Flag to determine whether to keep or discard commentary audio tracks.
-            downmix_stereo (bool): Flag to downmix to stereo if the original is not stereo.
-            keep_all_subtitles (bool): Flag to keep all subtitle tracks, regardless of language.
-            keep_local_subtitles (bool): Flag to keep subtitles with 'undetermined' language or in the specified list.
-            subs_drop_local (bool): Flag to drop subtitles if the original language is not in the list.
-            verbosity (int): The verbosity level of the logger.
 
         Returns:
             Path: Path to the processed video file.
@@ -844,38 +764,23 @@ class VideoFile:
         subtitle_streams = [s for s in probe.streams if s.codec_type == CodecTypes.SUBTITLE]
 
         video_map_command = self._process_video(video_streams)
-        audio_map_command, downmix_command = self._process_audio(
-            streams=audio_streams,
-            langs_to_keep=langs_to_keep,
-            drop_original_audio=drop_original_audio,
-            keep_commentary=keep_commentary,
-            downmix_stereo=downmix_stereo,
-            verbosity=verbosity,
-        )
-        subtitle_map_command = self._process_subtitles(
-            streams=subtitle_streams,
-            langs_to_keep=langs_to_keep,
-            keep_commentary=keep_commentary,
-            keep_all_subtitles=keep_all_subtitles,
-            keep_local_subtitles=keep_local_subtitles,
-            verbosity=verbosity,
-            subs_drop_local=subs_drop_local,
-        )
+        audio_map_command, downmix_command = self._process_audio(streams=audio_streams)
+        subtitle_map_command = self._process_subtitles(streams=subtitle_streams)
 
         # Add flags to title
         title_flags = []
 
         if audio_map_command:
-            title_flags.append("drop original audio") if drop_original_audio else None
-            title_flags.append("keep commentary") if keep_commentary else None
-            title_flags.append("downmix to stereo") if downmix_stereo else None
+            title_flags.append("drop original audio") if settings.drop_original_audio else None
+            title_flags.append("keep commentary") if settings.keep_commentary else None
+            title_flags.append("downmix to stereo") if settings.downmix_stereo else None
 
         if subtitle_map_command:
-            title_flags.append("keep subtitles") if keep_all_subtitles else title_flags.append(
-                "drop unwanted subtitles"
-            )
-            title_flags.append("keep local subtitles") if keep_local_subtitles else None
-            title_flags.append("drop local subtitles") if subs_drop_local else None
+            title_flags.append(
+                "keep subtitles",
+            ) if settings.keep_all_subtitles else title_flags.append("drop unwanted subtitles")
+            title_flags.append("keep local subtitles") if settings.keep_local_subtitles else None
+            title_flags.append("drop local subtitles") if settings.subs_drop_local else None
 
         title = f"Process file ({', '.join(title_flags)})" if title_flags else "Process file"
 
@@ -888,13 +793,9 @@ class VideoFile:
             + downmix_command,
             title=title,
             step="process",
-            dry_run=dry_run,
         )
 
-    def reorder_streams(
-        self,
-        dry_run: bool = False,
-    ) -> Path:
+    def reorder_streams(self) -> Path:
         """Reorder the media streams within the video file.
 
         Arrange the streams in the video file so that video streams appear first, followed by audio streams, and then subtitle streams. Exclude certain types of video streams like 'mjpeg' and 'png'.
@@ -903,7 +804,7 @@ class VideoFile:
             Path: Path to the video file with reordered streams.
 
         Raises:
-            typer.Exit: If no video or audio streams are found in the video file.
+            cappa.Exit: If no video or audio streams are found in the video file.
         """
         probe = self._get_probe()
 
@@ -918,11 +819,11 @@ class VideoFile:
 
         # Fail if no video or audio streams are found
         if not video_streams:
-            logger.error("No video streams found")
-            raise typer.Exit(1)
+            pp.error("No video streams found")
+            raise cappa.Exit(code=1)
         if not audio_streams:
-            logger.error("No audio streams found")
-            raise typer.Exit(1)
+            pp.error("No audio streams found")
+            raise cappa.Exit(code=1)
 
         # Check if reordering is needed
         reorder = any(
@@ -931,7 +832,7 @@ class VideoFile:
         )
 
         if not reorder:
-            logger.info(f"{SYMBOL_CHECK} No streams to reorder")
+            pp.info(f"{SYMBOL_CHECK} No streams to reorder")
             input_path, _ = self._get_input_and_output()
             return input_path
 
@@ -947,13 +848,15 @@ class VideoFile:
         ]
 
         # Run ffmpeg
-        return self._run_ffmpeg(command, title="Reorder streams", step="reorder", dry_run=dry_run)
+        return self._run_ffmpeg(command, title="Reorder streams", step="reorder")
 
-    def video_to_1080p(self, force: bool = False, dry_run: bool = False) -> Path:
-        """Convert the video to 1080p resolution.
+    def video_to_1080p(self) -> Path:
+        """Convert video resolution to 1080p.
+
+        Scale video dimensions to 1920x1080 while maintaining aspect ratio. Only converts videos larger than 1080p unless forced.
 
         Returns:
-          Path: to the converted video file if the video is not already 1080p. If the video is already 1080p, the original video file path is returned.
+            Path: Path to the converted video file, or original path if no conversion needed
         """
         input_path, _ = self._get_input_and_output()
 
@@ -969,12 +872,12 @@ class VideoFile:
 
         # Fail if no video stream is found
         if not video_stream:
-            logger.error("No video stream found")
+            pp.error("No video stream found")
             return input_path
 
         # Return if video is not 4K
-        if not force and getattr(video_stream, "width", 0) <= 1920:  # noqa: PLR2004
-            logger.info(f"{SYMBOL_CHECK} No convert to 1080p needed")
+        if not settings.force and getattr(video_stream, "width", 0) <= 1920:  # noqa: PLR2004
+            pp.info(f"{SYMBOL_CHECK} No convert to 1080p needed")
             return input_path
 
         # Build ffmpeg command
@@ -988,10 +891,16 @@ class VideoFile:
         ]
 
         # Run ffmpeg
-        return self._run_ffmpeg(command, title="Convert to 1080p", step="1080p", dry_run=dry_run)
+        return self._run_ffmpeg(command, title="Convert to 1080p", step="1080p")
 
     def as_stream_table(self) -> Table:
-        """Return the video probe as a rich table."""
+        """Format video stream information as a Rich table.
+
+        Create a formatted table showing details about video, audio and subtitle streams for display in the terminal.
+
+        Returns:
+            Table: Rich table containing stream information
+        """
         probe = self._get_probe()
         return probe.as_table()
 

@@ -1,6 +1,15 @@
 # Scratch folder for temporary files
 scratch/
 tmp/
+dev-config.toml
+
+# video files maybe used during development
+*.mkv
+*.mp4
+*.avi
+*.mov
+*.m4v
+*.m4a
 
 # Caches
 *_cache/
