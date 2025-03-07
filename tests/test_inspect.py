@@ -1,51 +1,53 @@
-# type: ignore
-"""Test the inspect command."""
+"""Test the vidcleaner inspect subcommand."""
 
 import re
+from pathlib import Path
 
-from typer.testing import CliRunner
+import cappa
+import pytest
 
-from tests.pytest_functions import strip_ansi
-from vid_cleaner.config import VidCleanerConfig
-from vid_cleaner.vid_cleaner import app
-
-runner = CliRunner()
+from vid_cleaner.utils import settings
+from vid_cleaner.vidcleaner import VidCleaner
 
 
-def test_inspect_table(mock_config, debug, mock_video, mock_ffprobe, mocker):
-    """Test printing a table of video information."""
-    # Setup mocks
+def test_inspect_table(tmp_path, clean_stdout, debug, mock_video_path, mock_ffprobe, mocker):
+    """Verify printing a table of video information."""
+    args = ["inspect", str(mock_video_path)]
+    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
     )
 
-    with VidCleanerConfig.change_config_sources(mock_config()):
-        result = runner.invoke(app, ["inspect", str(mock_video.path)])
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args)
 
-    output = strip_ansi(result.output)
-    # debug("result", output)
+    output = clean_stdout()
+    debug(output, "output")
 
-    assert result.exit_code == 0
+    assert exc_info.value.code == 0
     assert re.search(r"0 │ video +│ h264", output)
     assert re.search(r"9 │ video +│ mjpeg", output)
     assert re.search(r"eng +│ 8 +│ 7.1", output)
     assert re.search(r"1920 +│ 1080 +│ Test", output)
 
 
-def test_inspect_json(mock_config, debug, mock_video, mock_ffprobe, mocker):
+def test_inspect_json(tmp_path, clean_stdout, debug, mock_video_path, mock_ffprobe, mocker):
     """Test printing json output of video information."""
-    # Setup mocks
+    args = ["inspect", "--json", str(mock_video_path)]
+    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
     )
 
-    with VidCleanerConfig.change_config_sources(mock_config()):
-        result = runner.invoke(app, ["inspect", "--json", str(mock_video.path)])
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args)
 
-    output = strip_ansi(result.output)
-    # debug("result", output)
+    output = clean_stdout()
+    debug(output, "output")
 
-    assert result.exit_code == 0
+    assert exc_info.value.code == 0
     assert "'bit_rate': '26192239'," in output
     assert "'channel_layout': '7.1'," in output
     assert "'codec_name': 'hdmv_pgs_subtitle'," in output

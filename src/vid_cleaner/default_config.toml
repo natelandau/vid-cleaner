@@ -1,11 +1,5 @@
 # TOML configuration file for vid-cleaner
 
-# Whether to log to a file or not
-log_to_file = true
-
-# The path to the log file
-log_file = "log.txt"
-
 # Languages to keep (list of ISO 639-1 codes)
 keep_languages = ["en"]
 

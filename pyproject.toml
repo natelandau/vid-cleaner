@@ -1,16 +1,16 @@
 [project]
     authors = [{ name = "Nate Landau", email = "github@natenate.org" }]
     dependencies = [
-        "confz>=2.1.0",
+        "cappa>=0.26.6",
+        "dynaconf>=3.2.10",
         "ffmpeg-progress-yield>=0.11.3",
         "ffmpeg-progress>=0.0.4",
         "ffmpeg-python>=0.2.0",
         "iso639-lang>=2.6.0",
-        "loguru>=0.7.3",
         "requests>=2.32.3",
         "rich>=13.9.4",
         "shellingham>=1.5.4",
-        "typer>=0.15.2",
+        "validators>=0.34.0",
     ]
     description = "Tools to transcode, inspect and convert videos."
     license = { file = "LICENSE" }
@@ -24,7 +24,7 @@
         Repository = "https://github.com/natelandau/vid-cleaner"
 
     [project.scripts]
-        vidcleaner = "vid_cleaner.vid_cleaner:app"
+        vidcleaner = "vid_cleaner.vidcleaner:main"
 
 [build-system]
     build-backend = "hatchling.build"
@@ -149,21 +149,21 @@
 
     [tool.ruff.lint]
         ignore = [
-            "B006",    # mutable-argument-default
-            "B008",    # function-call-in-default-argument
-            "COM812",  # Trailing comma missing"
-            "CPY001",  # Missing copyright notice at top of file
-            "D107",    # undocumented-public-init
-            "D213",    # multi-line-summary-second-line
-            "D215",    # section-underline-not-over-indented
-            "D406",    # new-line-after-section-name
-            "D407",    # dashed-underline-after-section
-            "D408",    # section-underline-after-name
-            "D409",    # section-underline-matches-section-length
-            "D413",    # blank-line-after-last-section
-            "E501",    # line-too-long
-            "FBT001",  # Boolean default positional argument in function definition
-            "FBT002",  # Boolean default positional argument in function definition
+            "B006",   # mutable-argument-default
+            "B008",   # function-call-in-default-argument
+            "COM812", # Trailing comma missing"
+            "CPY001", # Missing copyright notice at top of file
+            "D107",   # undocumented-public-init
+            "D213",   # multi-line-summary-second-line
+            "D215",   # section-underline-not-over-indented
+            "D406",   # new-line-after-section-name
+            "D407",   # dashed-underline-after-section
+            "D408",   # section-underline-after-name
+            "D409",   # section-underline-matches-section-length
+            "D413",   # blank-line-after-last-section
+            "E501",   # line-too-long
+            # "FBT001",  # Boolean default positional argument in function definition
+            # "FBT002",  # Boolean default positional argument in function definition
             "ISC001",  # single-line-implicit-string-concatenation
             "N805",    # invalid-first-argument-name-for-method
             "PLR0913", # too-many-arguments
@@ -171,7 +171,7 @@
             "RSE102",  # Unnecessary parentheses on raised exception"
             "S311",    # suspicious-non-cryptographic-random-usage
             "UP007",   # non-pep604-annotation
-            "UP045",   # Use `X | None` for type annotations
+            # "UP045",   # Use `X | None` for type annotations
         ]
         per-file-ignores = { "vid_cleaner.py" = [
             "DOC201",

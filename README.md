@@ -39,7 +39,6 @@ Run `vidcleaner --help` to see the available commands and options.
 Vid-cleaner uses the [XDG specification](https://specifications.freedesktop.org/basedir-spec/latest/) for determining the locations of configuration files, logs, and caches.
 
 -   Configuration file: `~/.config/vid-cleaner/config.toml`
--   Logs: `~/.local/state/vid-cleaner/vid-cleaner.log`
 -   Cache: `~/.cache/vid-cleaner`
 
 ## Contributing

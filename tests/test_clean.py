@@ -1,16 +1,30 @@
-# type: ignore
-"""Test the inspect command."""
+"""Test the vidcleaner clean subcommand."""
 
+from pathlib import Path
+
+import cappa
 import pytest
 from iso639 import Lang
-from typer.testing import CliRunner
 
-from tests.pytest_functions import strip_ansi
-from vid_cleaner.config import VidCleanerConfig
-from vid_cleaner.models.video_file import VideoFile
-from vid_cleaner.vid_cleaner import app
+from vid_cleaner.vidcleaner import VidCleaner
 
-runner = CliRunner()
+from vid_cleaner.models.video_file import VideoFile  # isort: skip
+from vid_cleaner.utils import settings
+
+
+def test_fail_on_flag_conflict(debug, tmp_path, clean_stdout, mock_video_path):
+    """Test that the command fails when a flag conflict is detected."""
+    args = ["clean", "--h265", "--vp9", str(mock_video_path)]
+    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args)
+
+    output = clean_stdout()
+    debug(output, "output")
+
+    assert exc_info.value.code == 1
+    assert "Cannot convert to both H265 and VP9" in output
 
 
 @pytest.mark.parametrize(
@@ -25,24 +39,24 @@ runner = CliRunner()
         pytest.param(
             ["--downmix"],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
-            "✔ Process file (downmix to stereo)",
+            "✔ Process file (downmix to stereo, drop unwanted subtitles)",
             id="Don't convert audio to stereo when stereo exists",
         ),
         pytest.param(
             ["--keep-commentary"],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:5",
-            "✔ Process file (keep commentary)",
+            "✔ Process file (keep commentary, drop unwanted subtitles)",
             id="Keep commentary",
         ),
         pytest.param(
             ["--drop-original"],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
-            "✔ Process file (drop original audio)",
+            "✔ Process file (drop original audio, drop unwanted subtitles)",
             id="Keep local language from config even when dropped",
         ),
         pytest.param(
             ["--langs", "fr,es"],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4 -map 0:8",
+            "-map 0:0 -map 0:3 -map 0:8",
             "✔ Process file (drop unwanted subtitles)",
             id="Keep specified languages",
         ),
@@ -60,42 +74,50 @@ runner = CliRunner()
         ),
     ],
 )
-def test_clean_video_process_streams(
+def test_stream_processing(
+    debug,
     mocker,
     mock_ffprobe,
-    mock_video,
-    mock_config,
     mock_ffmpeg,
-    debug,
+    clean_stdout,
+    mock_video_path,
+    tmp_path,
     args,
     command_expected,
     process_output,
-):
-    """Verify that video cleaning correctly processes streams without reordering."""
-    # GIVEN an English video with correctly ordered streams
+) -> None:
+    """Test video stream processing and mapping.
+
+    Verify that stream mapping is correctly applied based on input arguments and that expected output messages are displayed.
+    """
+    args = ["clean", "-vv", *args, str(mock_video_path)]
+    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+
+    # And: Mock external dependencies
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
     )
-    mocker.patch("vid_cleaner.cli.clean.tmp_to_output", return_value="cleaned_video.mkv")
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+    mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
-    # WHEN running the clean command with the specified arguments
-    with VidCleanerConfig.change_config_sources(mock_config()):
-        result = runner.invoke(app, ["-vv", "clean", *args, str(mock_video.path)])
+    # When: Processing the video file
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args)
 
-    output = strip_ansi(result.output)
+    output = clean_stdout()
+    # debug(output, "output")
 
-    # THEN verify the ffmpeg command contains expected stream mappings
+    # Then: FFmpeg is called with correct stream mapping
     mock_ffmpeg.assert_called_once()
     args, _ = mock_ffmpeg.call_args
     command = " ".join(args[0])
-
-    # AND verify the command output indicates successful processing
-    assert result.exit_code == 0
     assert command_expected in command
+
+    # And: Success messages are displayed
+    assert exc_info.value.code == 0
     assert "✔ No streams to reorder" in output
     assert process_output in output
-    assert "✅ cleaned_video.mkv" in output
+    assert "✅ Success: cleaned_video.mkv" in output
 
 
 @pytest.mark.parametrize(
@@ -103,7 +125,7 @@ def test_clean_video_process_streams(
     [
         pytest.param(
             [],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4 -map 0:6",
+            "-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:6",
             "✔ Process file (drop unwanted subtitles)",
             id="Defaults keep local and original audio, local subs",
         ),
@@ -115,7 +137,7 @@ def test_clean_video_process_streams(
         ),
         pytest.param(
             ["--drop-local-subs"],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4",
+            "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
             "✔ Process file",
             id="Drop local subs",
         ),
@@ -123,9 +145,10 @@ def test_clean_video_process_streams(
 )
 def test_clean_video_foreign_language(
     mocker,
+    mock_video_path,
+    clean_stdout,
+    tmp_path,
     mock_ffprobe,
-    mock_video,
-    mock_config,
     mock_ffmpeg,
     debug,
     args,
@@ -133,18 +156,22 @@ def test_clean_video_foreign_language(
     process_output,
 ):
     """Verify that video cleaning correctly processes foreign language videos."""
-    # GIVEN a French video with correctly ordered streams
+    args = ["clean", "-vv", *args, str(mock_video_path)]
+    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+
+    # And: Mock external dependencies
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
     )
-    mocker.patch("vid_cleaner.cli.clean.tmp_to_output", return_value="cleaned_video.mkv")
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("fr"))
+    mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("fr")])
 
-    # WHEN running the clean command with the specified arguments
-    with VidCleanerConfig.change_config_sources(mock_config()):
-        result = runner.invoke(app, ["-vv", "clean", *args, str(mock_video.path)])
+    # When: Processing the video file
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args)
 
-    output = strip_ansi(result.output)
+    output = clean_stdout()
+    debug(output, "output")
 
     # THEN verify the ffmpeg command contains expected stream mappings
     mock_ffmpeg.assert_called_once()
@@ -152,11 +179,13 @@ def test_clean_video_foreign_language(
     command = " ".join(args[0])
 
     # AND verify the command output indicates successful processing
-    assert result.exit_code == 0
+    assert exc_info.value.code == 0
+    debug(command_expected, "command_expected")
+    debug(command, "command")
     assert command_expected in command
     assert "✔ No streams to reorder" in output
     assert process_output in output
-    assert "✅ cleaned_video.mkv" in output
+    assert "✅ Success: cleaned_video.mkv" in output
 
 
 @pytest.mark.parametrize(
@@ -179,8 +208,9 @@ def test_clean_video_foreign_language(
 def test_clean_video_downmix(
     mocker,
     mock_ffprobe,
-    mock_video,
-    mock_config,
+    mock_video_path,
+    clean_stdout,
+    tmp_path,
     mock_ffmpeg,
     debug,
     args,
@@ -188,30 +218,34 @@ def test_clean_video_downmix(
     process_output,
 ):
     """Verify that videos without stereo audio are correctly downmixed."""
-    # GIVEN a video in English with correct stream order but no stereo audio
+    args = ["clean", "-vv", *args, str(mock_video_path)]
+    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+
+    # And: Mock external dependencies
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("no_stereo.json")
     )
-    mocker.patch("vid_cleaner.cli.clean.tmp_to_output", return_value="cleaned_video.mkv")
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+    mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
-    # WHEN running the clean command with the specified arguments
-    with VidCleanerConfig.change_config_sources(mock_config()):
-        result = runner.invoke(app, ["-vv", "clean", *args, str(mock_video.path)])
+    # When: Processing the video file
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args)
 
-    output = strip_ansi(result.output)
+    output = clean_stdout()
+    # debug(output, "output")
 
-    # THEN verify the ffmpeg command contains expected stream mappings
+    # Then: FFmpeg is called with correct stream mapping
     mock_ffmpeg.assert_called_once()
     args, _ = mock_ffmpeg.call_args
     command = " ".join(args[0])
-
-    # AND verify the command output indicates successful processing
-    assert result.exit_code == 0
     assert command_expected in command
+
+    # And: Success messages are displayed
+    assert exc_info.value.code == 0
     assert "✔ No streams to reorder" in output
     assert process_output in output
-    assert "✅ cleaned_video.mkv" in output
+    assert "✅ Success: cleaned_video.mkv" in output
 
 
 @pytest.mark.parametrize(
@@ -229,8 +263,9 @@ def test_clean_video_downmix(
 def test_clean_reorganize_streams(
     mocker,
     mock_ffprobe,
-    mock_video,
-    mock_config,
+    mock_video_path,
+    tmp_path,
+    clean_stdout,
     mock_ffmpeg,
     debug,
     args,
@@ -239,18 +274,22 @@ def test_clean_reorganize_streams(
     process_output,
 ):
     """Verify that videos with incorrect stream order are properly reorganized."""
-    # GIVEN a video with incorrect stream order (video, audio, subtitle streams not in standard order)
+    args = ["clean", "-vv", *args, str(mock_video_path)]
+    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+
+    # And: Mock external dependencies
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("wrong_order.json")
     )
-    mocker.patch("vid_cleaner.cli.clean.tmp_to_output", return_value="cleaned_video.mkv")
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+    mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
-    # WHEN running the clean command on the video
-    with VidCleanerConfig.change_config_sources(mock_config()):
-        result = runner.invoke(app, ["-vv", "clean", *args, str(mock_video.path)])
+    # When: Processing the video file
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args)
 
-    output = strip_ansi(result.output)
+    output = clean_stdout()
+    # debug(output, "output")
 
     # THEN verify ffmpeg is called twice - once to reorder streams and once to process them
     assert mock_ffmpeg.call_count == 2
@@ -264,10 +303,10 @@ def test_clean_reorganize_streams(
     assert second_command_expected in second_command
 
     # AND verify the command output indicates successful processing
-    assert result.exit_code == 0
+    assert exc_info.value.code == 0
     assert "✔ Reorder streams" in output
     assert process_output in output
-    assert "✅ cleaned_video.mkv" in output
+    assert "✅ Success: cleaned_video.mkv" in output
 
 
 @pytest.mark.parametrize(
@@ -292,9 +331,10 @@ def test_clean_reorganize_streams(
 def test_convert_video(
     mocker,
     mock_ffprobe,
-    mock_video,
-    mock_config,
+    mock_video_path,
+    tmp_path,
     mock_ffmpeg,
+    clean_stdout,
     debug,
     args,
     first_command_expected,
@@ -302,21 +342,25 @@ def test_convert_video(
     process_output,
 ):
     """Verify video stream conversion with different codecs."""
-    # GIVEN a video file with English audio and properly ordered streams
+    args = ["clean", "-vv", *args, str(mock_video_path)]
+    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+
+    # And: Mock external dependencies
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
     )
-    mocker.patch("vid_cleaner.cli.clean.tmp_to_output", return_value="cleaned_video.mkv")
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+    mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
     mocker.patch.object(
-        VideoFile, "_get_input_and_output", return_value=(mock_video.path, mock_video.path)
+        VideoFile, "_get_input_and_output", return_value=(mock_video_path, mock_video_path)
     )
 
-    # WHEN running the clean command with codec conversion arguments
-    with VidCleanerConfig.change_config_sources(mock_config()):
-        result = runner.invoke(app, ["-vv", "clean", *args, str(mock_video.path)])
+    # When: Processing the video file
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args)
 
-    output = strip_ansi(result.output)
+    output = clean_stdout()
+    debug(output, "output")
 
     # THEN verify ffmpeg executes two passes
     assert mock_ffmpeg.call_count == 2
@@ -330,9 +374,9 @@ def test_convert_video(
     assert second_command_expected in second_command
 
     # AND verify successful completion with expected output messages
-    assert result.exit_code == 0
+    assert exc_info.value.code == 0
     assert first_command_expected in first_command
     assert second_command_expected in second_command
     assert "✔ No streams to reorder" in output
     assert process_output in output
-    assert "✅ cleaned_video.mkv" in output
+    assert "✅ Success: cleaned_video.mkv" in output
