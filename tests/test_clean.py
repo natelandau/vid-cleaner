@@ -13,16 +13,17 @@ from vid_cleaner.utils import settings
 
 
 def test_fail_on_flag_conflict(debug, tmp_path, clean_stdout, mock_video_path):
-    """Test that the command fails when a flag conflict is detected."""
+    """Verify clean command fails when incompatible flags are used."""
+    # Given: Conflicting codec conversion flags
     args = ["clean", "--h265", "--vp9", str(mock_video_path)]
     settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
 
+    # When: Running clean command with conflicting flags
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args)
 
+    # Then: Error message is displayed
     output = clean_stdout()
-    debug(output, "output")
-
     assert exc_info.value.code == 1
     assert "Cannot convert to both H265 and VP9" in output
 
@@ -86,21 +87,19 @@ def test_stream_processing(
     command_expected,
     process_output,
 ) -> None:
-    """Test video stream processing and mapping.
-
-    Verify that stream mapping is correctly applied based on input arguments and that expected output messages are displayed.
-    """
+    """Verify clean command processes video streams according to specified options."""
+    # Given: Mock video file and processing options
     args = ["clean", "-vv", *args, str(mock_video_path)]
     settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
 
-    # And: Mock external dependencies
+    # And: Mocked external dependencies
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
     )
     mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
-    # When: Processing the video file
+    # When: Running clean command
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args)
 

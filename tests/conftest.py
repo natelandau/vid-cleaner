@@ -38,47 +38,33 @@ def clean_stdout(capsys: pytest.CaptureFixture[str]) -> Callable[[], str]:
 
 @pytest.fixture
 def debug() -> Callable[[str | Path, str, bool, int], bool]:
-    """Return a debug printing function for test development and troubleshooting.
+    """Create a debug printing function for test development.
 
-    Create and return a function that prints formatted debug output to the console during test development and debugging. The returned function allows printing variables, file contents, or directory structures with clear visual separation and optional breakpoints.
+    Return a function that prints formatted debug output with clear visual separation and optional breakpoints. Useful for inspecting variables, file contents, or directory structures during test development.
 
     Returns:
-        Callable[[str | Path, str, bool, int], bool]: A function that prints debug info with
-            the following parameters:
-            - value: The data to debug print (string or Path)
-            - label: Optional header text for the output
+        Callable[[str | Path, str, bool, int], bool]: Debug printing function with parameters:
+            - value: Data to debug print (string or Path)
+            - label: Optional header text
             - breakpoint: Whether to pause execution after printing
             - width: Maximum output width in characters
-
-    Example:
-        def test_complex_data(debug):
-            result = process_data()
-            debug(result, "Processed Data", breakpoint=True)
     """
 
     def _debug_inner(
         value: str | Path, label: str = "", *, breakpoint: bool = False, width: int = 80
     ) -> bool:
-        """Print debug information during test development and debugging sessions.
+        """Print formatted debug information during test development.
 
-        Print formatted debug output to the console with optional breakpoints. This is particularly useful when developing or debugging tests to inspect variables, file contents, or directory structures. The output is formatted with a labeled header and footer rule for clear visual separation.
+        Format and display debug output with labeled headers and clear visual separation. Supports printing file contents, directory structures, and variable values with optional execution breakpoints.
 
         Args:
-            value (Union[str, Path]): The value to debug print. If a Path to a directory is provided, recursively prints all files in that directory tree.
-            label (str): Optional header text to display above the debug output for context.
-            breakpoint (bool, optional): If True, raises a pytest.fail() after printing to pause execution. Defaults to False.
-            width (int, optional): Maximum width in characters for the console output. Matches pytest's default width of 80 when running without the -s flag. Defaults to 80.
+            value (str | Path): Value to debug print. For Path objects, prints directory tree
+            label (str): Optional header text for context
+            breakpoint (bool, optional): Pause execution after printing. Defaults to False
+            width (int, optional): Maximum output width. Defaults to 80
 
         Returns:
-            bool: Always returns True unless breakpoint=True, in which case raises pytest.fail()
-
-        Example:
-            def test_something(debug):
-                # Print contents of a directory
-                debug(Path("./test_data"), "Test Data Files")
-
-                # Print a variable with a breakpoint
-                debug(my_var, "Debug my_var", breakpoint=True)
+            bool: True unless breakpoint is True, then raises pytest.fail()
         """
         console.rule(label or "")
 

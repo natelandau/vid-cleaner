@@ -8,14 +8,16 @@ from vid_cleaner.vidcleaner import CleanCommand, VidCleaner
 
 
 def main(cmd: VidCleaner, clean_cmd: CleanCommand) -> None:
-    """Process video files to extract clips based on start time and duration.
+    """Process video files according to specified cleaning options.
+
+    Apply video processing operations like stream reordering, audio/subtitle filtering, and format conversion based on command line arguments.
 
     Args:
-        cmd (VidCleaner): The main command object containing global options and configuration.
-        clean_cmd (CleanCommand): The clean subcommand object containing clean-specific options.
+        cmd (VidCleaner): Global command options and configuration
+        clean_cmd (CleanCommand): Clean-specific command options
 
     Raises:
-        cappa.Exit: If start or duration times are not in HH:MM:SS format.
+        cappa.Exit: If incompatible options are specified (e.g., both H265 and VP9)
     """
     settings.update(
         {

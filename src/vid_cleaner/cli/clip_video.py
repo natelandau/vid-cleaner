@@ -10,14 +10,16 @@ from vid_cleaner.vidcleaner import ClipCommand, VidCleaner
 
 
 def main(cmd: VidCleaner, clip_cmd: ClipCommand) -> None:
-    """Process video files to extract clips based on start time and duration.
+    """Extract video clips based on start time and duration.
+
+    Create video clips by copying a section of the source video without re-encoding. Useful for extracting highlights or samples from longer videos.
 
     Args:
-        cmd (VidCleaner): The main command object containing global options and configuration.
-        clip_cmd (ClipCommand): The clip subcommand object containing clip-specific options.
+        cmd (VidCleaner): Global command options and configuration
+        clip_cmd (ClipCommand): Clip-specific command options
 
     Raises:
-        cappa.Exit: If start or duration times are not in HH:MM:SS format.
+        cappa.Exit: If start or duration times are not in HH:MM:SS format
     """
     settings.update(
         {

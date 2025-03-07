@@ -58,12 +58,12 @@ settings.validators.register(
 
 
 def validate_settings() -> Dynaconf:
-    """Validate configuration settings against registered validators.
+    """Validate all registered configuration settings.
 
-    Validate all registered validators for the Dynaconf settings object. This ensures configuration values meet expected types and constraints before the application runs.
+    Ensure configuration values meet expected types and constraints before the application runs. This validation step prevents runtime errors from invalid settings.
 
     Args:
-        settings (Dynaconf): The Dynaconf settings object to validate
+        None
 
     Returns:
         Dynaconf: The validated settings object

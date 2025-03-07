@@ -80,17 +80,16 @@ class VideoProbe:
 
     @classmethod
     def parse_probe_response(cls, json_obj: dict, stem: str) -> "VideoProbe":
-        """Parse ffprobe JSON object and create a VideoProbe instance.
+        """Parse ffprobe JSON output into a VideoProbe object.
 
-        This method extracts relevant information from the ffprobe JSON output
-        and constructs a VideoProbe object with structured data about the video file.
+        Extract relevant stream and format information from ffprobe's JSON output and create a structured VideoProbe instance.
 
         Args:
-            json_obj (dict): The JSON object containing ffprobe output.
-            stem (str): The stem of the filename, used as a fallback for the video name.
+            json_obj (dict): Raw ffprobe JSON output
+            stem (str): Base filename without extension
 
         Returns:
-            VideoProbe: A VideoProbe object containing parsed information about the video file.
+            VideoProbe: Structured representation of the video file's properties
         """
         # Find name
         if "title" in json_obj["format"]["tags"]:
@@ -135,12 +134,12 @@ class VideoProbe:
         )
 
     def as_table(self) -> Table:
-        """Return the video probe information as a formatted rich table.
+        """Format video stream information as a Rich table.
+
+        Create a formatted table showing details about video, audio and subtitle streams for display in the terminal.
 
         Returns:
-            Table: A rich Table object containing formatted video probe information.
-                The table includes columns for stream index, type, codec name,
-                language, channels, channel layout, width, height, and title.
+            Table: Rich table containing stream information
         """
         table = Table(title=self.name)
         table.add_column("#")
@@ -272,12 +271,12 @@ class VideoFile:
         return downmix_command
 
     def _find_original_language(self) -> Lang:  # pragma: no cover
-        """Determine the original language of the video.
+        """Find the original language of the video content.
 
-        Query various sources like IMDb, TMDB, Radarr, and Sonarr to identify the original language. Perform this operation only once and cache the result. Return the determined language or None if it cannot be found.
+        Query external APIs (IMDb, TMDB, Radarr, Sonarr) to determine the original language. Cache results to avoid repeated API calls.
 
         Returns:
-            Lang: An object representing the original language, or None if not found.
+            Lang: The determined original language code
         """
         # Only run the API calls once
         if self.ran_language_check:
@@ -850,10 +849,12 @@ class VideoFile:
         return self._run_ffmpeg(command, title="Reorder streams", step="reorder")
 
     def video_to_1080p(self) -> Path:
-        """Convert the video to 1080p resolution.
+        """Convert video resolution to 1080p.
+
+        Scale video dimensions to 1920x1080 while maintaining aspect ratio. Only converts videos larger than 1080p unless forced.
 
         Returns:
-          Path: to the converted video file if the video is not already 1080p. If the video is already 1080p, the original video file path is returned.
+            Path: Path to the converted video file, or original path if no conversion needed
         """
         input_path, _ = self._get_input_and_output()
 
@@ -891,7 +892,13 @@ class VideoFile:
         return self._run_ffmpeg(command, title="Convert to 1080p", step="1080p")
 
     def as_stream_table(self) -> Table:
-        """Return the video probe as a rich table."""
+        """Format video stream information as a Rich table.
+
+        Create a formatted table showing details about video, audio and subtitle streams for display in the terminal.
+
+        Returns:
+            Table: Rich table containing stream information
+        """
         probe = self._get_probe()
         return probe.as_table()
 

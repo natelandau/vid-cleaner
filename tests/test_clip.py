@@ -20,16 +20,17 @@ from vid_cleaner.utils import settings
     ],
 )
 def test_clip_option_errors(debug, tmp_path, clean_stdout, mock_video_path, args, expected):
-    """Test that the command fails when a flag conflict is detected."""
+    """Verify clip command validates time format arguments."""
+    # Given: Invalid time format arguments
     args = ["clip", *args, str(mock_video_path)]
     settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
 
+    # When: Running clip command with invalid arguments
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args)
 
+    # Then: Error message is displayed
     output = clean_stdout()
-    # debug(output, "output")
-
     assert exc_info.value.code == 1
     assert expected in output
 
@@ -54,17 +55,18 @@ def test_clipping_video(
     args,
     expected,
 ):
-    """Verify clip command correctly processes video with given start time and duration."""
+    """Verify clip command extracts video segment with specified time range."""
+    # Given: Mock video file and time range arguments
     args = ["clip", *args, str(mock_video_path)]
     settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
 
-    # GIVEN mocked video metadata and output path
+    # And: Mocked video metadata and output path
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
     )
     mocker.patch("vid_cleaner.cli.clip_video.tmp_to_output", return_value="clipped_video.mkv")
 
-    # When: Processing the video file
+    # When: Running clip command
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args)
 
@@ -75,10 +77,10 @@ def test_clipping_video(
     mock_ffmpeg.assert_called_once()
     args, _ = mock_ffmpeg.call_args
     command = " ".join(args[0])
-
-    # AND verify command completed successfully
-    assert exc_info.value.code == 0
     assert expected in command
+
+    # And: Success message is displayed
+    assert exc_info.value.code == 0
     assert "✅ Success: clipped_video.mkv" in output
 
 
@@ -101,17 +103,18 @@ def test_clipping_video_dryrun(
     debug,
     args,
 ):
-    """Verify dry-run mode shows expected command without executing ffmpeg."""
+    """Verify clip command dry-run shows command without execution."""
+    # Given: Mock video file and dry-run flag
     args = ["clip", "-n", *args, str(mock_video_path)]
     settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
 
-    # GIVEN mocked video metadata and output path
+    # And: Mocked video metadata and output path
     mocker.patch(
         "vid_cleaner.models.video_file.ffprobe", return_value=mock_ffprobe("reference.json")
     )
     mocker.patch("vid_cleaner.cli.clip_video.tmp_to_output", return_value="clipped_video.mkv")
 
-    # When: Processing the video file
+    # When: Running clip command in dry-run mode
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args)
 
