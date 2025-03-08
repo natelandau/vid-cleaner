@@ -8,6 +8,8 @@ from pathlib import Path
 import pytest
 from rich.console import Console
 
+from vid_cleaner.utils import get_probe_as_box
+
 console = Console()
 
 
@@ -100,6 +102,31 @@ def mock_video_path(tmp_path):
     test_path = Path(tmp_path / "test_video.mp4")
     test_path.touch()  # Create a dummy file
     return test_path
+
+
+@pytest.fixture
+def mock_ffprobe_box(mocker):
+    """Return mocked JSON response from ffprobe."""
+
+    def _inner(filename: str):
+        fixture = Path(__file__).resolve().parent / "fixtures/ffprobe" / filename
+
+        cleaned_content = []  # Remove comments from JSON
+        with fixture.open() as f:
+            for line in f.readlines():
+                # Remove comments
+                if "//" in line:
+                    continue
+                cleaned_content.append(line)
+
+        mocker.patch(
+            "vid_cleaner.utils.ffmpeg_utils.run_ffprobe",
+            return_value=json.loads("".join(line for line in cleaned_content)),
+        )
+
+        return get_probe_as_box(fixture)
+
+    return _inner
 
 
 @pytest.fixture

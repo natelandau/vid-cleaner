@@ -10,14 +10,14 @@ from vid_cleaner.utils import settings
 from vid_cleaner.vidcleaner import VidCleaner
 
 
-def test_inspect_table(tmp_path, clean_stdout, debug, mock_video_path, mock_ffprobe, mocker):
+def test_inspect_table(tmp_path, clean_stdout, debug, mock_video_path, mock_ffprobe_box, mocker):
     """Verify inspect command displays video information in table format."""
     # Given: Mock video file and ffprobe data
     args = ["inspect", str(mock_video_path)]
     settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
     mocker.patch(
-        "vid_cleaner.models.video_file.run_ffprobe",
-        return_value=mock_ffprobe("reference.json"),
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
     )
 
     # When: Running inspect command

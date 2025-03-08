@@ -79,7 +79,7 @@ def test_fail_on_flag_conflict(debug, tmp_path, clean_stdout, mock_video_path):
 def test_stream_processing(
     debug,
     mocker,
-    mock_ffprobe,
+    mock_ffprobe_box,
     mock_ffmpeg,
     clean_stdout,
     mock_video_path,
@@ -95,8 +95,8 @@ def test_stream_processing(
 
     # And: Mocked external dependencies
     mocker.patch(
-        "vid_cleaner.models.video_file.run_ffprobe",
-        return_value=mock_ffprobe("reference.json"),
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
     )
     mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
@@ -149,7 +149,7 @@ def test_clean_video_foreign_language(
     mock_video_path,
     clean_stdout,
     tmp_path,
-    mock_ffprobe,
+    mock_ffprobe_box,
     mock_ffmpeg,
     debug,
     args,
@@ -162,8 +162,8 @@ def test_clean_video_foreign_language(
 
     # And: Mock external dependencies
     mocker.patch(
-        "vid_cleaner.models.video_file.run_ffprobe",
-        return_value=mock_ffprobe("reference.json"),
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
     )
     mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("fr")])
@@ -173,7 +173,7 @@ def test_clean_video_foreign_language(
         cappa.invoke(obj=VidCleaner, argv=args)
 
     output = clean_stdout()
-    debug(output, "output")
+    # debug(output, "output")
 
     # THEN verify the ffmpeg command contains expected stream mappings
     mock_ffmpeg.assert_called_once()
@@ -182,8 +182,6 @@ def test_clean_video_foreign_language(
 
     # AND verify the command output indicates successful processing
     assert exc_info.value.code == 0
-    debug(command_expected, "command_expected")
-    debug(command, "command")
     assert command_expected in command
     assert "✔ No streams to reorder" in output
     assert process_output in output
@@ -209,7 +207,7 @@ def test_clean_video_foreign_language(
 )
 def test_clean_video_downmix(
     mocker,
-    mock_ffprobe,
+    mock_ffprobe_box,
     mock_video_path,
     clean_stdout,
     tmp_path,
@@ -225,8 +223,8 @@ def test_clean_video_downmix(
 
     # And: Mock external dependencies
     mocker.patch(
-        "vid_cleaner.models.video_file.run_ffprobe",
-        return_value=mock_ffprobe("no_stereo.json"),
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("no_stereo.json"),
     )
     mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
@@ -265,7 +263,7 @@ def test_clean_video_downmix(
 )
 def test_clean_reorganize_streams(
     mocker,
-    mock_ffprobe,
+    mock_ffprobe_box,
     mock_video_path,
     tmp_path,
     clean_stdout,
@@ -282,8 +280,8 @@ def test_clean_reorganize_streams(
 
     # And: Mock external dependencies
     mocker.patch(
-        "vid_cleaner.models.video_file.run_ffprobe",
-        return_value=mock_ffprobe("wrong_order.json"),
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("wrong_order.json"),
     )
     mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
@@ -334,7 +332,7 @@ def test_clean_reorganize_streams(
 )
 def test_convert_video(
     mocker,
-    mock_ffprobe,
+    mock_ffprobe_box,
     mock_video_path,
     tmp_path,
     mock_ffmpeg,
@@ -351,8 +349,8 @@ def test_convert_video(
 
     # And: Mock external dependencies
     mocker.patch(
-        "vid_cleaner.models.video_file.run_ffprobe",
-        return_value=mock_ffprobe("reference.json"),
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
     )
     mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
@@ -364,7 +362,7 @@ def test_convert_video(
         cappa.invoke(obj=VidCleaner, argv=args)
 
     output = clean_stdout()
-    debug(output, "output")
+    # debug(output, "output")
 
     # THEN verify ffmpeg executes two passes
     assert mock_ffmpeg.call_count == 2

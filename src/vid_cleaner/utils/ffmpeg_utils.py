@@ -4,8 +4,9 @@ from pathlib import Path
 
 import cappa
 import ffmpeg as python_ffmpeg
+from box import Box
 
-from vid_cleaner.constants import AudioLayout
+from vid_cleaner.constants import AudioLayout, CodecTypes
 
 from .printer import pp
 
@@ -62,3 +63,40 @@ def run_ffprobe(path: Path) -> dict:  # pragma: no cover
         raise cappa.Exit(code=1) from e
 
     return probe
+
+
+def get_probe_as_box(input_path: Path) -> Box:
+    """Parse ffprobe output into a Box object with normalized stream and format data.
+
+    Convert the raw ffprobe JSON output into a Box object with standardized fields. Extract and normalize metadata like title, format details, duration, and stream properties. Convert codec types and audio channels to enums.
+
+    Args:
+        input_path (Path): Path to the video file to probe
+
+    Returns:
+        Box: Box object containing normalized probe data with fields for format metadata and stream properties
+    """
+    probe_box = Box(
+        run_ffprobe(input_path),
+        default_box=True,
+        default_box_create_on_get=False,
+    )
+
+    probe_box.path_to_file = input_path
+    probe_box.name = probe_box.format.tags.title or probe_box.format.filename or input_path.name
+    probe_box.format_name = probe_box.format.format_name or None
+    probe_box.format_long_name = probe_box.format.format_long_name or None
+    probe_box.duration = probe_box.format.duration or None
+    probe_box.start_time = probe_box.format.start_time or None
+    probe_box.size = probe_box.format.size or None
+    probe_box.bit_rate = probe_box.format.bit_rate or None
+
+    # Set stream codecs to enum
+    for stream in probe_box.streams:
+        stream.codec_type = CodecTypes(stream.codec_type.lower())
+        stream.bps = stream.tags.BPS or None
+        stream.title = stream.tags.title or None
+        stream.channels = channels_to_layout(stream.channels)
+        stream.language = stream.language or stream.tags.language or None
+
+    return probe_box

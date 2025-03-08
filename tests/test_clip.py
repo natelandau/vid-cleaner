@@ -43,7 +43,7 @@ def test_clip_option_errors(debug, tmp_path, clean_stdout, mock_video_path, args
 )
 def test_clipping_video(
     mocker,
-    mock_ffprobe,
+    mock_ffprobe_box,
     clean_stdout,
     mock_video_path,
     tmp_path,
@@ -58,9 +58,10 @@ def test_clipping_video(
     settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
 
     # And: Mocked video metadata and output path
+
     mocker.patch(
-        "vid_cleaner.models.video_file.run_ffprobe",
-        return_value=mock_ffprobe("reference.json"),
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
     )
     mocker.patch("vid_cleaner.cli.clip_video.tmp_to_output", return_value="clipped_video.mkv")
 
@@ -94,7 +95,7 @@ def test_clipping_video(
 def test_clipping_video_dryrun(
     mocker,
     clean_stdout,
-    mock_ffprobe,
+    mock_ffprobe_box,
     mock_video_path,
     tmp_path,
     mock_ffmpeg,
@@ -108,8 +109,8 @@ def test_clipping_video_dryrun(
 
     # And: Mocked video metadata and output path
     mocker.patch(
-        "vid_cleaner.models.video_file.run_ffprobe",
-        return_value=mock_ffprobe("reference.json"),
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
     )
     mocker.patch("vid_cleaner.cli.clip_video.tmp_to_output", return_value="clipped_video.mkv")
 

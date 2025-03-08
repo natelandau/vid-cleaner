@@ -70,7 +70,7 @@ def main(cmd: VidCleaner, clean_cmd: CleanCommand) -> None:
             new_file=settings.out_path,
             overwrite=settings.overwrite,
         )
-        video.cleanup()
+        video.temp_file.clean_up()
 
         if settings.overwrite and out_file != video.path:
             pp.debug(f"Delete: {video.path}")
