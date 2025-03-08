@@ -5,6 +5,7 @@ import cappa
 from vid_cleaner.constants import PrintLevel
 from vid_cleaner.utils import coerce_video_files, console, pp, settings
 from vid_cleaner.vidcleaner import InspectCommand, VidCleaner
+from vid_cleaner.views import stream_table
 
 
 def main(cmd: VidCleaner, inspect_cmd: InspectCommand) -> None:
@@ -30,6 +31,6 @@ def main(cmd: VidCleaner, inspect_cmd: InspectCommand) -> None:
             console.print(video.ffprobe_json())
             continue
 
-        console.print(video.as_stream_table())
+        console.print(stream_table(video.probe_box))
 
     raise cappa.Exit(code=0)

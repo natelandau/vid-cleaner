@@ -84,6 +84,7 @@ class TempFile:
             path (Path): Path to the newly created temporary file
         """
         self.created_tmp_files.append(path)
+        # Always clean old temporary files to minimize the size of the tmp directory
         self.clean_old_tmp_files()
 
     def clean_old_tmp_files(self) -> None:

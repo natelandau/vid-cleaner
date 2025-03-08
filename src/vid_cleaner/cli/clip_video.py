@@ -55,7 +55,7 @@ def main(cmd: VidCleaner, clip_cmd: ClipCommand) -> None:
                 new_file=clip_cmd.out,
                 overwrite=clip_cmd.overwrite,
             )
-            video.cleanup()
+            video.temp_file.clean_up()
             pp.success(f"{out_file}")
 
     raise cappa.Exit(code=0)
