@@ -50,7 +50,7 @@ def main(cmd: VidCleaner, clip_cmd: ClipCommand) -> None:
 
         if not cmd.dry_run:
             out_file = tmp_to_output(
-                video.current_tmp_file,
+                video.temp_file.latest_temp_path(),
                 stem=video.stem,
                 new_file=clip_cmd.out,
                 overwrite=clip_cmd.overwrite,

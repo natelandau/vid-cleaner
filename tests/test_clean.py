@@ -9,6 +9,7 @@ from iso639 import Lang
 from vid_cleaner.vidcleaner import VidCleaner
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
+from vid_cleaner.controllers import TempFile  # isort: skip
 from vid_cleaner.utils import settings
 
 
@@ -94,7 +95,7 @@ def test_stream_processing(
 
     # And: Mocked external dependencies
     mocker.patch(
-        "vid_cleaner.models.video_file.ffprobe",
+        "vid_cleaner.models.video_file.run_ffprobe",
         return_value=mock_ffprobe("reference.json"),
     )
     mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
@@ -161,7 +162,7 @@ def test_clean_video_foreign_language(
 
     # And: Mock external dependencies
     mocker.patch(
-        "vid_cleaner.models.video_file.ffprobe",
+        "vid_cleaner.models.video_file.run_ffprobe",
         return_value=mock_ffprobe("reference.json"),
     )
     mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
@@ -224,7 +225,7 @@ def test_clean_video_downmix(
 
     # And: Mock external dependencies
     mocker.patch(
-        "vid_cleaner.models.video_file.ffprobe",
+        "vid_cleaner.models.video_file.run_ffprobe",
         return_value=mock_ffprobe("no_stereo.json"),
     )
     mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
@@ -281,7 +282,7 @@ def test_clean_reorganize_streams(
 
     # And: Mock external dependencies
     mocker.patch(
-        "vid_cleaner.models.video_file.ffprobe",
+        "vid_cleaner.models.video_file.run_ffprobe",
         return_value=mock_ffprobe("wrong_order.json"),
     )
     mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
@@ -350,16 +351,13 @@ def test_convert_video(
 
     # And: Mock external dependencies
     mocker.patch(
-        "vid_cleaner.models.video_file.ffprobe",
+        "vid_cleaner.models.video_file.run_ffprobe",
         return_value=mock_ffprobe("reference.json"),
     )
     mocker.patch("vid_cleaner.cli.clean_video.tmp_to_output", return_value="cleaned_video.mkv")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
-    mocker.patch.object(
-        VideoFile,
-        "_get_input_and_output",
-        return_value=(mock_video_path, mock_video_path),
-    )
+    mocker.patch.object(TempFile, "new_tmp_path", return_value=(mock_video_path))
+    mocker.patch.object(TempFile, "latest_temp_path", return_value=(mock_video_path))
 
     # When: Processing the video file
     with pytest.raises(cappa.Exit) as exc_info:
