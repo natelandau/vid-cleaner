@@ -90,14 +90,15 @@ The defaults for this command will:
 
 The defaults can be overridden by using the various command line options or by editing the configuration file located at [code]{0}[/code]
 
-[bold underline]Usage Examples[/bold underline]
-
-[#999999]Transcode a video to H265 format and keep English audio:[/#999999]
+**Usage Examples:**
+```shell
+# Transcode a video to H265 format and keep English audio:
 vidcleaner clean --h265 --langs=eng <video_file>
 
-[#999999]Downmix audio to stereo and keep all subtitles:[/#999999]
+# Downmix audio to stereo and keep all subtitles:
 vidcleaner clean --downmix --keep-subs <video_file>
-""",
+```
+    """,
 )
 class CleanCommand:
     """Clean a video file."""

@@ -65,7 +65,7 @@ def main(cmd: VidCleaner, clean_cmd: CleanCommand) -> None:
 
     if not settings.dryrun:
         out_file = tmp_to_output(
-            video.current_tmp_file,
+            video.temp_file.latest_temp_path(),
             stem=video.stem,
             new_file=settings.out_path,
             overwrite=settings.overwrite,

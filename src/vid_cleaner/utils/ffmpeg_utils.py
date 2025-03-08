@@ -43,7 +43,7 @@ def channels_to_layout(channels: int) -> AudioLayout | None:
     return None
 
 
-def ffprobe(path: Path) -> dict:  # pragma: no cover
+def run_ffprobe(path: Path) -> dict:  # pragma: no cover
     """Probe video file and return a dict.
 
     Args:

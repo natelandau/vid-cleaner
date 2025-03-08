@@ -59,7 +59,7 @@ def test_clipping_video(
 
     # And: Mocked video metadata and output path
     mocker.patch(
-        "vid_cleaner.models.video_file.ffprobe",
+        "vid_cleaner.models.video_file.run_ffprobe",
         return_value=mock_ffprobe("reference.json"),
     )
     mocker.patch("vid_cleaner.cli.clip_video.tmp_to_output", return_value="clipped_video.mkv")
@@ -108,7 +108,7 @@ def test_clipping_video_dryrun(
 
     # And: Mocked video metadata and output path
     mocker.patch(
-        "vid_cleaner.models.video_file.ffprobe",
+        "vid_cleaner.models.video_file.run_ffprobe",
         return_value=mock_ffprobe("reference.json"),
     )
     mocker.patch("vid_cleaner.cli.clip_video.tmp_to_output", return_value="clipped_video.mkv")
