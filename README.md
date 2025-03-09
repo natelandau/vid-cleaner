@@ -41,6 +41,8 @@ Run `vidcleaner --help` to see the available commands and options.
 
 Defaults for vid-cleaner are set in the configuration file located at `~/.config/vid-cleaner/config.toml`. When vid-cleaner is run, it will create this file if it does not exist. All options can be overridden on the command line.
 
+If you've updated your user config file, the flags for the cli will work in reverse order. For example, if you've set `downmix_stereo = true` in your user config file, the flag `--downmix` will actually disable downmixing.
+
 **Important:** Vid-cleaner makes decisions about which audio and subtitle tracks to keep based on the original language of the video. This is determined by querying the TMDb, Radarr, andSonarr APIs. To use this functionality, you must add the appropriate API keys to the configuration file.
 
 ```toml

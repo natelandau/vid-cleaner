@@ -42,4 +42,4 @@ We use [Duty](https://pawamoy.github.io/duty/) as a task runner. Run `duty --lis
 
 ## Development Configuration
 
-Override settings while developing by adding a `dev-config.toml` file to the root level of the project. Any settings in this file will override settings in the default (user space) configuration file.
+If you have a user config file, you can override the settings for development by adding a `dev-config.toml` file to the root level of the project. Any settings in this file will override settings in the default (user space) configuration file. You can easily create this file by running `cp src/vid_cleaner/default_config.toml dev-config.toml` from the root of the project.

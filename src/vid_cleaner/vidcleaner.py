@@ -10,40 +10,43 @@ from rich.console import Console
 from rich.traceback import install
 
 from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel
-from vid_cleaner.utils import create_default_config, validate_settings
+from vid_cleaner.utils import create_default_config, settings, validate_settings
 
 console = Console()
 
 
-@cappa.command(name="vidcleaner")
+@cappa.command(
+    name="vidcleaner",
+    description=f"""Transcode video files to different formats or configurations using ffmpeg. This script provides a simple CLI for common video transcoding tasks.
+
+- **Inspect** video files to display detailed stream information
+- **Clip** a section from a video file
+- **Drop audio streams** containing undesired languages or commentary
+- **Drop subtitles** containing undesired languages
+- **Keep subtitles** if original audio is not in desired language
+- **Downmix audio** to stereo
+- **Convert** video files to H265 or VP9
+
+The defaults can be overridden by using the various command line options or by editing the configuration file located at `{USER_CONFIG_PATH}`.
+
+**Usage Examples:**
+```shell
+# Inspect video file:
+vidcleaner inspect <video_file>
+
+# Clip a one minute clip from a video file:
+vidcleaner clip --start=00:00:00 --duration=00:01:00 <video_file>
+
+#Transcode a video to H265 format and keep English audio
+vidcleaner clean --h265 --langs=eng <video_file>
+
+# Downmix audio to stereo and keep all subtitles
+vidcleaner clean --downmix --keep-subs <video_file>
+```
+    """,
+)
 class VidCleaner:
-    """Transcode video files to different formats or configurations using ffmpeg. This script provides a simple CLI for common video transcoding tasks.
-
-    - **Inspect** video files to display detailed stream information
-    - **Clip** a section from a video file
-    - **Drop audio streams** containing undesired languages or commentary
-    - **Drop subtitles** containing undesired languages
-    - **Keep subtitles** if original audio is not in desired language
-    - **Downmix audio** to stereo
-    - **Convert** video files to H265 or VP9
-
-    The defaults can be overridden by using the various command line options or by editing the configuration file located at [code]{0}[/code]
-
-    **Usage Examples:**
-    ```shell
-    # Inspect video file:
-    vidcleaner inspect <video_file>
-
-    # Clip a one minute clip from a video file:
-    vidcleaner clip --start=00:00:00 --duration=00:01:00 <video_file>
-
-    #Transcode a video to H265 format and keep English audio
-    vidcleaner clean --h265 --langs=eng <video_file>
-
-    # Downmix audio to stereo and keep all subtitles
-    vidcleaner clean --downmix --keep-subs <video_file>
-    ```
-    """
+    """Transcode video files to different formats or configurations using ffmpeg. This script provides a simple CLI for common video transcoding tasks."""
 
     command: cappa.Subcommands[CacheCommand | CleanCommand | InspectCommand | ClipCommand]
 
@@ -78,9 +81,7 @@ class VidCleaner:
     description=f"""\
 Transcode video files to different formats or configurations.
 
-Vidcleaner is versatile and allows for a range of transcoding options for video files with various\\
-options. You can select various audio and video settings, manage subtitles, and choose the output\\
-file format.
+Vidcleaner is versatile and allows for a range of transcoding options for video files with various options. You can select various audio and video settings, manage subtitles, and choose the output file format.
 
 The defaults for this command will:
 
@@ -91,6 +92,8 @@ The defaults for this command will:
 * Drop all subtitles unless the original audio is not your local language
 
 Defaults for vid-cleaner are set in the configuration file located at `{USER_CONFIG_PATH}`. When vid-cleaner is run, it will create this file if it does not exist. All options can be overridden on the command line.
+
+**NOTE:** If you've updated your user config file, the flags for the cli will work in reverse order. For example, if you've set `downmix_stereo = true` in your user config file, the flag `--downmix` will actually disable downmixing.
 
 **Important:** Vid-cleaner makes decisions about which audio and subtitle tracks to keep based on the original language of the video. This is determined by querying the TMDb, Radarr, andSonarr APIs. To use this functionality, you must add the appropriate API keys to the configuration file.
 
@@ -136,7 +139,7 @@ class CleanCommand:
             show_default=True,
             group="Configuration",
         ),
-    ] = False
+    ] = settings.downmix_stereo
     drop_original_audio: Annotated[
         bool,
         cappa.Arg(
@@ -145,7 +148,7 @@ class CleanCommand:
             show_default=True,
             group="Configuration",
         ),
-    ] = False
+    ] = settings.drop_original_audio
     keep_all_subtitles: Annotated[
         bool,
         cappa.Arg(
@@ -154,7 +157,7 @@ class CleanCommand:
             show_default=True,
             group="Configuration",
         ),
-    ] = False
+    ] = settings.keep_all_subtitles
     save_each_step: Annotated[
         bool,
         cappa.Arg(
@@ -163,7 +166,7 @@ class CleanCommand:
             show_default=True,
             group="Configuration",
         ),
-    ] = False
+    ] = settings.save_each_step
     keep_commentary: Annotated[
         bool,
         cappa.Arg(
@@ -172,7 +175,7 @@ class CleanCommand:
             show_default=True,
             group="Configuration",
         ),
-    ] = False
+    ] = settings.keep_commentary
     keep_local_subtitles: Annotated[
         bool,
         cappa.Arg(
@@ -181,7 +184,7 @@ class CleanCommand:
             show_default=True,
             group="Configuration",
         ),
-    ] = False
+    ] = settings.keep_local_subtitles
     drop_local_subs: Annotated[
         bool,
         cappa.Arg(
@@ -190,7 +193,7 @@ class CleanCommand:
             show_default=True,
             group="Configuration",
         ),
-    ] = False
+    ] = settings.drop_local_subs
     langs_to_keep: Annotated[
         str,
         cappa.Arg(
@@ -199,7 +202,7 @@ class CleanCommand:
             show_default=True,
             group="Configuration",
         ),
-    ] = None
+    ] = settings.langs_to_keep
     h265: Annotated[
         bool,
         cappa.Arg(

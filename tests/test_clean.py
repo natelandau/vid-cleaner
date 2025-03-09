@@ -14,7 +14,7 @@ from vid_cleaner.utils import settings
 
 
 @pytest.fixture(autouse=True)
-def set_default_settings(tmp_path):
+def set_default_settings(tmp_path, mocker):
     """Set default settings for tests."""
     cache_dir = Path(tmp_path) / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -28,8 +28,37 @@ def set_default_settings(tmp_path):
             "drop_local_subs": False,
             "keep_all_subtitles": False,
             "drop_original_audio": False,
+            "save_each_step": False,
         }
     )
+
+    # from dynaconf import Dynaconf
+    # from dynaconf.utils import DynaconfDict
+
+    # path_to_config = tmp_path / "vid-cleaner.toml"
+    # path_to_config.touch()
+    # mocked_settings = Dynaconf(
+    #     settings_files=[path_to_config],
+    #     environments=False,
+    #     load_dotenv=False,
+    # )
+    # mocked_settings.update(
+    #     {
+    #         "cache_dir": cache_dir,
+    #         "langs_to_keep": ["en"],
+    #         "downmix_stereo": False,
+    #         "keep_local_subtitles": False,
+    #         "keep_commentary": False,
+    #         "drop_local_subs": False,
+    #         "keep_all_subtitles": False,
+    #         "drop_original_audio": False,
+    #         "save_each_step": False,
+    #         # "dryrun": False,
+    #     }
+    # )
+    # mocker.patch("vid_cleaner.vidcleaner.settings", mocked_settings)
+    # mocker.patch("vid_cleaner.cli.clean_video.settings", mocked_settings)
+    # mocker.patch("vid_cleaner.models.video_file.settings", mocked_settings)
 
 
 def test_fail_on_flag_conflict(debug, tmp_path, clean_stdout, mock_video_path):
