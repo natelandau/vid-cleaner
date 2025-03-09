@@ -1,11 +1,14 @@
 """Utilities for CLI."""
 
+import shutil
 from pathlib import Path
 
 import cappa
 
-from vid_cleaner.constants import VideoContainerTypes
+from vid_cleaner.constants import DEFAULT_CONFIG_PATH, USER_CONFIG_PATH, VideoContainerTypes
 from vid_cleaner.models.video_file import VideoFile
+
+from .printer import pp
 
 
 def coerce_video_files(files: list[Path]) -> list[VideoFile]:
@@ -34,3 +37,15 @@ def coerce_video_files(files: list[Path]) -> list[VideoFile]:
             raise cappa.Exit(msg, code=1)
 
     return [VideoFile(path.expanduser().resolve().absolute()) for path in files]
+
+
+def create_default_config() -> None:
+    """Create a default configuration file.
+
+    Create a new configuration file at the default user location if one does not already exist. Copy the default configuration template to initialize the file.
+    """
+    if not USER_CONFIG_PATH.exists():
+        USER_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        USER_CONFIG_PATH.touch(exist_ok=True)
+        shutil.copy(DEFAULT_CONFIG_PATH, USER_CONFIG_PATH)
+        pp.info(f"Default configuration file created: `{USER_CONFIG_PATH}`")

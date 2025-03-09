@@ -17,7 +17,7 @@ def test_fail_on_flag_conflict(debug, tmp_path, clean_stdout, mock_video_path):
     """Verify clean command fails when incompatible flags are used."""
     # Given: Conflicting codec conversion flags
     args = ["clean", "--h265", "--vp9", str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+    settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
 
     # When: Running clean command with conflicting flags
     with pytest.raises(cappa.Exit) as exc_info:
@@ -91,7 +91,20 @@ def test_stream_processing(
     """Verify clean command processes video streams according to specified options."""
     # Given: Mock video file and processing options
     args = ["clean", "-vv", *args, str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+    settings.update(
+        {
+            "cache_dir": Path(tmp_path),
+            "langs_to_keep": ["en"],
+            "downmix_stereo": False,
+            "keep_local_subtitles": False,
+            "keep_commentary": False,
+            "drop_local_subs": False,
+            "keep_all_subtitles": False,
+            "drop_original_audio": False,
+        }
+    )
+
+    debug(settings.as_dict())
 
     # And: Mocked external dependencies
     mocker.patch(
@@ -158,7 +171,18 @@ def test_clean_video_foreign_language(
 ):
     """Verify that video cleaning correctly processes foreign language videos."""
     args = ["clean", "-vv", *args, str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+    settings.update(
+        {
+            "cache_dir": Path(tmp_path),
+            "langs_to_keep": ["en"],
+            "downmix_stereo": False,
+            "keep_local_subtitles": False,
+            "keep_commentary": False,
+            "drop_local_subs": False,
+            "keep_all_subtitles": False,
+            "drop_original_audio": False,
+        }
+    )
 
     # And: Mock external dependencies
     mocker.patch(
@@ -219,7 +243,18 @@ def test_clean_video_downmix(
 ):
     """Verify that videos without stereo audio are correctly downmixed."""
     args = ["clean", "-vv", *args, str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+    settings.update(
+        {
+            "cache_dir": Path(tmp_path),
+            "langs_to_keep": ["en"],
+            "downmix_stereo": False,
+            "keep_local_subtitles": False,
+            "keep_commentary": False,
+            "drop_local_subs": False,
+            "keep_all_subtitles": False,
+            "drop_original_audio": False,
+        }
+    )
 
     # And: Mock external dependencies
     mocker.patch(
@@ -276,7 +311,18 @@ def test_clean_reorganize_streams(
 ):
     """Verify that videos with incorrect stream order are properly reorganized."""
     args = ["clean", "-vv", *args, str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+    settings.update(
+        {
+            "cache_dir": Path(tmp_path),
+            "langs_to_keep": ["en"],
+            "downmix_stereo": False,
+            "keep_local_subtitles": False,
+            "keep_commentary": False,
+            "drop_local_subs": False,
+            "keep_all_subtitles": False,
+            "drop_original_audio": False,
+        }
+    )
 
     # And: Mock external dependencies
     mocker.patch(
@@ -345,7 +391,18 @@ def test_convert_video(
 ):
     """Verify video stream conversion with different codecs."""
     args = ["clean", "-vv", *args, str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+    settings.update(
+        {
+            "cache_dir": Path(tmp_path),
+            "langs_to_keep": ["en"],
+            "downmix_stereo": False,
+            "keep_local_subtitles": False,
+            "keep_commentary": False,
+            "drop_local_subs": False,
+            "keep_all_subtitles": False,
+            "drop_original_audio": False,
+        }
+    )
 
     # And: Mock external dependencies
     mocker.patch(
