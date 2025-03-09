@@ -1,10 +1,14 @@
 """Clean subcommand."""
 
+from pathlib import Path
+
 import cappa
 
 from vid_cleaner.constants import PrintLevel
 from vid_cleaner.utils import coerce_video_files, pp, settings, tmp_to_output
 from vid_cleaner.vidcleaner import CleanCommand, VidCleaner
+
+from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
 def main(cmd: VidCleaner, clean_cmd: CleanCommand) -> None:
@@ -31,6 +35,7 @@ def main(cmd: VidCleaner, clean_cmd: CleanCommand) -> None:
             "keep_all_subtitles": clean_cmd.keep_all_subtitles or settings.keep_all_subtitles,
             "drop_original_audio": clean_cmd.drop_original_audio or settings.drop_original_audio,
             "downmix_stereo": clean_cmd.downmix_stereo or settings.downmix_stereo,
+            "save_each_step": clean_cmd.save_each_step or settings.save_each_step,
             "overwrite": clean_cmd.overwrite,
             "out_path": clean_cmd.out,
             "h265": clean_cmd.h265,
@@ -51,31 +56,54 @@ def main(cmd: VidCleaner, clean_cmd: CleanCommand) -> None:
     for video in coerce_video_files(clean_cmd.files):
         pp.info(f"⇨ {video.path.name}")
         video.reorder_streams()
-
         video.process_streams()
 
-    if settings.video_1080:
-        video.video_to_1080p()
+        if not settings.dryrun and settings.save_each_step:
+            out_file = tmp_to_output(
+                video.temp_file.latest_temp_path(),
+                stem=video.stem,
+                new_file=settings.out_path,
+                overwrite=settings.overwrite,
+            )
+            pp.success(f"{out_file}")
+            video.temp_file.clean_up()
 
-    if settings.h265:
-        video.convert_to_h265()
+            video = VideoFile(Path(out_file))  # noqa: PLW2901
 
-    if settings.vp9:
-        video.convert_to_vp9()
+        if settings.video_1080:
+            video.video_to_1080p()
 
-    if not settings.dryrun:
-        out_file = tmp_to_output(
-            video.temp_file.latest_temp_path(),
-            stem=video.stem,
-            new_file=settings.out_path,
-            overwrite=settings.overwrite,
-        )
-        video.temp_file.clean_up()
+            if not settings.dryrun and settings.save_each_step:
+                out_file = tmp_to_output(
+                    video.temp_file.latest_temp_path(),
+                    stem=video.stem,
+                    new_file=settings.out_path,
+                    overwrite=settings.overwrite,
+                )
+                pp.success(f"{out_file}")
+                video.temp_file.clean_up()
 
-        if settings.overwrite and out_file != video.path:
-            pp.debug(f"Delete: {video.path}")
-            video.path.unlink()
+                video = VideoFile(Path(out_file))  # noqa: PLW2901
 
-        pp.success(f"{out_file}")
+        if settings.h265:
+            video.convert_to_h265()
+
+        if settings.vp9:
+            video.convert_to_vp9()
+
+        if not settings.dryrun:
+            out_file = tmp_to_output(
+                video.temp_file.latest_temp_path(),
+                stem=video.stem,
+                new_file=settings.out_path,
+                overwrite=settings.overwrite,
+            )
+            video.temp_file.clean_up()
+
+            if settings.overwrite and out_file != video.path:
+                pp.debug(f"Delete: {video.path}")
+                video.path.unlink()
+
+            pp.success(f"{out_file}")
 
     raise cappa.Exit(code=0)

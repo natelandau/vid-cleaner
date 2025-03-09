@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from vid_cleaner.utils import copy_with_callback, errors, pp, tmp_to_output
-from vid_cleaner.utils.filesystem_utils import _copyfileobj  # noqa: PLC2701
+from vid_cleaner.utils.filesystem_utils import _copyfileobj, unique_filename  # noqa: PLC2701
 
 
 @pytest.fixture(autouse=True)
@@ -162,3 +162,34 @@ def test_all_styles_displays_styles(capsys) -> None:
 
     # Reset the print styles
     pp.configure(debug=False, trace=False)
+
+
+def test_unique_filename(tmp_path: Path) -> None:
+    """Generate a unique filename by appending an incrementing number if the file already exists."""
+    path = tmp_path / "file.txt"
+
+    # When: Generating a unique filename
+    result = unique_filename(path)
+    assert result == path
+
+
+def test_unique_filename_with_existing_file(tmp_path: Path) -> None:
+    """Generate a unique filename by appending an incrementing number if the file already exists."""
+    path = tmp_path / "file.txt"
+    path.touch()
+
+    # When: Generating a unique filename
+    result = unique_filename(tmp_path / "file.txt")
+    assert result == tmp_path / "file_1.txt"
+
+
+def test_unique_filename_with_existing_file_and_separator(tmp_path: Path) -> None:
+    """Generate a unique filename by appending an incrementing number if the file already exists."""
+    path = tmp_path / "file.txt"
+    path.touch()
+    (tmp_path / "file-1.txt").touch()
+    (tmp_path / "file-2.txt").touch()
+
+    # When: Generating a unique filename
+    result = unique_filename(path, separator="-")
+    assert result == tmp_path / "file-3.txt"
