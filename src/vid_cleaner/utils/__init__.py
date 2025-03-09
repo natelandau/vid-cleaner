@@ -6,13 +6,14 @@ from .ffmpeg_utils import channels_to_layout, get_probe_as_box, run_ffprobe
 from .filesystem_utils import copy_with_callback, directory_tree, tmp_to_output
 from .printer import console, pp
 
-from .cli import coerce_video_files  # isort: skip
+from .cli import coerce_video_files, create_default_config  # isort: skip
 
 __all__ = [
     "channels_to_layout",
     "coerce_video_files",
     "console",
     "copy_with_callback",
+    "create_default_config",
     "directory_tree",
     "get_probe_as_box",
     "pp",

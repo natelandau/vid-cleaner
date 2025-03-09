@@ -237,14 +237,14 @@ class VideoFile:
 
         # Only look up original language if we're not explicitly dropping local subs
         # This avoids unnecessary API calls
-        if not settings.subs_drop_local:
+        if not settings.drop_local_subs:
             original_language = self._find_original_language()
 
         # Early return if no subtitle streams should be kept based on settings
         if (
             not settings.keep_all_subtitles
             and not settings.keep_local_subtitles
-            and settings.subs_drop_local
+            and settings.drop_local_subs
         ):
             return command
 
@@ -276,7 +276,7 @@ class VideoFile:
                 # Keep subtitles in user's languages when original audio differs
                 # This ensures subtitles are available when needed for translation
                 if (
-                    not settings.subs_drop_local
+                    not settings.drop_local_subs
                     and langs
                     and original_language not in langs
                     and (stream.language.lower == "und" or Lang(stream.language) in langs)
@@ -593,7 +593,7 @@ class VideoFile:
                 "keep subtitles",
             ) if settings.keep_all_subtitles else title_flags.append("drop unwanted subtitles")
             title_flags.append("keep local subtitles") if settings.keep_local_subtitles else None
-            title_flags.append("drop local subtitles") if settings.subs_drop_local else None
+            title_flags.append("drop local subtitles") if settings.drop_local_subs else None
 
         title = f"Process file ({', '.join(title_flags)})" if title_flags else "Process file"
 

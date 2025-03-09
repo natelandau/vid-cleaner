@@ -9,8 +9,8 @@ import cappa
 from rich.console import Console
 from rich.traceback import install
 
-from vid_cleaner.constants import PrintLevel
-from vid_cleaner.utils import validate_settings
+from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel
+from vid_cleaner.utils import create_default_config, validate_settings
 
 console = Console()
 
@@ -75,10 +75,12 @@ class VidCleaner:
     name="clean",
     invoke="vid_cleaner.cli.clean_video.main",
     help="Clean a video file",
-    description="""\
+    description=f"""\
 Transcode video files to different formats or configurations.
 
-Vidcleaner is versatile and allows for a range of transcoding options for video files with various options. You can select various audio and video settings, manage subtitles, and choose the output file format.
+Vidcleaner is versatile and allows for a range of transcoding options for video files with various\\
+options. You can select various audio and video settings, manage subtitles, and choose the output\\
+file format.
 
 The defaults for this command will:
 
@@ -86,9 +88,15 @@ The defaults for this command will:
 * Drop commentary audio tracks
 * Keep default language audio
 * Keep original audio if it is not the default language
-* Drop all subtitles unless the original audio is not in the default language, in which case the default subtitles are retained
+* Drop all subtitles unless the original audio is not your local language
 
-The defaults can be overridden by using the various command line options or by editing the configuration file located at [code]{0}[/code]
+Defaults for vid-cleaner are set in the configuration file located at `{USER_CONFIG_PATH}`.\\
+When vid-cleaner is run, it will create this file if it does not exist. All options can be overridden\\
+on the command line.
+
+**Important:** Vid-cleaner makes decisions about which audio and subtitle tracks to keep based on the\\
+original language of the video. This is determined by querying the TMDb, Radarr, andSonarr APIs.\\
+To use this functionality, you must add the appropriate API keys to the configuration file.
 
 **Usage Examples:**
 ```shell
@@ -110,7 +118,7 @@ class CleanCommand:
     out: Annotated[
         Path | None,
         cappa.Arg(
-            help="Output file path (Default: `<input_file>_1`)",
+            help="Output path (Default: `./<input_file>_1.xxx`)",
             long=True,
             short=True,
             show_default=False,
@@ -118,59 +126,90 @@ class CleanCommand:
     ] = None
     overwrite: Annotated[
         bool,
-        cappa.Arg(help="Overwrite output file if it exists", long=True, show_default=True),
+        cappa.Arg(
+            help="Overwrite output file if it exists",
+            long=True,
+            show_default=True,
+        ),
     ] = False
     downmix_stereo: Annotated[
         bool,
-        cappa.Arg(help="Create a stereo track if none exist", long="--downmix", show_default=True),
+        cappa.Arg(
+            help="Create a stereo track if none exist",
+            long="--downmix",
+            show_default=True,
+            group="Configuration",
+        ),
     ] = False
     drop_original_audio: Annotated[
         bool,
         cappa.Arg(
-            help="Drop original language audio if not in config",
+            help="Drop original language audio if not specified in langs_to_keep",
             long="--drop-original",
             show_default=True,
+            group="Configuration",
         ),
     ] = False
     keep_all_subtitles: Annotated[
         bool,
-        cappa.Arg(help="Keep all subtitles", long="--keep-subs", show_default=True),
+        cappa.Arg(
+            help="Keep all subtitles",
+            long="--keep-subs",
+            show_default=True,
+            group="Configuration",
+        ),
     ] = False
     keep_commentary: Annotated[
         bool,
-        cappa.Arg(help="Keep commentary audio", long="--keep-commentary", show_default=True),
+        cappa.Arg(
+            help="Keep commentary audio",
+            long="--keep-commentary",
+            show_default=True,
+            group="Configuration",
+        ),
     ] = False
     keep_local_subtitles: Annotated[
         bool,
         cappa.Arg(
-            help="Keep subtitles matching the local languages but drop all others",
+            help="Keep subtitles matching the local language(s)",
             long="--keep-local-subs",
             show_default=True,
+            group="Configuration",
         ),
     ] = False
-    subs_drop_local: Annotated[
+    drop_local_subs: Annotated[
         bool,
         cappa.Arg(
             help="Force dropping local subtitles even if audio is not default language",
             long="--drop-local-subs",
             show_default=True,
+            group="Configuration",
         ),
     ] = False
-    langs: Annotated[
+    langs_to_keep: Annotated[
         str,
         cappa.Arg(
-            help="Languages to keep. Comma separated language codes",
+            help="Languages to keep. Comma separated language ISO 639-1 codes (e.g. `en,es`)",
             long="--langs",
-            show_default=False,
+            show_default=True,
+            group="Configuration",
         ),
     ] = None
-    h265: Annotated[bool, cappa.Arg(help="Convert to H265", long="--h265", show_default=True)] = (
-        False
-    )
-    vp9: Annotated[bool, cappa.Arg(help="Convert to VP9", long="--vp9", show_default=True)] = False
+    h265: Annotated[
+        bool,
+        cappa.Arg(
+            help="Convert to H265", long="--h265", show_default=True, group="Video Conversion"
+        ),
+    ] = False
+    vp9: Annotated[
+        bool,
+        cappa.Arg(help="Convert to VP9", long="--vp9", show_default=True, group="Video Conversion"),
+    ] = False
     video_1080: Annotated[
         bool,
-        cappa.Arg(help="Convert to 1080p", long="--1080p", show_default=True),
+        cappa.Arg(
+            help="Convert to 1080p", long="--1080p", show_default=True, group="Video Conversion"
+        ),
     ] = False
     force: Annotated[
         bool,
@@ -283,7 +322,7 @@ class CacheCommand:
 def main() -> None:  # pragma: no cover
     """Main function."""
     install(show_locals=True)
-    cappa.invoke(obj=VidCleaner, deps=[validate_settings])
+    cappa.invoke(obj=VidCleaner, deps=[create_default_config, validate_settings])
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -1,3 +1,14 @@
+// Streams:
+// 0: 1080p H264 video
+// 1: 7.1 TrueHD, eng
+// 2: 5.1 AC3, eng
+// 3: 5.1 AC3, french
+// 4: stereo AC3, eng
+// 5: stereo AC3, eng (Commentary)
+// 6: English Subtitles
+// 7: Danish Subtitles
+// 8: French Subtitles
+// 9: cover.jpg
 {
     // Contains a maximal example of the output of ffprobe
     // Add or remove fields as needed for additional fixtures

@@ -39,11 +39,31 @@ Run `vidcleaner --help` to see the available commands and options.
 
 ### Configuration
 
-Vid-cleaner does not require a configuration file to run. However, the integration with tmd and other tools to determine languages of videos does require a config file. Create a configuration file at `~/.config/vid-cleaner/config.toml` and add the following:
+Defaults for vid-cleaner are set in the configuration file located at `~/.config/vid-cleaner/config.toml`. When vid-cleaner is run, it will create this file if it does not exist. All options can be overridden on the command line.
+
+**Important:** Vid-cleaner makes decisions about which audio and subtitle tracks to keep based on the original language of the video. This is determined by querying the TMDb, Radarr, andSonarr APIs. To use this functionality, you must add the appropriate API keys to the configuration file.
 
 ```toml
 # Languages to keep (list of ISO 639-1 codes)
-keep_languages = ["en"]
+langs_to_keep = ["en"]
+
+# Keep subtitles matching the local language(s) even when the audio is not in the local language(s)
+keep_local_subtitles = false
+
+# Keep commentary audio
+keep_commentary = false
+
+# Force dropping local subtitles even if audio is not default language
+drop_local_subs = false
+
+# Keep all subtitles
+keep_all_subtitles = false
+
+# Drop original language audio if not specified in langs_to_keep
+drop_original_audio = false
+
+# Always create a stereo track
+downmix_stereo = false
 
 # External services used to determine the original language of a movie or TV show
 radarr_api_key = ""

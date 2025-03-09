@@ -20,7 +20,7 @@ def test_clip_option_errors(debug, tmp_path, clean_stdout, mock_video_path, args
     """Verify clip command validates time format arguments."""
     # Given: Invalid time format arguments
     args = ["clip", *args, str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+    settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
 
     # When: Running clip command with invalid arguments
     with pytest.raises(cappa.Exit) as exc_info:
@@ -55,7 +55,7 @@ def test_clipping_video(
     """Verify clip command extracts video segment with specified time range."""
     # Given: Mock video file and time range arguments
     args = ["clip", *args, str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+    settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
 
     # And: Mocked video metadata and output path
 
@@ -105,7 +105,7 @@ def test_clipping_video_dryrun(
     """Verify clip command dry-run shows command without execution."""
     # Given: Mock video file and dry-run flag
     args = ["clip", "-n", *args, str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "keep_languages": ["en"]})
+    settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
 
     # And: Mocked video metadata and output path
     mocker.patch(

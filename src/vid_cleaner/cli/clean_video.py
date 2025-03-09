@@ -22,15 +22,15 @@ def main(cmd: VidCleaner, clean_cmd: CleanCommand) -> None:
     settings.update(
         {
             "dryrun": cmd.dry_run,
-            "langs_to_keep": clean_cmd.langs.split(",")
-            if clean_cmd.langs
-            else settings.keep_languages,
-            "subs_drop_local": clean_cmd.subs_drop_local,
-            "keep_local_subtitles": clean_cmd.keep_local_subtitles,
-            "keep_commentary": clean_cmd.keep_commentary,
-            "keep_all_subtitles": clean_cmd.keep_all_subtitles,
-            "drop_original_audio": clean_cmd.drop_original_audio,
-            "downmix_stereo": clean_cmd.downmix_stereo,
+            "langs_to_keep": clean_cmd.langs_to_keep.split(",")
+            if clean_cmd.langs_to_keep
+            else settings.langs_to_keep,
+            "drop_local_subs": clean_cmd.drop_local_subs or settings.drop_local_subs,
+            "keep_local_subtitles": clean_cmd.keep_local_subtitles or settings.keep_local_subtitles,
+            "keep_commentary": clean_cmd.keep_commentary or settings.keep_commentary,
+            "keep_all_subtitles": clean_cmd.keep_all_subtitles or settings.keep_all_subtitles,
+            "drop_original_audio": clean_cmd.drop_original_audio or settings.drop_original_audio,
+            "downmix_stereo": clean_cmd.downmix_stereo or settings.downmix_stereo,
             "overwrite": clean_cmd.overwrite,
             "out_path": clean_cmd.out,
             "h265": clean_cmd.h265,

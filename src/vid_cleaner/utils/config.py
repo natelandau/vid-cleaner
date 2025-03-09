@@ -23,6 +23,43 @@ settings = Dynaconf(
 settings.validators.register(
     Validator("cache_dir", default=CACHE_DIR),
     Validator(
+        "keep_local_subtitles",
+        default=False,
+        cast=bool,
+    ),
+    Validator(
+        "langs_to_keep",
+        default=["en"],
+        cast=list,
+        condition=lambda x: isinstance(x, list),
+        messages={"condition": "'{name}' must be a list"},
+    ),
+    Validator(
+        "keep_commentary",
+        default=False,
+        cast=bool,
+    ),
+    Validator(
+        "drop_local_subs",
+        default=False,
+        cast=bool,
+    ),
+    Validator(
+        "keep_all_subtitles",
+        default=False,
+        cast=bool,
+    ),
+    Validator(
+        "drop_original_audio",
+        default=False,
+        cast=bool,
+    ),
+    Validator(
+        "downmix_stereo",
+        default=False,
+        cast=bool,
+    ),
+    Validator(
         "radarr_url",
         default="",
         cast=str,
