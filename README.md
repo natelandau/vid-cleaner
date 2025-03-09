@@ -82,21 +82,4 @@ Vid-cleaner uses the [XDG specification](https://specifications.freedesktop.org/
 
 ## Contributing
 
-## Setup: Once per project
-
-1. Install Python 3.11 and [uv](https://docs.astral.sh/uv/)
-2. Clone this repository. `git clone https://github.com/natelandau/vid-cleaner`
-3. Install the virtual environment with `uv sync`.
-4. Activate your virtual environment with `source .venv/bin/activate`
-5. Install the pre-commit hooks with `pre-commit install --install-hooks`.
-
-## Developing
-
--   This project follows the [Conventional Commits](https://www.conventionalcommits.org/) standard to automate [Semantic Versioning](https://semver.org/) and [Keep A Changelog](https://keepachangelog.com/) with [Commitizen](https://github.com/commitizen-tools/commitizen).
-    -   When you're ready to commit changes run `cz c`
--   Run `duty --list` from within the development environment to print a list of tasks available to run on this project. Common commands:
-    -   `duty lint` runs all linters
-    -   `duty test` runs all tests with Pytest
--   Run `uv add {package}` from within the development environment to install a run time dependency and add it to `pyproject.toml` and `uv.lock`.
--   Run `uv remove {package}` from within the development environment to uninstall a run time dependency and remove it from `pyproject.toml` and `uv.lock`.
--   Run `uv lock --upgrade` from within the development environment to update all dependencies in `pyproject.toml`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more information.
