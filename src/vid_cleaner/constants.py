@@ -54,7 +54,7 @@ EXCLUDED_VIDEO_CODECS = {"mjpeg", "mjpg", "png"}
 FFMPEG_APPEND: list[str] = ["-max_muxing_queue_size", "9999"]
 FFMPEG_PREPEND: list[str] = ["-y", "-hide_banner"]
 H265_CODECS = {"hevc", "vp9"}
-VERSION = "0.3.6"
+VERSION = "0.4.0"
 
 # how many bytes to read at once?
 # shutil.copy uses 1024 * 1024 if _WINDOWS else 64 * 1024

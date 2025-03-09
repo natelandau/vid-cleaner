@@ -1,3 +1,17 @@
+## v0.4.0 (2025-03-09)
+
+### Feat
+
+- read default cli flag values from config file (#50)
+- add flag to save the video after each step (#49)
+- create default configuration file on first run (#47)
+- use cappa for cli framework (#44)
+
+### Refactor
+
+- improve parsing of ffprobe data (#46)
+- move temp file management to dedicated controller (#45)
+
 ## v0.3.6 (2025-01-11)
 
 ### Fix
