@@ -21,6 +21,9 @@ drop_original_audio = false
 # Always create a stereo track
 downmix_stereo = false
 
+# Save the video after each step (default is to save after all steps are completed)
+save_each_step = false
+
 # External services used to determine the original language of a movie or TV show
 radarr_api_key = ""
 radarr_url     = ""

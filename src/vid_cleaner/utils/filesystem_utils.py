@@ -1,6 +1,7 @@
 """Filesystem utilities."""
 
 import io
+import re
 import shutil
 from collections.abc import Callable
 from pathlib import Path
@@ -90,6 +91,30 @@ def copy_with_callback(
     return dest
 
 
+def unique_filename(path: Path, separator: str = "_") -> Path:
+    """Generate a unique filename by appending an incrementing number if the file already exists.
+
+    Append an incrementing integer to the filename stem until finding a unique name that doesn't exist in the target directory. Preserve the original file extension.
+
+    Args:
+        path (Path): The file path to make unique
+        separator (str): The string to use between filename and number. Defaults to "_".
+
+    Returns:
+        Path: A unique file path that does not exist in the target directory
+    """
+    if not path.exists():
+        return path
+
+    original_stem = path.stem
+    i = 1
+    while path.exists():
+        path = path.with_name(f"{original_stem}{separator}{i}{path.suffix}")
+        i += 1
+
+    return path
+
+
 def tmp_to_output(
     tmp_file: Path,
     stem: str,
@@ -119,13 +144,15 @@ def tmp_to_output(
     # Ensure parent directory exists
     parent.mkdir(parents=True, exist_ok=True)
 
-    new = parent / f"{stem}{tmp_file.suffix}"
+    new_stem = re.sub(r"_\d+\.[\w\d]{2,4}$", "", stem)
+    new = parent / f"{new_stem}{tmp_file.suffix}"
 
     if not overwrite:
-        i = 1
-        while new.exists():
-            new = parent / f"{stem}_{i}{tmp_file.suffix}"
-            i += 1
+        new_stem = re.sub(r"_\d+$", "", stem)
+        new = parent / f"{new_stem}{tmp_file.suffix}"
+        new = unique_filename(new)
+    else:
+        new = parent / f"{stem}{tmp_file.suffix}"
 
     tmp_file_size = tmp_file.stat().st_size
 

@@ -90,13 +90,9 @@ The defaults for this command will:
 * Keep original audio if it is not the default language
 * Drop all subtitles unless the original audio is not your local language
 
-Defaults for vid-cleaner are set in the configuration file located at `{USER_CONFIG_PATH}`.\\
-When vid-cleaner is run, it will create this file if it does not exist. All options can be overridden\\
-on the command line.
+Defaults for vid-cleaner are set in the configuration file located at `{USER_CONFIG_PATH}`. When vid-cleaner is run, it will create this file if it does not exist. All options can be overridden on the command line.
 
-**Important:** Vid-cleaner makes decisions about which audio and subtitle tracks to keep based on the\\
-original language of the video. This is determined by querying the TMDb, Radarr, andSonarr APIs.\\
-To use this functionality, you must add the appropriate API keys to the configuration file.
+**Important:** Vid-cleaner makes decisions about which audio and subtitle tracks to keep based on the original language of the video. This is determined by querying the TMDb, Radarr, andSonarr APIs. To use this functionality, you must add the appropriate API keys to the configuration file.
 
 **Usage Examples:**
 ```shell
@@ -155,6 +151,15 @@ class CleanCommand:
         cappa.Arg(
             help="Keep all subtitles",
             long="--keep-subs",
+            show_default=True,
+            group="Configuration",
+        ),
+    ] = False
+    save_each_step: Annotated[
+        bool,
+        cappa.Arg(
+            help="By default, the new video is saved after all steps are completed. Use this option to save the video after each step.",
+            long="--save-each",
             show_default=True,
             group="Configuration",
         ),
