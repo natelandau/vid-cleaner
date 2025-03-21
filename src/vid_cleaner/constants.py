@@ -59,7 +59,7 @@ VERSION = "0.4.0"
 # how many bytes to read at once?
 # shutil.copy uses 1024 * 1024 if _WINDOWS else 64 * 1024
 # however, in my testing on MacOS with SSD, I've found a much larger buffer is faster
-BUFFER_SIZE = 4096 * 1024
+IO_BUFFER_SIZE = 4096 * 1024
 
 
 class PrintLevel(Enum):

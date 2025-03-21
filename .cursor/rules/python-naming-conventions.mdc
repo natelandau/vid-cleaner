@@ -1,11 +1,10 @@
 ---
 description: naming conventions for python
 globs: **/*.py
+alwaysApply: false
 ---
----
-description: Applies Python naming conventions for variables, functions, classes, interfaces, and files.
-globs: **/*.py
----
+Always follow these standards for Python naming convention.
+
 - Use snake_case for variables.
 - Use snake_case for functions.
 - Use PascalCase for classes.

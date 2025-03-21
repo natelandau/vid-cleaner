@@ -1,171 +1,51 @@
 """Filesystem utilities."""
 
-import io
 import re
 import shutil
-from collections.abc import Callable
 from pathlib import Path
 
 from rich.filesize import decimal
 from rich.markup import escape
-from rich.progress import Progress
+from rich.progress import Progress, TaskID
 from rich.text import Text
 from rich.tree import Tree
 
-from vid_cleaner.constants import BUFFER_SIZE
-from vid_cleaner.utils import errors
+from vid_cleaner.constants import IO_BUFFER_SIZE
 
 from .printer import pp
 
 
-def _copyfileobj(
-    src_bytes: io.BufferedReader,
-    dest_bytes: io.BufferedWriter,
-    callback: Callable,
-    length: int,
-) -> None:
-    """Copy bytes from a source file to a destination file with progress tracking.
+def unique_filename(path: Path, separator: str = "_", *, continue_sequence: bool = False) -> Path:
+    """Create a unique filename by incrementing a number suffix until finding an unused name.
 
-    Read bytes in chunks from the source file and write them to the destination file, invoking a callback after each chunk to track progress. The callback receives the total bytes copied so far to enable progress reporting.
+    Modify the filename stem by appending an incrementing number separated by the given separator character. When continue_sequence is True, strip any existing number suffix before incrementing. Maintain the original file extension.
 
     Args:
-        src_bytes (io.BufferedReader): Source file to read bytes from that supports the buffer protocol
-        dest_bytes (io.BufferedWriter): Destination file to write bytes to that supports the buffer protocol
-        callback (Callable[[int], None]): Function called after each chunk with total bytes copied
-        length (int): Size of each chunk to read/write at a time
-    """
-    copied = 0
-    while True:
-        buf = src_bytes.read(length)
-        if not buf:
-            break
-        dest_bytes.write(buf)
-        copied += len(buf)
-        if callback is not None:
-            callback(copied)
-
-
-def copy_with_callback(
-    src: Path,
-    dest: Path,
-    callback: Callable | None = None,
-    buffer_size: int = BUFFER_SIZE,
-) -> Path:
-    """Copy a file with progress tracking support.
-
-    Copy a file from source to destination path with optional progress callback support. Track copy progress by invoking the callback after each chunk is copied. Configure chunk size to control callback frequency.
-
-    Args:
-        src (Path): Source file path to copy from
-        dest (Path): Destination path to copy to. If directory, copies source file into it with same name
-        callback (Callable | None, optional): Function to call after each chunk with bytes copied. Defaults to None.
-        buffer_size (int, optional): Size of chunks to copy in bytes. Defaults to BUFFER_SIZE.
+        path (Path): Path to make unique by adding a number suffix
+        separator (str): Character(s) to separate filename from number suffix. Defaults to "_"
+        continue_sequence (bool): Strip any existing number suffix before incrementing, effectively continuing and existing sequence. Defaults to False
 
     Returns:
-        Path: Path to the copied destination file
+        Path: A unique path that does not exist in the target directory
 
-    Raises:
-        FileNotFoundError: If source file does not exist
-        SameFileError: If source and destination paths are the same file
-        ValueError: If callback is provided but not callable
-    """
-    if not src.is_file():
-        msg = f"src file `{src}` doesn't exist"
-        raise FileNotFoundError(msg)
-
-    dest = dest / src.name if dest.is_dir() else dest
-
-    if dest.exists() and src.samefile(dest):
-        msg = f"source file `{src}` and destination file `{dest}` are the same file."
-        raise errors.SameFileError(msg)
-
-    if callback is not None and not callable(callback):
-        msg = f"callback must be callable, not {type(callback)}"  # type: ignore [unreachable]
-        raise ValueError(msg)
-
-    with src.open("rb") as src_bytes, dest.open("wb") as dest_bytes:
-        _copyfileobj(src_bytes, dest_bytes, callback=callback, length=buffer_size)
-
-    shutil.copymode(str(src), str(dest))
-
-    return dest
-
-
-def unique_filename(path: Path, separator: str = "_") -> Path:
-    """Generate a unique filename by appending an incrementing number if the file already exists.
-
-    Append an incrementing integer to the filename stem until finding a unique name that doesn't exist in the target directory. Preserve the original file extension.
-
-    Args:
-        path (Path): The file path to make unique
-        separator (str): The string to use between filename and number. Defaults to "_".
-
-    Returns:
-        Path: A unique file path that does not exist in the target directory
+    Changelog:
+        - v2.2.1: Initial version
+        - v2.3: Added has_separator parameter
     """
     if not path.exists():
         return path
 
-    original_stem = path.stem
+    if continue_sequence:
+        original_stem = re.sub(rf"{re.escape(separator)}\d+", "", path.stem)
+    else:
+        original_stem = path.stem
+
     i = 1
     while path.exists():
         path = path.with_name(f"{original_stem}{separator}{i}{path.suffix}")
         i += 1
 
     return path
-
-
-def tmp_to_output(
-    tmp_file: Path,
-    stem: str,
-    new_file: Path | None = None,
-    *,
-    overwrite: bool = False,
-) -> Path:
-    """Copy a temporary file to an output location with optional renaming and overwrite control.
-
-    Copy a temporary file to a specified output location, using either a provided output path or constructing one from the current directory and stem. Handle naming conflicts by appending numbers to the stem when overwrite is disabled. Display a progress bar during the copy operation.
-
-    Args:
-        tmp_file (Path): The path to the temporary input file to be copied
-        stem (str): The base name (stem) to use for the output file if new_file is not provided
-        overwrite (bool, optional): Whether to overwrite existing output files. Defaults to False.
-        new_file (Path | None, optional): Optional explicit output file path. Defaults to None.
-
-    Returns:
-        Path: The path where the temporary file was copied
-    """
-    if new_file:
-        parent = new_file.parent.expanduser().resolve()
-        stem = new_file.stem
-    else:
-        parent = Path.cwd()
-
-    # Ensure parent directory exists
-    parent.mkdir(parents=True, exist_ok=True)
-
-    new_stem = re.sub(r"_\d+\.[\w\d]{2,4}$", "", stem)
-    new = parent / f"{new_stem}{tmp_file.suffix}"
-
-    if not overwrite:
-        new_stem = re.sub(r"_\d+$", "", stem)
-        new = parent / f"{new_stem}{tmp_file.suffix}"
-        new = unique_filename(new)
-    else:
-        new = parent / f"{stem}{tmp_file.suffix}"
-
-    tmp_file_size = tmp_file.stat().st_size
-
-    with Progress(transient=True) as progress:
-        task = progress.add_task("Copy file…", total=tmp_file_size)
-        copy_with_callback(
-            tmp_file,
-            new,
-            callback=lambda total_copied: progress.update(task, completed=total_copied),
-        )
-
-    pp.trace(f"File copied to {new}")
-    return new
 
 
 def directory_tree(directory: Path, *, show_hidden: bool = False) -> Tree:
@@ -181,6 +61,9 @@ def directory_tree(directory: Path, *, show_hidden: bool = False) -> Tree:
 
     Returns:
         Tree: A rich Tree object containing the directory structure
+
+    Changelog:
+        - Script utils: v2.2.1
     """
 
     def _walk_directory(directory: Path, tree: Tree, *, show_hidden: bool = False) -> None:
@@ -217,3 +100,90 @@ def directory_tree(directory: Path, *, show_hidden: bool = False) -> Tree:
     )
     _walk_directory(Path(directory), tree, show_hidden=show_hidden)
     return tree
+
+
+def copy_file(
+    src: Path,
+    dst: Path,
+    *,
+    with_progress: bool = False,
+    transient: bool = True,
+    overwrite: bool = False,
+) -> Path:
+    """Copy a file to a destination with optional progress tracking.
+
+    Copy files with granular control over progress display and file conflict handling. Preserve original file permissions while providing visual feedback for long-running operations.
+
+    Args:
+        src (Path): Source file to copy
+        dst (Path): Destination path for the copy
+        with_progress (bool, optional): Show a progress bar during copy. Defaults to False
+        transient (bool, optional): Remove the progress bar after completion. Defaults to True
+        overwrite (bool, optional): Overwrite existing destination files. If False, generate a unique filename. Defaults to False
+
+    Returns:
+        Path: Path to the destination file after copy completion
+
+    Changelog:
+        - v2.3: Initial version
+
+    Raises:
+        FileNotFoundError: If source file does not exist or is not a regular file
+    """
+
+    def _do_copy(
+        src: Path, dst: Path, *, progress_bar: Progress | None = None, task: TaskID | None = None
+    ) -> None:
+        """Copy file contents in chunks with optional progress tracking.
+
+        Args:
+            src (Path): Source file to read from
+            dst (Path): Destination file to write to
+            progress_bar (Progress | None, optional): Progress bar instance for tracking. Defaults to None
+            task (TaskID | None, optional): Task ID for progress updates. Defaults to None
+        """
+        with src.open("rb") as src_bytes, dst.open("wb") as dst_bytes:
+            total_bytes_copied = 0
+            while True:
+                buf = src_bytes.read(IO_BUFFER_SIZE)
+                if not buf:
+                    break
+                dst_bytes.write(buf)
+                total_bytes_copied += len(buf)
+                if progress_bar is not None and task is not None:
+                    progress_bar.update(task, completed=total_bytes_copied)
+
+    if not src.exists():
+        msg = f"source file `{src}` does not exist. Did not copy."
+        raise FileNotFoundError(msg)
+
+    if not src.is_file():
+        msg = f"source file `{src}` is not a file. Did not copy."
+        raise FileNotFoundError(msg)
+
+    dst = dst.parent.expanduser().resolve() / dst.name
+
+    # Check if source and destination are the same to avoid unnecessary copy
+    if src == dst or (dst.exists() and src.samefile(dst)):
+        msg = f"source file `{src}` and destination file `{dst}` are the same file. Did not copy."
+        pp.warning(msg)
+        return src
+
+    # Generate unique filename if destination exists and overwrite is disabled
+    if dst.exists() and not overwrite:
+        dst = unique_filename(dst)
+
+    dst.parent.mkdir(parents=True, exist_ok=True)
+
+    # Copy file in chunks with progress bar to handle large files efficiently
+    if with_progress:
+        with Progress(transient=transient) as progress_bar:
+            task = progress_bar.add_task(f"Copy {src.name}… ", total=src.stat().st_size)
+            _do_copy(src, dst, progress_bar=progress_bar, task=task)
+    else:
+        _do_copy(src, dst)
+
+    # Preserve original file permissions
+    shutil.copymode(str(src), str(dst))
+
+    return dst

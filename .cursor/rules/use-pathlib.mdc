@@ -1,26 +1,9 @@
 ---
-description: use pathlib
+description: Always use pathlib instead of the os module whenever possible
 globs: **/*.py
+alwaysApply: false
 ---
 
-# Use pathlib
-Use the pathlib module instead of the os module whenever possible.
+# Always use pathlib
 
-### Examples
-
-#### bad
-```python
-import os
-from pathlib import Path
-
-symlink_path = "/some/file"
-path_to_original_file = Path(os.readlink(symlink_path))
-```
-
-#### Good
-```python
-from pathlib import Path
-
-symlink_path = "/some/file"
-path_to_original_file = symlink_path.readlink()
-```
+When writing Python code always use the `pathlib` module instead of the `os` module whenever possible.
