@@ -1,6 +1,9 @@
 """Provide utilities for styled console output using rich formatting.
 
 Implements a singleton pattern for consistent, styled message logging across an application. It supports multiple log levels with customizable styling including colors, emojis, and prefixes.
+
+Changelog:
+    - script utils: v2.2.1
 """
 
 import re
@@ -36,9 +39,7 @@ DEFAULT_STYLES = [
     PrintStyle(name="NOTICE", style="bold"),
     PrintStyle(name="SUCCESS", style="", prefix="[bold green]✅ Success:[/bold green] "),
     PrintStyle(
-        name="WARNING",
-        style="",
-        prefix="[dark_orange bold]🚧 Warning:[/dark_orange bold] ",
+        name="WARNING", style="", prefix="[dark_orange bold]🚧 Warning:[/dark_orange bold] "
     ),
     PrintStyle(name="ERROR", style="", prefix="[bold red]❌ Error:[/bold red] "),
     PrintStyle(
@@ -46,24 +47,23 @@ DEFAULT_STYLES = [
         style="",
         prefix="[bold red reverse]💀 Critical:[/bold red reverse] ",
     ),
-    PrintStyle(name="DRYRUN", style="", prefix="[blue bold]👉 Dry Run:[/blue bold] "),
+    PrintStyle(name="DRYRUN", style="", prefix="[blue bold]👉 Dry run:[/blue bold] "),
 ]
 
 
 def merge_print_styles(
-    default_styles: list[PrintStyle],
-    user_styles: list[PrintStyle],
+    default_styles: list[PrintStyle], user_styles: list[PrintStyle]
 ) -> list[PrintStyle]:
-    """Merge default and user print styles.
+    """Merge default and user-defined print styles with user styles taking precedence.
 
-    Create a combined style list where user styles override matching default styles. Normalize style names by converting to uppercase and replacing special characters with underscores.
+    Customize specific log styles while preserving the default styles for other log levels. Normalize style names by converting to uppercase and replacing spaces/hyphens/dots with underscores.
 
     Args:
-        default_styles (list[PrintStyle]): Base print styles to use
-        user_styles (list[PrintStyle]): Custom styles that override defaults
+        default_styles (list[PrintStyle]): Base print styles to use as a foundation
+        user_styles (list[PrintStyle]): Custom styles that override matching default styles
 
     Returns:
-        list[PrintStyle]: Combined list with user overrides applied
+        list[PrintStyle]: Combined list of print styles with user overrides applied
     """
     # Create a dictionary from default_styles
     style_dict = {style.name.upper(): style for style in default_styles}
@@ -136,14 +136,15 @@ class PrettyPrinter:
         debug: bool = False,
         trace: bool = False,
     ) -> None:
-        """Configure printer logging behavior and styles.
+        """Set up logging verbosity and custom styles for the printer.
 
-        Set up logging verbosity levels and customize message styles. Enable debug/trace output and override default styles as needed.
+        Configure the global logging behavior by enabling/disabling debug and trace messages and customizing message styles.
 
         Args:
             styles (list[PrintStyle], optional): Custom styles to override defaults
             debug (bool, optional): Enable debug level messages. Defaults to False
-            trace (bool, optional): Enable trace level messages. Defaults to False
+            trace (bool, optional): Enable trace level messages
+                Defaults to False
         """
         self.is_debug = debug
         self.is_trace = trace
@@ -156,9 +157,9 @@ class PrettyPrinter:
         Internal method that handles message filtering, prefix addition, and style application based on the configured log level.
 
         Args:
-            style (PrintStyle): Style configuration to apply
+            style (PrintStyle): Style configuration to apply to the message
             message (str | Text): Content to output
-            **kwargs (P.kwargs): Additional arguments for console.print()
+            **kwargs (P.kwargs): Additional arguments passed to console.print()
         """
         if style.name in {"TRACE", "DEBUG"} and not (
             self.is_trace if style.name == "TRACE" else self.is_debug
@@ -179,7 +180,7 @@ class PrettyPrinter:
     def rule(message: str = "", **kwargs: P.kwargs) -> None:  # type: ignore [valid-type]
         """Print a horizontal rule with optional message.
 
-        Create visual separation in console output. Useful for grouping related output or marking section boundaries.
+        Create visual separation in console output with an optional centered message.
 
         Args:
             message (str, optional): Text to display in the rule. Defaults to empty
@@ -188,10 +189,7 @@ class PrettyPrinter:
         console.rule(message, **kwargs)
 
     def all_styles(self) -> None:
-        """Display all available print styles.
-
-        Show a demonstration of each configured print style using sample text. Useful for previewing how different message types will appear.
-        """
+        """Show all available styles."""
         grid = Table.grid(padding=(0, 3))
 
         for style in self.styles:
@@ -210,15 +208,15 @@ class PrettyPrinter:
         self.rule()
 
     def __getattr__(self, name: str) -> Callable[[str | Text], None]:
-        """Create dynamic logging methods for each style.
+        """Create logging methods dynamically based on style names.
 
-        Enable method-style logging (e.g., pp.info("message")) by generating logging functions for defined styles.
+        Enable method-style logging (e.g., pp.info("message")) by automatically generating logging functions for each defined style.
 
         Args:
             name (str): Style name to create a logging method for
 
         Returns:
-            Callable[[str | Text], None]: Function that logs messages with the style
+            Callable[[str | Text], None]: Function that logs messages with the specified style
 
         Raises:
             AttributeError: If no style exists matching the requested name

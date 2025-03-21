@@ -1,6 +1,6 @@
 ---
 # https://pre-commit.com
-default_install_hook_types: [commit-msg, pre-commit]
+default_install_hook_types: [commit-msg, pre-commit, pre-push]
 default_stages: [pre-commit, manual]
 fail_fast: true
 repos:
@@ -52,14 +52,14 @@ repos:
         types: [python]
 
   - repo: "https://github.com/adrienverge/yamllint.git"
-    rev: v1.35.1
+    rev: v1.36.2
     hooks:
       - id: yamllint
         files: ^.*\.(yaml|yml)$
         entry: yamllint --strict --config-file .yamllint.yml
 
   - repo: "https://github.com/charliermarsh/ruff-pre-commit"
-    rev: "v0.9.10"
+    rev: "v0.11.2"
     hooks:
       - id: ruff
         exclude: tests/
@@ -79,10 +79,11 @@ repos:
         stages: [commit-msg]
 
   - repo: "https://github.com/crate-ci/typos"
-    rev: v1
+    rev: v1.30.2
     hooks:
       - id: typos
         args: ["--force-exclude"]
+        stages: [commit-msg, pre-commit]
 
   - repo: local
     hooks:
