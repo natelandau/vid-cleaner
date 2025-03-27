@@ -10,7 +10,7 @@ from rich.console import Console
 from rich.traceback import install
 
 from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel
-from vid_cleaner.utils import create_default_config, settings, validate_settings
+from vid_cleaner.utils import create_default_config, pp, settings, validate_settings
 
 console = Console()
 
@@ -328,9 +328,14 @@ class CacheCommand:
 
 
 def main() -> None:  # pragma: no cover
-    """Main function."""
+    """Main function."""  # noqa: DOC501
     install(show_locals=True)
-    cappa.invoke(obj=VidCleaner, deps=[create_default_config, validate_settings])
+
+    try:
+        cappa.invoke(obj=VidCleaner, deps=[create_default_config, validate_settings])
+    except KeyboardInterrupt as e:
+        pp.info("Exiting...")
+        raise cappa.Exit(code=1) from e
 
 
 if __name__ == "__main__":  # pragma: no cover
