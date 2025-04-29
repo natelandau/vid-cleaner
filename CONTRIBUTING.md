@@ -6,7 +6,7 @@ This project uses [uv](https://docs.astral.sh/uv/). To start developing, install
 
 Once uv is installed, follow these steps to start developing.
 
-1. Clone this repository. `git clone https://github.com/natelandau/halp`
+1. Clone this repository. `git clone https://github.com/natelandau/vid-cleaner`
 2. `cd` into the repository `cd vid-cleaner`
 3. Instal the venv with uv `uv sync`
 4. Activate your virtual environment with `source .venv/bin/activate`
