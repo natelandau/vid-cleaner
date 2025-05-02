@@ -107,13 +107,13 @@ repos:
           pyproject\.toml
           )
 
-ci:
-  autofix_commit_msg: |
-    fix: auto fixes from pre-commit.com hooks
+# ci:
+#   autofix_commit_msg: |
+#     fix: auto fixes from pre-commit.com hooks
 
-    for more information, see https://pre-commit.ci
-  autofix_prs: true
-  autoupdate_commit_msg: "build: pre-commit autoupdate"
-  autoupdate_schedule: quarterly
-  skip: [pytest, mypy]
-  submodules: false
+#     for more information, see https://pre-commit.ci
+#   autofix_prs: true
+#   autoupdate_commit_msg: "build: pre-commit autoupdate"
+#   autoupdate_schedule: quarterly
+#   skip: [pytest, mypy]
+#   submodules: false
