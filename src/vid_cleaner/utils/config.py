@@ -1,4 +1,4 @@
-"""Settings and configuration for halper."""
+"""Settings and configuration for vid-cleaner."""
 
 import cappa
 from dynaconf import Dynaconf, ValidationError, Validator
