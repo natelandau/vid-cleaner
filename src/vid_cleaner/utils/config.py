@@ -2,6 +2,7 @@
 
 import cappa
 from dynaconf import Dynaconf, ValidationError, Validator
+from nclutils import pp
 from validators import url as url_validate
 
 from vid_cleaner.constants import (
@@ -10,8 +11,6 @@ from vid_cleaner.constants import (
     PROJECT_ROOT_PATH,
     USER_CONFIG_PATH,
 )
-
-from .printer import pp
 
 settings = Dynaconf(
     envvar_prefix="VIDCLEANER_",

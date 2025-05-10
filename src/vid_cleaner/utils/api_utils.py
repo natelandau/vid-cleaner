@@ -1,9 +1,9 @@
 """API utilities."""
 
 import requests
+from nclutils import console, pp
 
 from .config import settings
-from .printer import console, pp
 
 
 def query_tmdb(search: str) -> dict:  # pragma: no cover
