@@ -1,9 +1,10 @@
 """Inspect subcommand."""
 
 import cappa
+from nclutils import console, pp
 
 from vid_cleaner.constants import PrintLevel
-from vid_cleaner.utils import coerce_video_files, console, pp, settings
+from vid_cleaner.utils import coerce_video_files, settings
 from vid_cleaner.vidcleaner import InspectCommand, VidCleaner
 from vid_cleaner.views import stream_table
 

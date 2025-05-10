@@ -3,9 +3,10 @@
 from pathlib import Path
 
 import cappa
+from nclutils import copy_file, pp
 
 from vid_cleaner.constants import PrintLevel
-from vid_cleaner.utils import coerce_video_files, copy_file, pp, settings
+from vid_cleaner.utils import coerce_video_files, settings
 from vid_cleaner.vidcleaner import CleanCommand, VidCleaner
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
@@ -65,7 +66,7 @@ def main(cmd: VidCleaner, clean_cmd: CleanCommand) -> None:
             out_file = copy_file(
                 src=video.temp_file.latest_temp_path(),
                 dst=settings.out_path,
-                overwrite=settings.overwrite,
+                keep_backup=not settings.overwrite,
                 with_progress=True,
                 transient=True,
             )
@@ -81,7 +82,7 @@ def main(cmd: VidCleaner, clean_cmd: CleanCommand) -> None:
                 out_file = copy_file(
                     src=video.temp_file.latest_temp_path(),
                     dst=settings.out_path,
-                    overwrite=settings.overwrite,
+                    keep_backup=not settings.overwrite,
                     with_progress=True,
                     transient=True,
                 )
@@ -100,7 +101,7 @@ def main(cmd: VidCleaner, clean_cmd: CleanCommand) -> None:
             out_file = copy_file(
                 src=video.temp_file.latest_temp_path(),
                 dst=settings.out_path,
-                overwrite=settings.overwrite,
+                keep_backup=not settings.overwrite,
                 with_progress=True,
                 transient=True,
             )

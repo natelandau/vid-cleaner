@@ -42,9 +42,13 @@ jobs:
             - name: Setup Python, uv, and the package
               uses: ./.github/actions/setup_python_env
 
+            - name: Confirm python version
+              shell: bash
+              run: uv run --frozen -- python --version
+
             - name: Run tests
               shell: bash
-              run: uv run duty test
+              run: uv run --frozen duty test
 
             - name: Upload coverage to Codecov
               if: ${{ matrix.python-version == '3.13' }}
@@ -70,7 +74,4 @@ jobs:
 
             - name: run linters
               shell: bash
-              run: uv run duty lint
-
-            - name: Check lock file consistency
-              run: uv sync --locked
+              run: uv run --frozen duty lint

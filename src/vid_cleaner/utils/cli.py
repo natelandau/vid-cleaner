@@ -4,11 +4,10 @@ import shutil
 from pathlib import Path
 
 import cappa
+from nclutils import pp
 
 from vid_cleaner.constants import DEFAULT_CONFIG_PATH, USER_CONFIG_PATH, VideoContainerTypes
 from vid_cleaner.models.video_file import VideoFile
-
-from .printer import pp
 
 
 def coerce_video_files(files: list[Path]) -> list[VideoFile]:

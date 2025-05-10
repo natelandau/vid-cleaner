@@ -29,7 +29,7 @@ jobs:
 
             - name: Build the package
               shell: bash
-              run: uvx --from build pyproject-build --installer uv
+              run: uv build
 
             - name: Upload to PyPi
               shell: bash

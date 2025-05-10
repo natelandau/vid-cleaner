@@ -3,9 +3,10 @@
 import shutil
 
 import cappa
+from nclutils import console, directory_tree, pp
 
 from vid_cleaner.constants import PrintLevel
-from vid_cleaner.utils import console, directory_tree, pp, settings
+from vid_cleaner.utils import settings
 from vid_cleaner.vidcleaner import CacheCommand, VidCleaner
 
 

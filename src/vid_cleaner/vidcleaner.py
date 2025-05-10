@@ -6,13 +6,11 @@ from pathlib import Path  # noqa: TC003
 from typing import Annotated
 
 import cappa
-from rich.console import Console
+from nclutils import pp
 from rich.traceback import install
 
 from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel
-from vid_cleaner.utils import create_default_config, pp, settings, validate_settings
-
-console = Console()
+from vid_cleaner.utils import create_default_config, settings, validate_settings
 
 
 @cappa.command(
@@ -126,7 +124,7 @@ class CleanCommand:
     overwrite: Annotated[
         bool,
         cappa.Arg(
-            help="Overwrite output file if it exists",
+            help="Do not create a backup of the original file if it would be overwritten",
             long=True,
             show_default=True,
         ),
@@ -269,7 +267,7 @@ This command allows you to extract a specific portion of a video file based on s
 * The start time and duration should be specified in `HH:MM:SS` format.
 * You can also specify an output file to save the clipped video. If the output file is not specified, the clip will be saved with a default naming convention.
 
-Use the `--overwrite` option to overwrite the output file if it already exists.
+Use the `--overwrite` option to avoid creating a backup of the original file if it would be overwritten.
 """,
 )
 class ClipCommand:
@@ -309,7 +307,11 @@ class ClipCommand:
     ] = None
     overwrite: Annotated[
         bool,
-        cappa.Arg(help="Overwrite output file if it exists", long=True, show_default=True),
+        cappa.Arg(
+            help="Do not create a backup of the original file if it would be overwritten",
+            long=True,
+            show_default=True,
+        ),
     ] = False
 
 

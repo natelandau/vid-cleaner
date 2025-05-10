@@ -2,11 +2,12 @@
     authors = [{ name = "Nate Landau", email = "github@natenate.org" }]
     dependencies = [
         "cappa>=0.27.2",
-        "dynaconf>=3.2.10",
+        "dynaconf>=3.2.11",
         "ffmpeg-progress-yield>=0.12.0",
         "ffmpeg-progress>=0.0.5",
         "ffmpeg-python>=0.2.0",
         "iso639-lang>=2.6.0",
+        "nclutils>=0.2.1",
         "python-box>=7.3.2",
         "requests>=2.32.3",
         "rich>=14.0.0",
@@ -33,7 +34,7 @@
 
 [dependency-groups]
     dev = [
-        "commitizen>=4.6.0",
+        "commitizen>=4.6.3",
         "coverage>=7.8.0",
         "duty>=1.6.0",
         "mypy>=1.15.0",
@@ -46,10 +47,10 @@
         "pytest-sugar>=1.0.0",
         "pytest-xdist>=3.6.1",
         "pytest>=8.3.5",
-        "ruff>=0.11.8",
+        "ruff>=0.11.9",
         "types-requests>=2.32.0.20250328",
-        "typos>=1.31.2",
-        "yamllint>=1.37.0",
+        "typos>=1.32.0",
+        "yamllint>=1.37.1",
     ]
 
 [tool.commitizen]
@@ -111,29 +112,7 @@
     xfail_strict   = true
 
 [tool.ruff] # https://github.com/charliermarsh/ruff
-    exclude = [
-        ".bzr",
-        ".direnv",
-        ".eggs",
-        ".git",
-        ".hg",
-        ".mypy_cache",
-        ".nox",
-        ".pants.d",
-        ".pytype",
-        ".ruff_cache",
-        ".svn",
-        ".tox",
-        ".venv",
-        "__pypackages__",
-        "_build",
-        "buck-out",
-        "build",
-        "dist",
-        "node_modules",
-        "venv",
-    ]
-
+    exclude        = [".cache", ".git", ".venv", "__pypackages__", "dist", "tmp"]
     fix            = true
     line-length    = 100
     output-format  = "grouped"
@@ -161,6 +140,7 @@
             "ARG005",
             "D102",
             "DOC201",
+            "DOC501",  # Raised exception missing from docstring
             "ERA001",
             "F403",
             "PGH003",
@@ -169,12 +149,12 @@
             "PLR2004",
             "PLR6301",
             "S101",
-        ] }
+        ], "duties.py" = ["ANN001"] }
         preview = true
         select = ["ALL"]
-        unfixable = ["E712", "ERA001", "F401", "F841", "UP007"]
+        unfixable = ["F401"]
+        # unfixable = ["E712", "ERA001", "F401", "F841", "UP007"]
         [tool.ruff.lint.mccabe]
-            # Unlike Flake8, default to a complexity level of 10.
             max-complexity = 10
 
         [tool.ruff.lint.pydocstyle]
