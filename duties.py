@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from duty import duty, tools
+from nclutils import console
 
 if TYPE_CHECKING:
     from duty.context import Context
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
 PY_SRC_PATHS = (Path(_) for _ in ("src/", "tests/", "duties.py", "scripts/") if Path(_).exists())
 PY_SRC_LIST = tuple(str(_) for _ in PY_SRC_PATHS)
 CI = os.environ.get("CI", "0") in {"1", "true", "yes", ""}
+DEV_DIR = Path(__file__).parent.absolute() / ".development"
 
 
 def strip_ansi(text: str) -> str:
@@ -136,3 +138,182 @@ def test(ctx: Context, *cli_args: str) -> None:
         title=pyprefix("Running tests"),
         capture=CI,
     )
+
+
+@duty()
+def dev_clean(ctx: Context) -> None:
+    """Clean the development environment."""
+    # We import these here to avoid importing code before pytest-cov is initialized
+
+    if DEV_DIR.exists():
+        ctx.run(["rm", "-rf", str(DEV_DIR)])
+
+
+@duty(pre=[dev_clean])
+def dev_setup(ctx: Context) -> None:
+    """Provision a mock development environment."""
+    DEV_DIR.mkdir(parents=True, exist_ok=True)
+    _create_subtitles()
+    ctx.run(
+        [
+            "ffmpeg",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:s=1920x1080:d=5:r=30",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=5:sample_rate=48000",
+            "-c:v",
+            "libx264",
+            "-vf",
+            "format=yuv420p",
+            "-preset",
+            "medium",
+            "-crf",
+            "23",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-shortest",
+            f"{DEV_DIR}/output_red_with_tone_1080p.mp4",
+        ]
+    )
+
+    ctx.run(
+        [
+            "ffmpeg",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=blue:s=1920x1080:d=5:r=30",
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=channel_layout=stereo:sample_rate=48000:d=5",
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=channel_layout=stereo:sample_rate=48000:d=5",
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=channel_layout=stereo:sample_rate=48000:d=5",
+            "-i",
+            f"{DEV_DIR}/subtitles/english.srt",
+            "-i",
+            f"{DEV_DIR}/subtitles/dutch.srt",
+            "-i",
+            f"{DEV_DIR}/subtitles/spanish.srt",
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
+            "-metadata:s:a:0",
+            "language=eng",
+            "-metadata:s:a:0",
+            "title=English Audio",
+            "-map",
+            "2:a:0",
+            "-metadata:s:a:1",
+            "language=dut",
+            "-metadata:s:a:1",
+            "title=Dutch Audio",
+            "-map",
+            "3:a:0",
+            "-metadata:s:a:2",
+            "language=spa",
+            "-metadata:s:a:2",
+            "title=Spanish Audio",
+            "-map",
+            "4:s:0",
+            "-metadata:s:s:0",
+            "language=eng",
+            "-metadata:s:s:0",
+            "title=English Subtitles",
+            "-map",
+            "5:s:0",
+            "-metadata:s:s:1",
+            "language=dut",
+            "-metadata:s:s:1",
+            "title=Dutch Subtitles",
+            "-map",
+            "6:s:0",
+            "-metadata:s:s:2",
+            "language=spa",
+            "-metadata:s:s:2",
+            "title=Spanish Subtitles",
+            "-c:v",
+            "libx264",
+            "-vf",
+            "format=yuv420p",
+            "-preset",
+            "medium",
+            "-crf",
+            "23",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-c:s",
+            "copy",
+            "-shortest",
+            f"{DEV_DIR}/output_multilingual_1080p.mkv",
+        ]
+    )
+
+
+def _create_subtitles() -> None:
+    """Create subtitles for the development environment."""
+
+    def _create_srt_file(filename, line1_text, line2_text) -> None:
+        """Creates an SRT file with two subtitle entries.
+
+        Args:
+            filename (str): The name of the SRT file to create (e.g., "english.srt").
+            lang_code (str): A short code for the language (e.g., "en" for English).
+                            This is just for internal reference in this script,
+                            the actual language metadata is set in ffmpeg.
+            line1_text (str): The text for the first subtitle entry.
+            line2_text (str): The text for the second subtitle entry.
+        """
+        content = f"""1
+00:00:01,000 --> 00:00:04,000
+{line1_text}
+
+2
+00:00:04,500 --> 00:00:05,000
+{line2_text}
+    """
+        subtitle_folder = DEV_DIR / "subtitles"
+        subtitle_folder.mkdir(parents=True, exist_ok=True)
+        filename = subtitle_folder / filename
+        try:
+            with filename.open("w", encoding="utf-8") as f:
+                f.write(content)
+            console.print(f"Successfully created '{filename}'")
+        except OSError as e:
+            console.print(f"Error creating file '{filename}': {e}")
+
+    subtitles_data = [
+        {
+            "filename": "english.srt",
+            "line1": "This is an English subtitle.",
+            "line2": "End.",
+        },
+        {
+            "filename": "dutch.srt",
+            "line1": "Dit is een Nederlandse ondertitel.",
+            "line2": "Einde.",
+        },
+        {
+            "filename": "spanish.srt",
+            "line1": "Este es un subtítulo en español.",
+            "line2": "Fin.",
+        },
+    ]
+
+    for sub_info in subtitles_data:
+        _create_srt_file(sub_info["filename"], sub_info["line1"], sub_info["line2"])

@@ -5,12 +5,11 @@ import shutil
 import cappa
 from nclutils import console, directory_tree, pp
 
-from vid_cleaner.constants import PrintLevel
-from vid_cleaner.utils import settings
-from vid_cleaner.vidcleaner import CacheCommand, VidCleaner
+from vid_cleaner import settings
+from vid_cleaner.vidcleaner import CacheCommand
 
 
-def main(cmd: VidCleaner, cache_cmd: CacheCommand) -> None:
+def main(cache_cmd: CacheCommand) -> None:
     """Manage the cache directory for vidcleaner.
 
     Clear or display the contents of the cache directory used by vidcleaner. When displaying contents, show a tree view of all files including hidden ones.
@@ -22,12 +21,6 @@ def main(cmd: VidCleaner, cache_cmd: CacheCommand) -> None:
     Raises:
         cappa.Exit: If the cache directory is not found or if the cache is cleared
     """
-    settings.update({"dryrun": cmd.dry_run})
-    pp.configure(
-        debug=cmd.verbosity in {PrintLevel.DEBUG, PrintLevel.TRACE},
-        trace=cmd.verbosity == PrintLevel.TRACE,
-    )
-
     if not settings.CACHE_DIR.exists():
         pp.info(f"Cache directory not found: `{settings.CACHE_DIR}`")
         raise cappa.Exit(code=0)

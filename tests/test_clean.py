@@ -6,11 +6,11 @@ import cappa
 import pytest
 from iso639 import Lang
 
-from vid_cleaner.vidcleaner import VidCleaner
+from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 from vid_cleaner.controllers import TempFile  # isort: skip
-from vid_cleaner.utils import settings
+from vid_cleaner import settings
 
 
 @pytest.fixture(autouse=True)
@@ -32,47 +32,20 @@ def set_default_settings(tmp_path, mocker):
         }
     )
 
-    # from dynaconf import Dynaconf
-    # from dynaconf.utils import DynaconfDict
-
-    # path_to_config = tmp_path / "vid-cleaner.toml"
-    # path_to_config.touch()
-    # mocked_settings = Dynaconf(
-    #     settings_files=[path_to_config],
-    #     environments=False,
-    #     load_dotenv=False,
-    # )
-    # mocked_settings.update(
-    #     {
-    #         "cache_dir": cache_dir,
-    #         "langs_to_keep": ["en"],
-    #         "downmix_stereo": False,
-    #         "keep_local_subtitles": False,
-    #         "keep_commentary": False,
-    #         "drop_local_subs": False,
-    #         "keep_all_subtitles": False,
-    #         "drop_original_audio": False,
-    #         "save_each_step": False,
-    #         # "dryrun": False,
-    #     }
-    # )
-    # mocker.patch("vid_cleaner.vidcleaner.settings", mocked_settings)
-    # mocker.patch("vid_cleaner.cli.clean_video.settings", mocked_settings)
-    # mocker.patch("vid_cleaner.models.video_file.settings", mocked_settings)
-
 
 def test_fail_on_flag_conflict(debug, tmp_path, clean_stdout, mock_video_path):
     """Verify clean command fails when incompatible flags are used."""
     # Given: Conflicting codec conversion flags
-    args = ["clean", "--h265", "--vp9", str(mock_video_path)]
+    args = ["clean", "-vv", "--h265", "--vp9", str(mock_video_path)]
     settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
 
     # When: Running clean command with conflicting flags
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args)
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Error message is displayed
     output = clean_stdout()
+
     assert exc_info.value.code == 1
     assert "Cannot convert to both H265 and VP9" in output
 
@@ -150,7 +123,7 @@ def test_stream_processing(
 
     # When: Running clean command
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args)
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = clean_stdout()
     # debug(output, "output")
@@ -216,7 +189,7 @@ def test_clean_video_foreign_language(
 
     # When: Processing the video file
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args)
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = clean_stdout()
     # debug(output, "output")
@@ -276,7 +249,7 @@ def test_clean_video_downmix(
 
     # When: Processing the video file
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args)
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = clean_stdout()
     # debug(output, "output")
@@ -332,7 +305,7 @@ def test_clean_reorganize_streams(
 
     # When: Processing the video file
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args)
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = clean_stdout()
     # debug(output, "output")
@@ -401,7 +374,7 @@ def test_convert_video(
 
     # When: Processing the video file
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args)
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = clean_stdout()
     # debug(output, "output")
@@ -454,7 +427,7 @@ def test_save_each_step(
 
     # When: Processing the video file
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args)
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = clean_stdout()
     # debug(output, "output")

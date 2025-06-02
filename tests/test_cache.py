@@ -3,8 +3,8 @@
 import cappa
 import pytest
 
-from vid_cleaner.utils import settings
-from vid_cleaner.vidcleaner import VidCleaner
+from vid_cleaner import settings
+from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 
 
 @pytest.fixture
@@ -35,7 +35,7 @@ def test_cache_list(tmp_cache_dir, clean_stdout, debug):
 
     # When: Invoking cache list command
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args)
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Output contains expected tree structure
     output = clean_stdout()
@@ -53,7 +53,7 @@ def test_cache_clean(tmp_cache_dir, clean_stdout, debug):
 
     # When: Invoking cache clean command
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args)
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Success message is displayed
     output = clean_stdout()

@@ -13,6 +13,7 @@ from nclutils import console, pp
 from rich.markdown import Markdown
 from rich.progress import Progress
 
+from vid_cleaner import settings
 from vid_cleaner.constants import (
     EXCLUDED_VIDEO_CODECS,
     FFMPEG_APPEND,
@@ -22,14 +23,7 @@ from vid_cleaner.constants import (
     AudioLayout,
     CodecTypes,
 )
-from vid_cleaner.utils import (
-    get_probe_as_box,
-    query_radarr,
-    query_sonarr,
-    query_tmdb,
-    run_ffprobe,
-    settings,
-)
+from vid_cleaner.utils import get_probe_as_box, query_radarr, query_sonarr, query_tmdb, run_ffprobe
 
 from vid_cleaner.controllers import TempFile  # isort: skip
 

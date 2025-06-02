@@ -3,7 +3,7 @@
 import requests
 from nclutils import console, pp
 
-from .config import settings
+from vid_cleaner import settings
 
 
 def query_tmdb(search: str) -> dict:  # pragma: no cover

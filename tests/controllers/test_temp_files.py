@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from vid_cleaner.utils import settings
+from vid_cleaner import settings
 
 from vid_cleaner.controllers import TempFile  # isort: skip
 
