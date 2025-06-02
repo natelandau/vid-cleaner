@@ -5,15 +5,13 @@ from pathlib import Path
 
 from nclutils import pp
 
-from vid_cleaner.utils import settings
+from vid_cleaner import settings
 
 
 class TempFile:
     """Manage temporary files created during video processing.
 
-    This class handles the creation, tracking, and cleanup of temporary files generated
-    during video processing operations. It maintains a unique temporary directory for each
-    instance and manages file naming and cleanup.
+    This class handles the creation, tracking, and cleanup of temporary files generated during video processing operations. It maintains a unique temporary directory for each instance and manages file naming and cleanup.
 
     Args:
         path (Path): The path to the original video file.

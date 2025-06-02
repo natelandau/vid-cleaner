@@ -15,6 +15,8 @@ PROJECT_ROOT_PATH = Path(__file__).parents[2].absolute()
 PACKAGE_ROOT_PATH = Path(__file__).parents[0].absolute()
 USER_CONFIG_PATH = CONFIG_DIR / "config.toml"
 DEFAULT_CONFIG_PATH = PACKAGE_ROOT_PATH / "default_config.toml"
+DEV_DIR = PROJECT_ROOT_PATH / ".development"
+DEV_CONFIG_PATH = DEV_DIR / "dev-config.toml"
 
 
 class VideoContainerTypes(str, Enum):

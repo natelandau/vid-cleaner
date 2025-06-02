@@ -5,8 +5,8 @@ from pathlib import Path
 import cappa
 import pytest
 
-from vid_cleaner.utils import settings
-from vid_cleaner.vidcleaner import VidCleaner
+from vid_cleaner import settings
+from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 
 
 @pytest.mark.parametrize(
@@ -24,7 +24,7 @@ def test_clip_option_errors(debug, tmp_path, clean_stdout, mock_video_path, args
 
     # When: Running clip command with invalid arguments
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args)
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Error message is displayed
     output = clean_stdout()
@@ -67,7 +67,7 @@ def test_clipping_video(
 
     # When: Running clip command
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args)
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = clean_stdout()
     # debug(output, "output")
@@ -116,7 +116,7 @@ def test_clipping_video_dryrun(
 
     # When: Running clip command in dry-run mode
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args)
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = clean_stdout()
     # debug(output, "output")

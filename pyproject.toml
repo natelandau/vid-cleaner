@@ -1,17 +1,21 @@
 [project]
     authors = [{ name = "Nate Landau", email = "github@natenate.org" }]
+    classifiers = [
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+    ]
     dependencies = [
-        "cappa>=0.27.2",
+        "cappa>=0.28.0",
         "dynaconf>=3.2.11",
         "ffmpeg-progress-yield>=0.12.0",
         "ffmpeg-progress>=0.0.5",
         "ffmpeg-python>=0.2.0",
         "iso639-lang>=2.6.0",
-        "nclutils>=0.2.1",
+        "nclutils>=0.3.0",
         "python-box>=7.3.2",
         "requests>=2.32.3",
         "rich>=14.0.0",
-        "shellingham>=1.5.4",
         "validators>=0.35.0",
     ]
     description = "Tools to transcode, inspect and convert videos."
@@ -34,21 +38,21 @@
 
 [dependency-groups]
     dev = [
-        "commitizen>=4.6.3",
-        "coverage>=7.8.0",
+        "commitizen>=4.8.2",
+        "coverage>=7.8.2",
         "duty>=1.6.0",
-        "mypy>=1.15.0",
+        "mypy>=1.16.0",
         "pre-commit>=4.2.0",
         "pytest-clarity>=1.0.1",
         "pytest-cov>=6.1.1",
         "pytest-env>=1.1.5",
-        "pytest-mock>=3.14.0",
+        "pytest-mock>=3.14.1",
         "pytest-pretty-terminal>=1.1.0",
         "pytest-sugar>=1.0.0",
         "pytest-xdist>=3.6.1",
         "pytest>=8.3.5",
-        "ruff>=0.11.9",
-        "types-requests>=2.32.0.20250328",
+        "ruff>=0.11.10",
+        "types-requests>=2.32.0.20250515",
         "typos>=1.32.0",
         "yamllint>=1.37.1",
     ]
@@ -121,12 +125,16 @@
 
     [tool.ruff.lint]
         ignore = [
+            "ANN204", # missing return type annotation for special method `__init__`
             "B006",   # mutable-argument-default
             "COM812", # Trailing comma missing
             "CPY001", # Missing copyright notice at top of file
             "D213",   # multi-line-summary-second-line
             "E501",   # line-too-long
+            "FIX002", # Line contains TODO, consider resolving the issue
             "S311",   # suspicious-non-cryptographic-random-usage
+            "TD002",  # Missing author in TODO
+            "TD003",  # Missing issue link on the line following this TODO
         ]
         per-file-ignores = { "tests/*.py" = [
             "A002",
@@ -152,8 +160,11 @@
         ], "duties.py" = ["ANN001"] }
         preview = true
         select = ["ALL"]
-        unfixable = ["F401"]
-        # unfixable = ["E712", "ERA001", "F401", "F841", "UP007"]
+        unfixable = [
+            "ERA001", # Commented out code
+            "F401",   # unused-import
+            "F841",   # unused-variable
+        ]
         [tool.ruff.lint.mccabe]
             max-complexity = 10
 

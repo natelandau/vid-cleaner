@@ -6,11 +6,63 @@ from pathlib import Path  # noqa: TC003
 from typing import Annotated
 
 import cappa
-from nclutils import pp
+from nclutils import pp, print_debug
 from rich.traceback import install
 
+from vid_cleaner import settings
+from vid_cleaner.config import SettingsManager
 from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel
-from vid_cleaner.utils import create_default_config, settings, validate_settings
+from vid_cleaner.utils import create_default_config
+
+
+def config_subcommand(vidcleaner: VidCleaner) -> None:
+    """Configure settings based on the provided command and arguments.
+
+    Update the global settings object with values from the command line arguments and configuration file. Handle project-specific settings if a project is specified.
+
+    Args:
+        vidcleaner (VidCleaner): The main CLI application object containing command and configuration options.
+    """
+    pp.configure(
+        debug=vidcleaner.verbosity in {PrintLevel.DEBUG, PrintLevel.TRACE},
+        trace=vidcleaner.verbosity == PrintLevel.TRACE,
+    )
+
+    langs_to_keep = getattr(vidcleaner.command, "langs_to_keep", None)
+    if langs_to_keep and isinstance(langs_to_keep, str):
+        langs_to_keep = langs_to_keep.split(",")
+
+    # Apply command-specific settings
+    cli_settings = {
+        "downmix_stereo": getattr(vidcleaner.command, "downmix_stereo", False),
+        "drop_local_subs": getattr(vidcleaner.command, "drop_local_subs", False),
+        "drop_original_audio": getattr(vidcleaner.command, "drop_original_audio", False),
+        "dryrun": getattr(vidcleaner, "dryrun", False),
+        "force": getattr(vidcleaner.command, "force", False),
+        "h265": getattr(vidcleaner.command, "h265", False),
+        "keep_all_subtitles": getattr(vidcleaner.command, "keep_all_subtitles", False),
+        "keep_commentary": getattr(vidcleaner.command, "keep_commentary", False),
+        "keep_local_subtitles": getattr(vidcleaner.command, "keep_local_subtitles", False),
+        "langs_to_keep": langs_to_keep,
+        "out_path": getattr(vidcleaner.command, "out", None),
+        "overwrite": getattr(vidcleaner.command, "overwrite", False),
+        "save_each_step": getattr(vidcleaner.command, "save_each_step", False),
+        "subcommand": vidcleaner.command.__class__.__name__.lower(),
+        "video_1080": getattr(vidcleaner.command, "video_1080", False),
+        "vp9": getattr(vidcleaner.command, "vp9", False),
+    }
+
+    SettingsManager.apply_cli_settings(cli_settings)
+
+    if pp.is_trace:
+        print_debug(
+            custom=[
+                {"Settings": settings.to_dict()},
+                {"vidcleaner": vidcleaner.__dict__},
+            ],
+            envar_prefix="VIDCLEANER",
+            packages=["cappa", "dynaconf", "rich", "nclutils"],
+        )
 
 
 @cappa.command(
@@ -60,7 +112,7 @@ class VidCleaner:
         ),
     ] = PrintLevel.INFO
 
-    dry_run: Annotated[
+    dryrun: Annotated[
         bool,
         cappa.Arg(
             long=True,
@@ -334,7 +386,7 @@ def main() -> None:  # pragma: no cover
     install(show_locals=True)
 
     try:
-        cappa.invoke(obj=VidCleaner, deps=[create_default_config, validate_settings])
+        cappa.invoke(obj=VidCleaner, deps=[create_default_config, config_subcommand])
     except KeyboardInterrupt as e:
         pp.info("Exiting...")
         raise cappa.Exit(code=1) from e

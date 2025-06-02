@@ -6,8 +6,8 @@ from pathlib import Path
 import cappa
 import pytest
 
-from vid_cleaner.utils import settings
-from vid_cleaner.vidcleaner import VidCleaner
+from vid_cleaner import settings
+from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 
 
 def test_inspect_table(tmp_path, clean_stdout, debug, mock_video_path, mock_ffprobe_box, mocker):
@@ -22,7 +22,7 @@ def test_inspect_table(tmp_path, clean_stdout, debug, mock_video_path, mock_ffpr
 
     # When: Running inspect command
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args)
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Output contains expected table data
     output = clean_stdout()
@@ -45,7 +45,7 @@ def test_inspect_json(tmp_path, clean_stdout, debug, mock_video_path, mock_ffpro
 
     # When: Running inspect command with JSON flag
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args)
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Output contains expected JSON data
     output = clean_stdout()

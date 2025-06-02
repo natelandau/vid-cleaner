@@ -5,14 +5,14 @@ from pathlib import Path
 import cappa
 from nclutils import copy_file, pp
 
-from vid_cleaner.constants import PrintLevel
-from vid_cleaner.utils import coerce_video_files, settings
-from vid_cleaner.vidcleaner import CleanCommand, VidCleaner
+from vid_cleaner import settings
+from vid_cleaner.utils import coerce_video_files
+from vid_cleaner.vidcleaner import CleanCommand
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
-def main(cmd: VidCleaner, clean_cmd: CleanCommand) -> None:
+def main(clean_cmd: CleanCommand) -> None:
     """Process video files according to specified cleaning options.
 
     Apply video processing operations like stream reordering, audio/subtitle filtering, and format conversion based on command line arguments.
@@ -24,33 +24,6 @@ def main(cmd: VidCleaner, clean_cmd: CleanCommand) -> None:
     Raises:
         cappa.Exit: If incompatible options are specified (e.g., both H265 and VP9)
     """
-    settings.update(
-        {
-            "dryrun": cmd.dry_run or False,
-            "langs_to_keep": clean_cmd.langs_to_keep.split(",")
-            if clean_cmd.langs_to_keep and isinstance(clean_cmd.langs_to_keep, str)
-            else clean_cmd.langs_to_keep,
-            "drop_local_subs": clean_cmd.drop_local_subs,
-            "keep_local_subtitles": clean_cmd.keep_local_subtitles,
-            "keep_commentary": clean_cmd.keep_commentary,
-            "keep_all_subtitles": clean_cmd.keep_all_subtitles,
-            "drop_original_audio": clean_cmd.drop_original_audio,
-            "downmix_stereo": clean_cmd.downmix_stereo,
-            "save_each_step": clean_cmd.save_each_step,
-            "overwrite": clean_cmd.overwrite,
-            "out_path": clean_cmd.out,
-            "h265": clean_cmd.h265,
-            "vp9": clean_cmd.vp9,
-            "video_1080": clean_cmd.video_1080,
-            "force": clean_cmd.force,
-        },
-    )
-
-    pp.configure(
-        debug=cmd.verbosity in {PrintLevel.DEBUG, PrintLevel.TRACE},
-        trace=cmd.verbosity == PrintLevel.TRACE,
-    )
-
     if settings.h265 and settings.vp9:
         pp.error("Cannot convert to both H265 and VP9")
         raise cappa.Exit(code=1)
