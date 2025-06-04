@@ -14,6 +14,7 @@ Tools to transcode, inspect and convert videos. This package provides convenienc
 -   Downmix from surround to create missing stereo streams with custom filters to improve quality
 -   Remove unwanted audio and subtitle tracks, optionally keeping the original language audio track
 -   Create clips from a video file
+-   Search for video files under a directory that match specific criteria
 
 ## Install
 

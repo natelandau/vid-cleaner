@@ -15,13 +15,19 @@ from rich.progress import Progress
 
 from vid_cleaner import settings
 from vid_cleaner.constants import (
+    COMMENTARY_STREAM_TITLE_REGEX,
     EXCLUDED_VIDEO_CODECS,
     FFMPEG_APPEND,
     FFMPEG_PREPEND,
+    FHD_RESOLUTION,
     H265_CODECS,
+    HDTV_RESOLUTION,
+    SDTV_RESOLUTION,
     SYMBOL_CHECK,
+    UHDTV_RESOLUTION,
     AudioLayout,
     CodecTypes,
+    VideoTrait,
 )
 from vid_cleaner.utils import get_probe_as_box, query_radarr, query_sonarr, query_tmdb, run_ffprobe
 
@@ -55,6 +61,10 @@ class VideoFile:
         self.ran_language_check = False
         self._probe_box: Box = Box({}, default_box=True, default_box_create_on_get=False)
 
+        self._video_streams: list[Box] = []
+        self._audio_streams: list[Box] = []
+        self._subtitle_streams: list[Box] = []
+
         atexit.register(cleanup_on_exit, self)
 
     @property
@@ -64,6 +74,118 @@ class VideoFile:
             self._probe_box = get_probe_as_box(self.temp_file.latest_temp_path())
 
         return self._probe_box
+
+    @property
+    def video_streams(self) -> list[Box]:
+        """Get the video streams."""
+        if not self._video_streams:
+            self._video_streams = [
+                s
+                for s in self.probe_box.streams
+                if s.codec_type == CodecTypes.VIDEO
+                and s.codec_name.lower() not in EXCLUDED_VIDEO_CODECS
+            ]
+        return self._video_streams
+
+    @property
+    def audio_streams(self) -> list[Box]:
+        """Get the audio streams."""
+        if not self._audio_streams:
+            self._audio_streams = [
+                s for s in self.probe_box.streams if s.codec_type == CodecTypes.AUDIO
+            ]
+        return self._audio_streams
+
+    @property
+    def subtitle_streams(self) -> list[Box]:
+        """Get the subtitle streams."""
+        if not self._subtitle_streams:
+            self._subtitle_streams = [
+                s for s in self.probe_box.streams if s.codec_type == CodecTypes.SUBTITLE
+            ]
+        return self._subtitle_streams
+
+    def get_traits(self) -> list[VideoTrait]:
+        """Analyze video file streams to identify audio, video, and structural characteristics.
+
+        Extract comprehensive traits from the video file by examining audio streams for channel layouts and commentary tracks, video streams for codec types and resolutions, and derive additional traits based on stream ordering requirements and audio configuration gaps.
+
+        Returns:
+            list[VideoTrait]: A list of VideoTrait enums representing all identified characteristics including audio layouts, video codecs, resolutions, and structural properties.
+        """
+        traits = []
+
+        # Process audio streams
+        traits.extend(self._get_audio_traits())
+
+        # Process video streams
+        traits.extend(self._get_video_traits())
+
+        # Add derived traits
+        if VideoTrait.STEREO not in traits:
+            traits.append(VideoTrait.NOSTEREO)
+
+        if self._need_stream_reorder():
+            traits.append(VideoTrait.REORDER)
+
+        return traits
+
+    def _get_audio_traits(self) -> list[VideoTrait]:
+        """Extract audio-related traits from the video file's audio streams.
+
+        Analyze each audio stream to identify characteristics such as channel layout
+        (stereo, mono, surround sound) and special properties like commentary tracks.
+        Commentary tracks are identified by matching stream titles against a regex pattern.
+
+        Returns:
+            list[VideoTrait]: A list of VideoTrait enums representing the audio characteristics
+                found in the file's audio streams.
+        """
+        traits = []
+        for stream in self.audio_streams:
+            if stream.title and re.search(
+                COMMENTARY_STREAM_TITLE_REGEX, stream.title, re.IGNORECASE
+            ):
+                traits.append(VideoTrait.COMMENTARY)
+            elif stream.channels == AudioLayout.STEREO:
+                traits.append(VideoTrait.STEREO)
+            elif stream.channels == AudioLayout.MONO:
+                traits.append(VideoTrait.MONO)
+            elif stream.channels == AudioLayout.SURROUND5:
+                traits.append(VideoTrait.SURROUND5)
+            elif stream.channels == AudioLayout.SURROUND7:
+                traits.append(VideoTrait.SURROUND7)
+        return traits
+
+    def _get_video_traits(self) -> list[VideoTrait]:
+        """Extract video-related traits from the video file's video streams.
+
+        Analyze each video stream to identify codec type (H.264, H.265) and resolution
+        characteristics (HDTV, FHD, UHDTV, SDTV). Resolution is determined by comparing
+        both height and width against standard resolution constants.
+
+        Returns:
+            list[VideoTrait]: A list of VideoTrait enums representing the video characteristics
+                found in the file's video streams, including codec and resolution information.
+        """
+        traits = []
+        for stream in self.video_streams:
+            if stream.codec_name.lower() in H265_CODECS:
+                traits.append(VideoTrait.H265)
+            elif stream.codec_name.lower() == "h264":
+                traits.append(VideoTrait.H264)
+
+            if stream.height == HDTV_RESOLUTION.height or stream.width == HDTV_RESOLUTION.width:
+                traits.append(VideoTrait.HDTV)
+            elif stream.height == FHD_RESOLUTION.height or stream.width == FHD_RESOLUTION.width:
+                traits.append(VideoTrait.FHD)
+            elif stream.height == UHDTV_RESOLUTION.height or stream.width == UHDTV_RESOLUTION.width:
+                traits.append(VideoTrait.UHDTV)
+            elif stream.height == SDTV_RESOLUTION.height or stream.width == SDTV_RESOLUTION.width:
+                traits.append(VideoTrait.SDTV)
+            else:
+                traits.append(VideoTrait.UNKNOWN_RESOLUTION)
+        return traits
 
     @staticmethod
     def _downmix_to_stereo(streams: list[Box]) -> list[str]:
@@ -188,38 +310,79 @@ class VideoFile:
         self.ran_language_check = True
         return language
 
-    @staticmethod
-    def _process_video(streams: list[Box]) -> list[str]:
-        """Create a command list for processing video streams.
-
-        Iterate through the provided video streams and construct a list of ffmpeg commands to process them, excluding any streams with codecs in the exclusion list.
-
-        Args:
-            streams (list[dict]): A list of video stream dictionaries.
+    def _need_stream_reorder(self) -> bool:
+        """Check if the video file needs stream reordering.
 
         Returns:
-            list[str]: A list of strings forming part of an ffmpeg command for video processing.
+            bool: True if the video file needs stream reordering, False otherwise.
+        """
+        return any(
+            stream.index != i
+            for i, stream in enumerate(
+                self.video_streams + self.audio_streams + self.subtitle_streams
+            )
+        )
+
+    def _process_audio(self) -> tuple[list[str], list[str]]:
+        """Construct commands for processing audio streams.
+
+        Analyze and process audio streams based on language, commentary, and downmixing criteria. Generate ffmpeg commands for keeping or altering audio streams as required.
+
+        Returns:
+            tuple[list[str], list[str]]: A tuple containing two lists of strings forming part of an ffmpeg command for audio processing.
         """
         command: list[str] = []
-        for stream in streams:
-            if stream.codec_name.lower() in EXCLUDED_VIDEO_CODECS:
+
+        langs = [Lang(lang) for lang in settings.langs_to_keep]
+
+        # Add original language to list of languages to keep if not explicitly dropping it
+        if not settings.drop_original_audio:
+            original_language = self._find_original_language()
+            if original_language and original_language not in langs:
+                langs.append(original_language)
+
+        streams_to_keep = []
+        for stream in self.audio_streams:
+            # Unknown language streams are kept to avoid removing potentially important audio
+            if not stream.language:
+                command.extend(["-map", f"0:{stream.index}"])
+                streams_to_keep.append(stream)
                 continue
 
-            command.extend(["-map", f"0:{stream.index}"])
+            # Commentary tracks are often unwanted and take up space
+            if (
+                not settings.keep_commentary
+                and stream.title
+                and re.search(COMMENTARY_STREAM_TITLE_REGEX, stream.title, re.IGNORECASE)
+            ):
+                pp.trace(rf"PROCESS AUDIO: Remove stream #{stream.index} \[commentary]")
+                continue
 
-        pp.trace(f"PROCESS VIDEO: {command}")
-        return command
+            if stream.language == "und" or Lang(stream.language) in langs:
+                command.extend(["-map", f"0:{stream.index}"])
+                streams_to_keep.append(stream)
+                continue
 
-    def _process_subtitles(
-        self,
-        streams: list[Box],
-    ) -> list[str]:
+            pp.trace(f"PROCESS AUDIO: Remove stream #{stream.index}")
+
+        # If all streams would be removed, keep them all to prevent silent video
+        if not command:
+            for stream in self.audio_streams:
+                command.extend(["-map", f"0:{stream.index}"])
+                streams_to_keep.append(stream)
+
+        # Create stereo downmix commands if requested
+        downmix_command = (
+            self._downmix_to_stereo(streams_to_keep) if settings.downmix_stereo else []
+        )
+
+        pp.trace(f"PROCESS AUDIO: {command}")
+        return command, downmix_command
+
+    def _process_subtitles(self) -> list[str]:
         """Construct a command list for processing subtitle streams.
 
         Analyze and filter subtitle streams based on language preferences, commentary options, and other criteria. Build an ffmpeg command list accordingly.
-
-        Args:
-            streams (list[Box]): A list of subtitle stream objects.
 
         Returns:
             list[str]: A list of strings forming part of an ffmpeg command for subtitle processing.
@@ -241,13 +404,13 @@ class VideoFile:
         ):
             return command
 
-        for stream in streams:
+        for stream in self.subtitle_streams:
             # Remove commentary/SDH/description tracks unless explicitly kept
             # These are typically supplementary and take up extra space
             if (
                 not settings.keep_commentary
                 and stream.title is not None
-                and re.search(r"commentary|sdh|description", stream.title, re.IGNORECASE)
+                and re.search(COMMENTARY_STREAM_TITLE_REGEX, stream.title, re.IGNORECASE)
             ):
                 pp.trace(rf"PROCESS SUBTITLES: Remove stream #{stream.index} \[commentary]")
                 continue
@@ -283,67 +446,23 @@ class VideoFile:
         pp.trace(f"PROCESS SUBTITLES: {command}")
         return command
 
-    def _process_audio(
-        self,
-        streams: list[Box],
-    ) -> tuple[list[str], list[str]]:
-        """Construct commands for processing audio streams.
+    def _process_video(self) -> list[str]:
+        """Create a command list for processing video streams.
 
-        Analyze and process audio streams based on language, commentary, and downmixing criteria. Generate ffmpeg commands for keeping or altering audio streams as required.
-
-        Args:
-            streams (list[Box]): A list of audio stream objects.
+        Iterate through the provided video streams and construct a list of ffmpeg commands to process them, excluding any streams with codecs in the exclusion list.
 
         Returns:
-            tuple[list[str], list[str]]: A tuple containing two lists of strings forming part of an ffmpeg command for audio processing.
+            list[str]: A list of strings forming part of an ffmpeg command for video processing.
         """
         command: list[str] = []
-
-        langs = [Lang(lang) for lang in settings.langs_to_keep]
-
-        # Add original language to list of languages to keep if not explicitly dropping it
-        if not settings.drop_original_audio:
-            original_language = self._find_original_language()
-            if original_language and original_language not in langs:
-                langs.append(original_language)
-
-        streams_to_keep = []
-        for stream in streams:
-            # Unknown language streams are kept to avoid removing potentially important audio
-            if not stream.language:
-                command.extend(["-map", f"0:{stream.index}"])
-                streams_to_keep.append(stream)
+        for stream in self.video_streams:
+            if stream.codec_name.lower() in EXCLUDED_VIDEO_CODECS:
                 continue
 
-            # Commentary tracks are often unwanted and take up space
-            if (
-                not settings.keep_commentary
-                and stream.title
-                and re.search(r"commentary|sdh|description", stream.title, re.IGNORECASE)
-            ):
-                pp.trace(rf"PROCESS AUDIO: Remove stream #{stream.index} \[commentary]")
-                continue
+            command.extend(["-map", f"0:{stream.index}"])
 
-            if stream.language == "und" or Lang(stream.language) in langs:
-                command.extend(["-map", f"0:{stream.index}"])
-                streams_to_keep.append(stream)
-                continue
-
-            pp.trace(f"PROCESS AUDIO: Remove stream #{stream.index}")
-
-        # If all streams would be removed, keep them all to prevent silent video
-        if not command:
-            for stream in streams:
-                command.extend(["-map", f"0:{stream.index}"])
-                streams_to_keep.append(stream)
-
-        # Create stereo downmix commands if requested
-        downmix_command = (
-            self._downmix_to_stereo(streams_to_keep) if settings.downmix_stereo else []
-        )
-
-        pp.trace(f"PROCESS AUDIO: {command}")
-        return command, downmix_command
+        pp.trace(f"PROCESS VIDEO: {command}")
+        return command
 
     def _query_arr_apps_for_imdb_id(self) -> str | None:
         """Query Radarr and Sonarr APIs to find the IMDb ID of the video.
@@ -564,15 +683,9 @@ class VideoFile:
         Returns:
             Path: Path to the processed video file.
         """
-        video_streams = [s for s in self.probe_box.streams if s.codec_type == CodecTypes.VIDEO]
-        audio_streams = [s for s in self.probe_box.streams if s.codec_type == CodecTypes.AUDIO]
-        subtitle_streams = [
-            s for s in self.probe_box.streams if s.codec_type == CodecTypes.SUBTITLE
-        ]
-
-        video_map_command = self._process_video(video_streams)
-        audio_map_command, downmix_command = self._process_audio(streams=audio_streams)
-        subtitle_map_command = self._process_subtitles(streams=subtitle_streams)
+        video_map_command = self._process_video()
+        audio_map_command, downmix_command = self._process_audio()
+        subtitle_map_command = self._process_subtitles()
 
         title_flags = []
 
@@ -611,30 +724,15 @@ class VideoFile:
         Raises:
             cappa.Exit: If no video or audio streams are found in the video file.
         """
-        # Filter out thumbnail/image video streams that we don't want to process
-        video_streams = [
-            s
-            for s in self.probe_box.streams
-            if s.codec_type == CodecTypes.VIDEO
-            and s.codec_name.lower() not in EXCLUDED_VIDEO_CODECS
-        ]
-        audio_streams = [s for s in self.probe_box.streams if s.codec_type == CodecTypes.AUDIO]
-        subtitle_streams = [
-            s for s in self.probe_box.streams if s.codec_type == CodecTypes.SUBTITLE
-        ]
-
-        if not video_streams:
+        if not self.video_streams:
             pp.error("No video streams found")
             raise cappa.Exit(code=1)
-        if not audio_streams:
+        if not self.audio_streams:
             pp.error("No audio streams found")
             raise cappa.Exit(code=1)
 
         # Skip reordering if streams are already in the desired order (video->audio->subtitles)
-        if not any(
-            stream.index != i
-            for i, stream in enumerate(video_streams + audio_streams + subtitle_streams)
-        ):
+        if not self._need_stream_reorder():
             pp.info(f"{SYMBOL_CHECK} No streams to reorder")
             return self.temp_file.latest_temp_path()
 
@@ -644,7 +742,7 @@ class VideoFile:
         # Flatten stream lists into ffmpeg mapping commands while preserving desired order
         command = initial_command + [
             item
-            for stream_list in [video_streams, audio_streams, subtitle_streams]
+            for stream_list in [self.video_streams, self.audio_streams, self.subtitle_streams]
             for stream in stream_list
             for item in ["-map", f"0:{stream.index}"]
         ]

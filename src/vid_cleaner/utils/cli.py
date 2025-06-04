@@ -6,7 +6,12 @@ from pathlib import Path
 import cappa
 from nclutils import pp
 
-from vid_cleaner.constants import DEFAULT_CONFIG_PATH, USER_CONFIG_PATH, VideoContainerTypes
+from vid_cleaner.constants import (
+    DEFAULT_CONFIG_PATH,
+    USER_CONFIG_PATH,
+    VideoContainerTypes,
+    VideoTrait,
+)
 from vid_cleaner.models.video_file import VideoFile
 
 
@@ -48,3 +53,22 @@ def create_default_config() -> None:
         USER_CONFIG_PATH.touch(exist_ok=True)
         shutil.copy(DEFAULT_CONFIG_PATH, USER_CONFIG_PATH)
         pp.info(f"Default configuration file created: `{USER_CONFIG_PATH}`")
+
+
+def parse_trait_filters(facets: str) -> set[VideoTrait]:
+    """Parse a comma-separated list of facets into a list of VideoTrait enums.
+
+    Args:
+        facets (str): Comma-separated string of facet names to parse
+
+    Returns:
+        set[SearchFacet]: Set of VideoTrait enum values
+
+    Raises:
+        cappa.Exit: If any facet is invalid, exits with code 1
+    """
+    try:
+        return {VideoTrait(facet.lower()) for facet in facets.split(",")}
+    except ValueError as e:
+        pp.error(f"Invalid facet: {e}")
+        raise cappa.Exit(code=1) from e
