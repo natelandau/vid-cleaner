@@ -15,6 +15,7 @@ from rich.progress import Progress
 
 from vid_cleaner import settings
 from vid_cleaner.constants import (
+    COMMENTARY_STREAM_TITLE_REGEX,
     EXCLUDED_VIDEO_CODECS,
     FFMPEG_APPEND,
     FFMPEG_PREPEND,
@@ -249,7 +250,7 @@ class VideoFile:
             if (
                 not settings.keep_commentary
                 and stream.title
-                and re.search(r"commentary|sdh|description", stream.title, re.IGNORECASE)
+                and re.search(COMMENTARY_STREAM_TITLE_REGEX, stream.title, re.IGNORECASE)
             ):
                 pp.trace(rf"PROCESS AUDIO: Remove stream #{stream.index} \[commentary]")
                 continue
@@ -306,7 +307,7 @@ class VideoFile:
             if (
                 not settings.keep_commentary
                 and stream.title is not None
-                and re.search(r"commentary|sdh|description", stream.title, re.IGNORECASE)
+                and re.search(COMMENTARY_STREAM_TITLE_REGEX, stream.title, re.IGNORECASE)
             ):
                 pp.trace(rf"PROCESS SUBTITLES: Remove stream #{stream.index} \[commentary]")
                 continue

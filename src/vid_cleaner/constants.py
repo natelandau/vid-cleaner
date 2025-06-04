@@ -18,6 +18,8 @@ DEFAULT_CONFIG_PATH = PACKAGE_ROOT_PATH / "default_config.toml"
 DEV_DIR = PROJECT_ROOT_PATH / ".development"
 DEV_CONFIG_PATH = DEV_DIR / "dev-config.toml"
 
+COMMENTARY_STREAM_TITLE_REGEX = r"commentary|sdh|description"
+
 
 class VideoContainerTypes(str, Enum):
     """Video container types for vid-cleaner."""
