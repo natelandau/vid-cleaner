@@ -9,8 +9,6 @@ import pytest
 from vid_cleaner import settings
 from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 
-from vid_cleaner.models.video_file import VideoFile  # isort: skip
-
 
 @pytest.fixture(autouse=True)
 def set_default_settings(tmp_path, mocker, mock_ffprobe_box):
