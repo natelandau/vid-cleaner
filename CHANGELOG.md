@@ -1,3 +1,19 @@
+## v0.5.0 (2025-06-04)
+
+### Feat
+
+- add search subcommand (#56)
+
+### Fix
+
+- capture keyboard interrupts gracefully
+
+### Refactor
+
+- use invoke dependencies for configuration (#55)
+- migrate to nclutils package (#54)
+- simplify filesystem utilities (#51)
+
 ## v0.4.0 (2025-03-09)
 
 ### Feat
