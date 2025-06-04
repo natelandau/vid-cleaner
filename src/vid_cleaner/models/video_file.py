@@ -19,10 +19,15 @@ from vid_cleaner.constants import (
     EXCLUDED_VIDEO_CODECS,
     FFMPEG_APPEND,
     FFMPEG_PREPEND,
+    FHD_RESOLUTION,
     H265_CODECS,
+    HDTV_RESOLUTION,
+    SDTV_RESOLUTION,
     SYMBOL_CHECK,
+    UHDTV_RESOLUTION,
     AudioLayout,
     CodecTypes,
+    VideoTrait,
 )
 from vid_cleaner.utils import get_probe_as_box, query_radarr, query_sonarr, query_tmdb, run_ffprobe
 
@@ -75,7 +80,10 @@ class VideoFile:
         """Get the video streams."""
         if not self._video_streams:
             self._video_streams = [
-                s for s in self.probe_box.streams if s.codec_type == CodecTypes.VIDEO
+                s
+                for s in self.probe_box.streams
+                if s.codec_type == CodecTypes.VIDEO
+                and s.codec_name.lower() not in EXCLUDED_VIDEO_CODECS
             ]
         return self._video_streams
 
@@ -96,6 +104,88 @@ class VideoFile:
                 s for s in self.probe_box.streams if s.codec_type == CodecTypes.SUBTITLE
             ]
         return self._subtitle_streams
+
+    def get_traits(self) -> list[VideoTrait]:
+        """Analyze video file streams to identify audio, video, and structural characteristics.
+
+        Extract comprehensive traits from the video file by examining audio streams for channel layouts and commentary tracks, video streams for codec types and resolutions, and derive additional traits based on stream ordering requirements and audio configuration gaps.
+
+        Returns:
+            list[VideoTrait]: A list of VideoTrait enums representing all identified characteristics including audio layouts, video codecs, resolutions, and structural properties.
+        """
+        traits = []
+
+        # Process audio streams
+        traits.extend(self._get_audio_traits())
+
+        # Process video streams
+        traits.extend(self._get_video_traits())
+
+        # Add derived traits
+        if VideoTrait.STEREO not in traits:
+            traits.append(VideoTrait.NOSTEREO)
+
+        if self._need_stream_reorder():
+            traits.append(VideoTrait.REORDER)
+
+        return traits
+
+    def _get_audio_traits(self) -> list[VideoTrait]:
+        """Extract audio-related traits from the video file's audio streams.
+
+        Analyze each audio stream to identify characteristics such as channel layout
+        (stereo, mono, surround sound) and special properties like commentary tracks.
+        Commentary tracks are identified by matching stream titles against a regex pattern.
+
+        Returns:
+            list[VideoTrait]: A list of VideoTrait enums representing the audio characteristics
+                found in the file's audio streams.
+        """
+        traits = []
+        for stream in self.audio_streams:
+            if stream.title and re.search(
+                COMMENTARY_STREAM_TITLE_REGEX, stream.title, re.IGNORECASE
+            ):
+                traits.append(VideoTrait.COMMENTARY)
+            elif stream.channels == AudioLayout.STEREO:
+                traits.append(VideoTrait.STEREO)
+            elif stream.channels == AudioLayout.MONO:
+                traits.append(VideoTrait.MONO)
+            elif stream.channels == AudioLayout.SURROUND5:
+                traits.append(VideoTrait.SURROUND5)
+            elif stream.channels == AudioLayout.SURROUND7:
+                traits.append(VideoTrait.SURROUND7)
+        return traits
+
+    def _get_video_traits(self) -> list[VideoTrait]:
+        """Extract video-related traits from the video file's video streams.
+
+        Analyze each video stream to identify codec type (H.264, H.265) and resolution
+        characteristics (HDTV, FHD, UHDTV, SDTV). Resolution is determined by comparing
+        both height and width against standard resolution constants.
+
+        Returns:
+            list[VideoTrait]: A list of VideoTrait enums representing the video characteristics
+                found in the file's video streams, including codec and resolution information.
+        """
+        traits = []
+        for stream in self.video_streams:
+            if stream.codec_name.lower() in H265_CODECS:
+                traits.append(VideoTrait.H265)
+            elif stream.codec_name.lower() == "h264":
+                traits.append(VideoTrait.H264)
+
+            if stream.height == HDTV_RESOLUTION.height or stream.width == HDTV_RESOLUTION.width:
+                traits.append(VideoTrait.HDTV)
+            elif stream.height == FHD_RESOLUTION.height or stream.width == FHD_RESOLUTION.width:
+                traits.append(VideoTrait.FHD)
+            elif stream.height == UHDTV_RESOLUTION.height or stream.width == UHDTV_RESOLUTION.width:
+                traits.append(VideoTrait.UHDTV)
+            elif stream.height == SDTV_RESOLUTION.height or stream.width == SDTV_RESOLUTION.width:
+                traits.append(VideoTrait.SDTV)
+            else:
+                traits.append(VideoTrait.UNKNOWN_RESOLUTION)
+        return traits
 
     @staticmethod
     def _downmix_to_stereo(streams: list[Box]) -> list[str]:
@@ -219,6 +309,19 @@ class VideoFile:
         self.language = language
         self.ran_language_check = True
         return language
+
+    def _need_stream_reorder(self) -> bool:
+        """Check if the video file needs stream reordering.
+
+        Returns:
+            bool: True if the video file needs stream reordering, False otherwise.
+        """
+        return any(
+            stream.index != i
+            for i, stream in enumerate(
+                self.video_streams + self.audio_streams + self.subtitle_streams
+            )
+        )
 
     def _process_audio(self) -> tuple[list[str], list[str]]:
         """Construct commands for processing audio streams.
@@ -621,30 +724,15 @@ class VideoFile:
         Raises:
             cappa.Exit: If no video or audio streams are found in the video file.
         """
-        # Filter out thumbnail/image video streams that we don't want to process
-        video_streams = [
-            s
-            for s in self.probe_box.streams
-            if s.codec_type == CodecTypes.VIDEO
-            and s.codec_name.lower() not in EXCLUDED_VIDEO_CODECS
-        ]
-        audio_streams = [s for s in self.probe_box.streams if s.codec_type == CodecTypes.AUDIO]
-        subtitle_streams = [
-            s for s in self.probe_box.streams if s.codec_type == CodecTypes.SUBTITLE
-        ]
-
-        if not video_streams:
+        if not self.video_streams:
             pp.error("No video streams found")
             raise cappa.Exit(code=1)
-        if not audio_streams:
+        if not self.audio_streams:
             pp.error("No audio streams found")
             raise cappa.Exit(code=1)
 
         # Skip reordering if streams are already in the desired order (video->audio->subtitles)
-        if not any(
-            stream.index != i
-            for i, stream in enumerate(video_streams + audio_streams + subtitle_streams)
-        ):
+        if not self._need_stream_reorder():
             pp.info(f"{SYMBOL_CHECK} No streams to reorder")
             return self.temp_file.latest_temp_path()
 
@@ -654,7 +742,7 @@ class VideoFile:
         # Flatten stream lists into ffmpeg mapping commands while preserving desired order
         command = initial_command + [
             item
-            for stream_list in [video_streams, audio_streams, subtitle_streams]
+            for stream_list in [self.video_streams, self.audio_streams, self.subtitle_streams]
             for stream in stream_list
             for item in ["-map", f"0:{stream.index}"]
         ]

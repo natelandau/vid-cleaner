@@ -1,6 +1,7 @@
 """Constants for vid-cleaner."""
 
 import os
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
@@ -17,8 +18,6 @@ USER_CONFIG_PATH = CONFIG_DIR / "config.toml"
 DEFAULT_CONFIG_PATH = PACKAGE_ROOT_PATH / "default_config.toml"
 DEV_DIR = PROJECT_ROOT_PATH / ".development"
 DEV_CONFIG_PATH = DEV_DIR / "dev-config.toml"
-
-COMMENTARY_STREAM_TITLE_REGEX = r"commentary|sdh|description"
 
 
 class VideoContainerTypes(str, Enum):
@@ -52,13 +51,57 @@ class AudioLayout(Enum):
     SURROUND7 = 8
 
 
-SYMBOL_CHECK = "✔"
+class VideoTrait(str, Enum):
+    """Video traits for vid-cleaner."""
 
+    H265 = "h265"
+    VP9 = "vp9"
+    H264 = "h264"
+    STEREO = "stereo"
+    MONO = "mono"
+    SURROUND5 = "surround5"
+    SURROUND7 = "surround7"
+    COMMENTARY = "commentary"
+    NOSTEREO = "no_stereo"
+    FHD = "1080p"
+    UHDTV = "4k"
+    HDTV = "720p"
+    SDTV = "480p"
+    UNKNOWN_RESOLUTION = "unknown"
+    REORDER = "reorder"
+
+    @classmethod
+    def help_options(cls) -> str:
+        """Generate a formatted string of all available video trait values for help documentation.
+
+        Create a comma-separated list of video trait values wrapped in backticks for use in command-line help text or documentation. This method provides a convenient way to display all possible trait options to users.
+
+        Returns:
+            str: A comma-separated string of video trait values formatted with backticks (e.g., "`h265`, `h264`, `stereo`").
+        """
+        values = [f"`{t.value}`" for t in cls]
+        return ", ".join(values)
+
+
+@dataclass
+class Resolution:
+    """Resolution for vid-cleaner."""
+
+    width: int
+    height: int
+
+
+SYMBOL_CHECK = "✔"
+COMMENTARY_STREAM_TITLE_REGEX = r"commentary|sdh|description"
 EXCLUDED_VIDEO_CODECS = {"mjpeg", "mjpg", "png"}
 FFMPEG_APPEND: list[str] = ["-max_muxing_queue_size", "9999"]
 FFMPEG_PREPEND: list[str] = ["-y", "-hide_banner"]
 H265_CODECS = {"hevc", "vp9"}
 VERSION = "0.4.0"
+FHD_RESOLUTION = Resolution(width=1920, height=1080)
+UHDTV_RESOLUTION = Resolution(width=3840, height=2160)
+HDTV_RESOLUTION = Resolution(width=1280, height=720)
+SDTV_RESOLUTION = Resolution(width=720, height=480)
 
 # how many bytes to read at once?
 # shutil.copy uses 1024 * 1024 if _WINDOWS else 64 * 1024

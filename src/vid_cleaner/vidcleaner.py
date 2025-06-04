@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path  # noqa: TC003
+from pathlib import Path
 from typing import Annotated
 
 import cappa
@@ -11,8 +11,8 @@ from rich.traceback import install
 
 from vid_cleaner import settings
 from vid_cleaner.config import SettingsManager
-from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel
-from vid_cleaner.utils import create_default_config
+from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel, VideoTrait
+from vid_cleaner.utils import create_default_config, parse_trait_filters
 
 
 def config_subcommand(vidcleaner: VidCleaner) -> None:
@@ -32,12 +32,18 @@ def config_subcommand(vidcleaner: VidCleaner) -> None:
     if langs_to_keep and isinstance(langs_to_keep, str):
         langs_to_keep = langs_to_keep.split(",")
 
+    if getattr(vidcleaner.command, "filters", None):
+        filters = parse_trait_filters(getattr(vidcleaner.command, "filters", None))
+    else:
+        filters = set()
+
     # Apply command-specific settings
     cli_settings = {
         "downmix_stereo": getattr(vidcleaner.command, "downmix_stereo", False),
         "drop_local_subs": getattr(vidcleaner.command, "drop_local_subs", False),
         "drop_original_audio": getattr(vidcleaner.command, "drop_original_audio", False),
         "dryrun": getattr(vidcleaner, "dryrun", False),
+        "filters": filters,
         "force": getattr(vidcleaner.command, "force", False),
         "h265": getattr(vidcleaner.command, "h265", False),
         "keep_all_subtitles": getattr(vidcleaner.command, "keep_all_subtitles", False),
@@ -98,7 +104,9 @@ vidcleaner clean --downmix --keep-subs <video_file>
 class VidCleaner:
     """Transcode video files to different formats or configurations using ffmpeg. This script provides a simple CLI for common video transcoding tasks."""
 
-    command: cappa.Subcommands[CacheCommand | CleanCommand | InspectCommand | ClipCommand]
+    command: cappa.Subcommands[
+        CacheCommand | CleanCommand | InspectCommand | ClipCommand | SearchCommand
+    ]
 
     verbosity: Annotated[
         PrintLevel,
@@ -379,6 +387,46 @@ class CacheCommand:
         bool,
         cappa.Arg(help="Clear the vidcleaner cache", long=True, short=True, show_default=True),
     ] = False
+
+
+@cappa.command(
+    name="search",
+    help="Search for video files under a directory",
+    description="""\
+This command allows you to search for video files under a directory and display detailed information about the video and audio streams of a video file. The information includes stream type, codec, language, and audio channel details. This command is useful for understanding the composition of a video file before performing operations like clipping or transcoding.
+
+By using filters, you can search for video files that match specific criteria. For example, you can search for video files that are in the H264 codec and have a resolution of 1080p.
+
+**Usage Examples:**
+```shell
+# Search for video files that are in the H264 codec and have a resolution of 1080p up to 2 levels deep:
+vidcleaner search --filters=h264,1080p --depth=2
+```
+""",
+    invoke="vid_cleaner.cli.search.main",
+)
+class SearchCommand:
+    """Search for video files under a directory."""
+
+    directory: Annotated[
+        Path,
+        cappa.Arg(help="Directory to search for video files", show_default=False),
+    ] = Path.cwd()
+    depth: Annotated[
+        int,
+        cappa.Arg(
+            help="Depth to search for video files", long=True, short=False, show_default=False
+        ),
+    ] = 0
+    filters: Annotated[
+        str,
+        cappa.Arg(
+            help=f"Comma separated list of facets to search for. Valid options: {VideoTrait.help_options()}",
+            long=True,
+            short=False,
+            show_default=False,
+        ),
+    ] = None
 
 
 def main() -> None:  # pragma: no cover

@@ -104,7 +104,6 @@ def test_stream_processing(
     mock_ffmpeg,
     clean_stdout,
     mock_video_path,
-    tmp_path,
     args,
     command_expected,
     process_output,
