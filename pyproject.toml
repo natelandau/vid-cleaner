@@ -116,7 +116,7 @@
     xfail_strict   = true
 
 [tool.ruff] # https://github.com/charliermarsh/ruff
-    exclude        = [".cache", ".git", ".venv", "__pypackages__", "dist", "tmp"]
+    exclude        = [".cache", ".git", ".venv", "__pypackages__", "dist"]
     fix            = true
     line-length    = 100
     output-format  = "grouped"

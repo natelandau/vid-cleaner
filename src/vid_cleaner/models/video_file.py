@@ -55,6 +55,10 @@ class VideoFile:
         self.ran_language_check = False
         self._probe_box: Box = Box({}, default_box=True, default_box_create_on_get=False)
 
+        self._video_streams: list[Box] = []
+        self._audio_streams: list[Box] = []
+        self._subtitle_streams: list[Box] = []
+
         atexit.register(cleanup_on_exit, self)
 
     @property
@@ -64,6 +68,33 @@ class VideoFile:
             self._probe_box = get_probe_as_box(self.temp_file.latest_temp_path())
 
         return self._probe_box
+
+    @property
+    def video_streams(self) -> list[Box]:
+        """Get the video streams."""
+        if not self._video_streams:
+            self._video_streams = [
+                s for s in self.probe_box.streams if s.codec_type == CodecTypes.VIDEO
+            ]
+        return self._video_streams
+
+    @property
+    def audio_streams(self) -> list[Box]:
+        """Get the audio streams."""
+        if not self._audio_streams:
+            self._audio_streams = [
+                s for s in self.probe_box.streams if s.codec_type == CodecTypes.AUDIO
+            ]
+        return self._audio_streams
+
+    @property
+    def subtitle_streams(self) -> list[Box]:
+        """Get the subtitle streams."""
+        if not self._subtitle_streams:
+            self._subtitle_streams = [
+                s for s in self.probe_box.streams if s.codec_type == CodecTypes.SUBTITLE
+            ]
+        return self._subtitle_streams
 
     @staticmethod
     def _downmix_to_stereo(streams: list[Box]) -> list[str]:
@@ -188,38 +219,66 @@ class VideoFile:
         self.ran_language_check = True
         return language
 
-    @staticmethod
-    def _process_video(streams: list[Box]) -> list[str]:
-        """Create a command list for processing video streams.
+    def _process_audio(self) -> tuple[list[str], list[str]]:
+        """Construct commands for processing audio streams.
 
-        Iterate through the provided video streams and construct a list of ffmpeg commands to process them, excluding any streams with codecs in the exclusion list.
-
-        Args:
-            streams (list[dict]): A list of video stream dictionaries.
+        Analyze and process audio streams based on language, commentary, and downmixing criteria. Generate ffmpeg commands for keeping or altering audio streams as required.
 
         Returns:
-            list[str]: A list of strings forming part of an ffmpeg command for video processing.
+            tuple[list[str], list[str]]: A tuple containing two lists of strings forming part of an ffmpeg command for audio processing.
         """
         command: list[str] = []
-        for stream in streams:
-            if stream.codec_name.lower() in EXCLUDED_VIDEO_CODECS:
+
+        langs = [Lang(lang) for lang in settings.langs_to_keep]
+
+        # Add original language to list of languages to keep if not explicitly dropping it
+        if not settings.drop_original_audio:
+            original_language = self._find_original_language()
+            if original_language and original_language not in langs:
+                langs.append(original_language)
+
+        streams_to_keep = []
+        for stream in self.audio_streams:
+            # Unknown language streams are kept to avoid removing potentially important audio
+            if not stream.language:
+                command.extend(["-map", f"0:{stream.index}"])
+                streams_to_keep.append(stream)
                 continue
 
-            command.extend(["-map", f"0:{stream.index}"])
+            # Commentary tracks are often unwanted and take up space
+            if (
+                not settings.keep_commentary
+                and stream.title
+                and re.search(r"commentary|sdh|description", stream.title, re.IGNORECASE)
+            ):
+                pp.trace(rf"PROCESS AUDIO: Remove stream #{stream.index} \[commentary]")
+                continue
 
-        pp.trace(f"PROCESS VIDEO: {command}")
-        return command
+            if stream.language == "und" or Lang(stream.language) in langs:
+                command.extend(["-map", f"0:{stream.index}"])
+                streams_to_keep.append(stream)
+                continue
 
-    def _process_subtitles(
-        self,
-        streams: list[Box],
-    ) -> list[str]:
+            pp.trace(f"PROCESS AUDIO: Remove stream #{stream.index}")
+
+        # If all streams would be removed, keep them all to prevent silent video
+        if not command:
+            for stream in self.audio_streams:
+                command.extend(["-map", f"0:{stream.index}"])
+                streams_to_keep.append(stream)
+
+        # Create stereo downmix commands if requested
+        downmix_command = (
+            self._downmix_to_stereo(streams_to_keep) if settings.downmix_stereo else []
+        )
+
+        pp.trace(f"PROCESS AUDIO: {command}")
+        return command, downmix_command
+
+    def _process_subtitles(self) -> list[str]:
         """Construct a command list for processing subtitle streams.
 
         Analyze and filter subtitle streams based on language preferences, commentary options, and other criteria. Build an ffmpeg command list accordingly.
-
-        Args:
-            streams (list[Box]): A list of subtitle stream objects.
 
         Returns:
             list[str]: A list of strings forming part of an ffmpeg command for subtitle processing.
@@ -241,7 +300,7 @@ class VideoFile:
         ):
             return command
 
-        for stream in streams:
+        for stream in self.subtitle_streams:
             # Remove commentary/SDH/description tracks unless explicitly kept
             # These are typically supplementary and take up extra space
             if (
@@ -283,67 +342,23 @@ class VideoFile:
         pp.trace(f"PROCESS SUBTITLES: {command}")
         return command
 
-    def _process_audio(
-        self,
-        streams: list[Box],
-    ) -> tuple[list[str], list[str]]:
-        """Construct commands for processing audio streams.
+    def _process_video(self) -> list[str]:
+        """Create a command list for processing video streams.
 
-        Analyze and process audio streams based on language, commentary, and downmixing criteria. Generate ffmpeg commands for keeping or altering audio streams as required.
-
-        Args:
-            streams (list[Box]): A list of audio stream objects.
+        Iterate through the provided video streams and construct a list of ffmpeg commands to process them, excluding any streams with codecs in the exclusion list.
 
         Returns:
-            tuple[list[str], list[str]]: A tuple containing two lists of strings forming part of an ffmpeg command for audio processing.
+            list[str]: A list of strings forming part of an ffmpeg command for video processing.
         """
         command: list[str] = []
-
-        langs = [Lang(lang) for lang in settings.langs_to_keep]
-
-        # Add original language to list of languages to keep if not explicitly dropping it
-        if not settings.drop_original_audio:
-            original_language = self._find_original_language()
-            if original_language and original_language not in langs:
-                langs.append(original_language)
-
-        streams_to_keep = []
-        for stream in streams:
-            # Unknown language streams are kept to avoid removing potentially important audio
-            if not stream.language:
-                command.extend(["-map", f"0:{stream.index}"])
-                streams_to_keep.append(stream)
+        for stream in self.video_streams:
+            if stream.codec_name.lower() in EXCLUDED_VIDEO_CODECS:
                 continue
 
-            # Commentary tracks are often unwanted and take up space
-            if (
-                not settings.keep_commentary
-                and stream.title
-                and re.search(r"commentary|sdh|description", stream.title, re.IGNORECASE)
-            ):
-                pp.trace(rf"PROCESS AUDIO: Remove stream #{stream.index} \[commentary]")
-                continue
+            command.extend(["-map", f"0:{stream.index}"])
 
-            if stream.language == "und" or Lang(stream.language) in langs:
-                command.extend(["-map", f"0:{stream.index}"])
-                streams_to_keep.append(stream)
-                continue
-
-            pp.trace(f"PROCESS AUDIO: Remove stream #{stream.index}")
-
-        # If all streams would be removed, keep them all to prevent silent video
-        if not command:
-            for stream in streams:
-                command.extend(["-map", f"0:{stream.index}"])
-                streams_to_keep.append(stream)
-
-        # Create stereo downmix commands if requested
-        downmix_command = (
-            self._downmix_to_stereo(streams_to_keep) if settings.downmix_stereo else []
-        )
-
-        pp.trace(f"PROCESS AUDIO: {command}")
-        return command, downmix_command
+        pp.trace(f"PROCESS VIDEO: {command}")
+        return command
 
     def _query_arr_apps_for_imdb_id(self) -> str | None:
         """Query Radarr and Sonarr APIs to find the IMDb ID of the video.
@@ -564,15 +579,9 @@ class VideoFile:
         Returns:
             Path: Path to the processed video file.
         """
-        video_streams = [s for s in self.probe_box.streams if s.codec_type == CodecTypes.VIDEO]
-        audio_streams = [s for s in self.probe_box.streams if s.codec_type == CodecTypes.AUDIO]
-        subtitle_streams = [
-            s for s in self.probe_box.streams if s.codec_type == CodecTypes.SUBTITLE
-        ]
-
-        video_map_command = self._process_video(video_streams)
-        audio_map_command, downmix_command = self._process_audio(streams=audio_streams)
-        subtitle_map_command = self._process_subtitles(streams=subtitle_streams)
+        video_map_command = self._process_video()
+        audio_map_command, downmix_command = self._process_audio()
+        subtitle_map_command = self._process_subtitles()
 
         title_flags = []
 
