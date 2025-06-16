@@ -125,6 +125,9 @@ class VideoFile:
         if VideoTrait.STEREO not in traits:
             traits.append(VideoTrait.NOSTEREO)
 
+        if VideoTrait.STEREO not in traits and VideoTrait.MONO not in traits:
+            traits.append(VideoTrait.SURROUND_ONLY)
+
         if self._need_stream_reorder():
             traits.append(VideoTrait.REORDER)
 
