@@ -12,9 +12,9 @@
         "ffmpeg-progress>=0.0.5",
         "ffmpeg-python>=0.2.0",
         "iso639-lang>=2.6.0",
-        "nclutils>=0.3.0",
+        "nclutils>=0.4.0",
         "python-box>=7.3.2",
-        "requests>=2.32.3",
+        "requests>=2.32.4",
         "rich>=14.0.0",
         "validators>=0.35.0",
     ]
@@ -38,21 +38,21 @@
 
 [dependency-groups]
     dev = [
-        "commitizen>=4.8.2",
-        "coverage>=7.8.2",
+        "commitizen>=4.8.3",
+        "coverage>=7.9.1",
         "duty>=1.6.0",
         "mypy>=1.16.0",
         "pre-commit>=4.2.0",
         "pytest-clarity>=1.0.1",
-        "pytest-cov>=6.1.1",
+        "pytest-cov>=6.2.1",
         "pytest-env>=1.1.5",
         "pytest-mock>=3.14.1",
         "pytest-pretty-terminal>=1.1.0",
         "pytest-sugar>=1.0.0",
         "pytest-xdist>=3.7.0",
         "pytest>=8.4.0",
-        "ruff>=0.11.12",
-        "types-requests>=2.32.0.20250602",
+        "ruff>=0.11.13",
+        "types-requests>=2.32.4.20250611",
         "typos>=1.33.1",
         "yamllint>=1.37.1",
     ]
