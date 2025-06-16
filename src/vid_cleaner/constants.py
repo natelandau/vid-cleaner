@@ -63,6 +63,7 @@ class VideoTrait(str, Enum):
     SURROUND7 = "surround7"
     COMMENTARY = "commentary"
     NOSTEREO = "no_stereo"
+    SURROUND_ONLY = "surround_only"
     FHD = "1080p"
     UHDTV = "4k"
     HDTV = "720p"
