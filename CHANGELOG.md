@@ -1,3 +1,9 @@
+## v0.6.0 (2025-06-18)
+
+### Feat
+
+- **search**: add `surround_only` to search filters (#57)
+
 ## v0.5.0 (2025-06-04)
 
 ### Feat

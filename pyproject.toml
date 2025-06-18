@@ -23,7 +23,7 @@
     name = "vid-cleaner"
     readme = "README.md"
     requires-python = ">=3.11"
-    version = "0.5.0"
+    version = "0.6.0"
 
     [project.urls]
         Homepage   = "https://github.com/natelandau/vid-cleaner"
@@ -41,7 +41,7 @@
         "commitizen>=4.8.3",
         "coverage>=7.9.1",
         "duty>=1.6.0",
-        "mypy>=1.16.0",
+        "mypy>=1.16.1",
         "pre-commit>=4.2.0",
         "pytest-clarity>=1.0.1",
         "pytest-cov>=6.2.1",
@@ -50,8 +50,8 @@
         "pytest-pretty-terminal>=1.1.0",
         "pytest-sugar>=1.0.0",
         "pytest-xdist>=3.7.0",
-        "pytest>=8.4.0",
-        "ruff>=0.11.13",
+        "pytest>=8.4.1",
+        "ruff>=0.12.0",
         "types-requests>=2.32.4.20250611",
         "typos>=1.33.1",
         "yamllint>=1.37.1",
