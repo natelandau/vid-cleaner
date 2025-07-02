@@ -2,7 +2,7 @@
 
 import os
 from dataclasses import dataclass
-from enum import Enum
+from enum import Enum, StrEnum
 from pathlib import Path
 
 PACKAGE_NAME = __package__.replace("_", "-").replace(".", "-").replace(" ", "-")
@@ -20,7 +20,7 @@ DEV_DIR = PROJECT_ROOT_PATH / ".development"
 DEV_CONFIG_PATH = DEV_DIR / "dev-config.toml"
 
 
-class VideoContainerTypes(str, Enum):
+class VideoContainerTypes(StrEnum):
     """Video container types for vid-cleaner."""
 
     MKV = ".mkv"
@@ -32,7 +32,7 @@ class VideoContainerTypes(str, Enum):
     M4V = ".m4v"
 
 
-class CodecTypes(str, Enum):
+class CodecTypes(StrEnum):
     """Codec types for vid-cleaner."""
 
     AUDIO = "audio"
@@ -51,7 +51,7 @@ class AudioLayout(Enum):
     SURROUND7 = 8
 
 
-class VideoTrait(str, Enum):
+class VideoTrait(StrEnum):
     """Video traits for vid-cleaner."""
 
     H265 = "h265"
