@@ -2,6 +2,9 @@
 scratch/
 tmp/
 dev-config.toml
+.dev
+.cursor/
+GEMINI.md
 
 # video files maybe used during development
 *.mkv
