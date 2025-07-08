@@ -12,24 +12,6 @@ from vid_cleaner.vidcleaner import CleanCommand
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
-def _determine_output_path(video: VideoFile) -> Path:
-    """Determine the output path for the video file.
-
-    Args:
-        video (VideoFile): The video file to determine the output path for.
-
-    Returns:
-        Path: The output path for the video file.
-    """
-    output_path = settings.out_path or video.path
-
-    if settings.vp9 and output_path.suffix != ".webm":
-        pp.info(f"Converting to VP9, setting output to `{output_path.with_suffix('.webm').name}`")
-        output_path = output_path.with_suffix(".webm")
-
-    return output_path
-
-
 def main(clean_cmd: CleanCommand) -> None:
     """Process video files according to specified cleaning options.
 
@@ -47,7 +29,7 @@ def main(clean_cmd: CleanCommand) -> None:
         raise cappa.Exit(code=1)
 
     for video in coerce_video_files(clean_cmd.files):
-        settings.out_path = _determine_output_path(video)
+        settings.out_path = settings.out_path or video.path
 
         pp.info(f"⇨ {video.path.name}")
         video.reorder_streams()

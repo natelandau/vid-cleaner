@@ -658,6 +658,12 @@ class VideoFile:
             )
             return input_path
 
+        if Path(settings.out_path).suffix != ".webm":
+            pp.info(
+                f"Converting to VP9, setting output to `{settings.out_path.with_suffix('.webm').name}`"
+            )
+            settings.out_path = settings.out_path.with_suffix(".webm")
+
         # Use constant quality encoding (CRF) instead of bitrate for better quality control
         command: list[str] = [
             "-map",
