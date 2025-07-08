@@ -2,9 +2,11 @@
 scratch/
 tmp/
 dev-config.toml
-.dev
+.dev/
 .cursor/
 GEMINI.md
+.tmp/
+.development/
 
 # video files maybe used during development
 *.mkv
@@ -18,53 +20,13 @@ GEMINI.md
 *_cache/
 __pycache__/
 .cache/
-.tmp/
-.development/
-
-# Coverage.py
-htmlcov/
-reports/
-.reports/
-
-# cruft
-*.rej
-
-# Data
-*.csv*
-*.dat*
-*.pickle*
-*.xls*
-*.zip*
-
-.envrc
-.env
-
-# Jupyter
-*.ipynb
-.ipynb_checkpoints/
-notebooks/
 
 # macOS
 .DS_Store
-
-# mypy
-.dmypy.json
-
-# Node.js
-node_modules/
 
 # python specific
 .venv/
 dist/
 
-# PyCharm
-.idea/
-
-# pyenv
-.python-version
-
 # Python
 *.py[cdo]
-
-# act run workflows locally
-bin/act

@@ -395,6 +395,9 @@ def test_convert_video(
     assert process_output in output
     assert "✅ Success: cleaned_video.mkv" in output
 
+    if "--vp9" in args:
+        assert "Converting to VP9, setting output to test_video.webm" in output
+
 
 def test_save_each_step(
     mocker,
@@ -450,5 +453,7 @@ def test_save_each_step(
     assert "✔ No streams to reorder" in output
     assert "✔ Process file" in output
     assert "✅ Success: cleaned_video.mkv" in output
-    assert "(downmix to stereo, drop unwanted subtitles)\n✅ Success:" in output
-    assert "✔ Convert to H.265\n✅ Success: cleaned_video.mkv" in output
+    assert "✔ Process file (downmix to stereo, drop unwanted subtitles)" in output
+    assert "✅ Success: …/test_video_1.mp4" in output
+    assert "✔ Convert to H.265" in output
+    assert "✅ Success: cleaned_video.mkv" in output

@@ -544,6 +544,7 @@ class VideoFile:
         pp.info(f"{SYMBOL_CHECK} {title}")
 
         self.temp_file.created_temp_file(output_path)
+        pp.trace(f"Created temp file: {output_path}")
         return output_path
 
     def clip(self, start: str, duration: str) -> Path:
