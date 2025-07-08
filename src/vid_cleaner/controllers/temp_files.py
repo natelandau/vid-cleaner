@@ -71,7 +71,7 @@ class TempFile:
         for file in self.tmp_dir.iterdir():
             if file.stem.startswith(f"{self.tmp_file_number}_"):
                 self.tmp_file_number += 1
-
+        pp.trace(f"Create new tmp file: {self.tmp_file_number}_{step_name}{suffix}")
         return self.tmp_dir / f"{self.tmp_file_number}_{step_name}{suffix}"
 
     def created_temp_file(self, path: Path) -> None:
