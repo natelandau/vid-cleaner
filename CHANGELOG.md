@@ -1,3 +1,9 @@
+## v0.6.1 (2025-07-07)
+
+### Fix
+
+- force `webm` as vp9 extension (#59)
+
 ## v0.6.0 (2025-06-18)
 
 ### Feat
