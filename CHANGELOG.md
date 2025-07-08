@@ -1,3 +1,9 @@
+## v0.6.2 (2025-07-08)
+
+### Fix
+
+- rename vp9 to webm only if converted (#60)
+
 ## v0.6.1 (2025-07-07)
 
 ### Fix
