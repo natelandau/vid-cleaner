@@ -1,3 +1,9 @@
+## v0.7.0 (2025-07-09)
+
+### Feat
+
+- **clean**: skip processing when no streams change (#61)
+
 ## v0.6.2 (2025-07-08)
 
 ### Fix
