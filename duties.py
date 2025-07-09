@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 PY_SRC_PATHS = (Path(_) for _ in ("src/", "tests/", "duties.py", "scripts/") if Path(_).exists())
 PY_SRC_LIST = tuple(str(_) for _ in PY_SRC_PATHS)
 CI = os.environ.get("CI", "0") in {"1", "true", "yes", ""}
-DEV_DIR = Path(__file__).parent.absolute() / ".development"
+DEV_DIR = Path(__file__).parent.absolute() / ".dev"
 
 
 def strip_ansi(text: str) -> str:
@@ -178,7 +178,49 @@ def dev_setup(ctx: Context) -> None:
             "-b:a",
             "128k",
             "-shortest",
-            f"{DEV_DIR}/output_red_with_tone_1080p.mp4",
+            f"{DEV_DIR}/1080p.mkv",
+        ]
+    )
+
+    ctx.run(
+        [
+            "ffmpeg",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:s=1920x1080:d=5:r=30",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=5:sample_rate=48000",
+            "-map",
+            "0:v:0",  # Map video from first input
+            "-map",
+            "1:a:0",  # Map audio from second input (first track)
+            "-map",
+            "1:a:0",  # Map same audio from second input (second track)
+            "-c:v",
+            "libx264",
+            "-vf",
+            "format=yuv420p",
+            "-preset",
+            "medium",
+            "-crf",
+            "23",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-metadata:s:a:0",
+            "title=2.0",
+            "-metadata:s:a:0",
+            "language=eng",
+            "-metadata:s:a:1",
+            "title=commentary",
+            "-metadata:s:a:1",
+            "language=eng",
+            "-shortest",
+            f"{DEV_DIR}/1080p_commentary.mkv",
         ]
     )
 
@@ -260,7 +302,7 @@ def dev_setup(ctx: Context) -> None:
             "-c:s",
             "copy",
             "-shortest",
-            f"{DEV_DIR}/output_multilingual_1080p.mkv",
+            f"{DEV_DIR}/multilingual_1080p.mkv",
         ]
     )
 
