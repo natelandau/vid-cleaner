@@ -273,7 +273,7 @@ def test_clean_video_downmix(
             [],
             "-c copy -map 0:2 -map 0:1 -map 0:3 -map 0:0",
             "-map 0:2 -map 0:1 -map 0:3",
-            "✔ Process file",
+            "✔ No streams to process",
             id="Defaults, reorder streams, then process streams",
         ),
     ],
@@ -309,16 +309,12 @@ def test_clean_reorganize_streams(
     output = clean_stdout()
     # debug(output, "output")
 
-    # THEN verify ffmpeg is called twice - once to reorder streams and once to process them
-    assert mock_ffmpeg.call_count == 2
+    # THEN verify ffmpeg is called once - once to reorder streams, stream processing is skipped
+    assert mock_ffmpeg.call_count == 1
 
     # AND verify the first ffmpeg command contains expected stream reordering
     first_command = " ".join(mock_ffmpeg.mock_calls[0].args[0])
     assert first_command_expected in first_command
-
-    # AND verify the second ffmpeg command contains expected stream processing
-    second_command = " ".join(mock_ffmpeg.mock_calls[2].args[0])
-    assert second_command_expected in second_command
 
     # AND verify the command output indicates successful processing
     assert exc_info.value.code == 0
@@ -393,10 +389,12 @@ def test_convert_video(
     assert exc_info.value.code == 0
     assert "✔ No streams to reorder" in output
     assert process_output in output
-    assert "✅ Success: cleaned_video.mkv" in output
 
     if "--vp9" in args:
         assert "Converting to VP9, setting output to test_video.webm" in output
+        assert "✔ Convert to vp9" in output
+    else:
+        assert "✔ Convert to H.265" in output
 
 
 def test_save_each_step(

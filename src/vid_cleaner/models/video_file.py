@@ -61,6 +61,7 @@ class VideoFile:
         self.ran_language_check = False
         self._probe_box: Box = Box({}, default_box=True, default_box_create_on_get=False)
 
+        self._all_streams: list[Box] = []
         self._video_streams: list[Box] = []
         self._audio_streams: list[Box] = []
         self._subtitle_streams: list[Box] = []
@@ -104,6 +105,13 @@ class VideoFile:
                 s for s in self.probe_box.streams if s.codec_type == CodecTypes.SUBTITLE
             ]
         return self._subtitle_streams
+
+    @property
+    def all_streams(self) -> list[Box]:
+        """Get all streams."""
+        if not self._all_streams:
+            self._all_streams = self.video_streams + self.audio_streams + self.subtitle_streams
+        return self._all_streams
 
     def get_traits(self) -> list[VideoTrait]:
         """Analyze video file streams to identify audio, video, and structural characteristics.
@@ -712,6 +720,17 @@ class VideoFile:
             title_flags.append("drop local subtitles") if settings.drop_local_subs else None
 
         title = f"Process file ({', '.join(title_flags)})" if title_flags else "Process file"
+
+        all_commands = [
+            x
+            for x in video_map_command + audio_map_command + subtitle_map_command + downmix_command
+            if x != "-map"
+        ]
+
+        comparison_list = [f"0:{x}" for x in range(len(self.all_streams))]
+        if len(comparison_list) == len(all_commands):
+            pp.info(f"{SYMBOL_CHECK} No streams to process")
+            return self.temp_file.latest_temp_path()
 
         return self._run_ffmpeg(
             video_map_command
