@@ -299,9 +299,10 @@ class VideoFile:
 
         response = query_tmdb(imdb_id) if imdb_id else None
 
-        if response and (tmdb_response := response.get("movie_results", [{}])[0]):
-            original_language = tmdb_response.get("original_language")
-            pp.trace(f"TMDB: Original language: {original_language}")
+        if response and response.get("movie_results", None):
+            original_language = response["movie_results"][0].get("original_language")
+        if response and response.get("tv_results", None):
+            original_language = response["tv_results"][0].get("original_language")
 
         if not original_language:
             pp.debug(f"Could not find original language for: {self.name}")
