@@ -1,3 +1,9 @@
+## v0.7.1 (2025-07-20)
+
+### Fix
+
+- fix panic identifying series with tmdb (#62)
+
 ## v0.7.0 (2025-07-09)
 
 ### Feat
