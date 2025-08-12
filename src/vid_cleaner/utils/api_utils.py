@@ -1,6 +1,6 @@
 """API utilities."""
 
-import requests
+import httpx
 from nclutils import console, pp
 
 from vid_cleaner import settings
@@ -28,25 +28,23 @@ def query_tmdb(search: str) -> dict:  # pragma: no cover
         "external_source": "imdb_id",
     }
 
+    # Log query parameters for tracing
     if pp.is_trace:
         args = "&".join([f"{k}={v}" for k, v in params.items()])
         pp.trace(f"TMDB: Querying {url}?{args}")
 
     try:
-        response = requests.get(url, params=params, timeout=15)
-    except Exception as e:  # noqa: BLE001
+        response = httpx.get(url, params=params, timeout=15)
+        response.raise_for_status()
+    except httpx.HTTPError as e:
         pp.error(str(e))
         return {}
 
-    if response.status_code != 200:  # noqa: PLR2004
-        pp.error(
-            f"Error querying The Movie Database API: {response.status_code} {response.reason}",
-        )
-        return {}
-
-    pp.trace("TMDB: Response received")
+    # Log response for tracing
     if pp.is_trace:
+        pp.trace("TMDB: Response received")
         console.log(response.json())
+
     return response.json()
 
 
@@ -73,14 +71,16 @@ def query_radarr(search: str) -> dict:  # pragma: no cover
     }
 
     try:
-        response = requests.get(url, params=params, timeout=15)
-    except Exception as e:  # noqa: BLE001
+        response = httpx.get(url, params=params, timeout=15)
+        response.raise_for_status()
+    except httpx.HTTPError as e:
         pp.error(str(e))
         return {}
 
-    if response.status_code != 200:  # noqa: PLR2004
-        pp.error(f"Error querying Radarr: {response.status_code} {response.reason}")
-        return {}
+    # Log response for tracing
+    if pp.is_trace:
+        pp.trace("RADARR: Response received")
+        console.log(response.json())
 
     return response.json()
 
@@ -108,14 +108,15 @@ def query_sonarr(search: str) -> dict:  # pragma: no cover
     }
 
     try:
-        response = requests.get(url, params=params, timeout=15)
-    except Exception as e:  # noqa: BLE001
+        response = httpx.get(url, params=params, timeout=15)
+        response.raise_for_status()
+    except httpx.HTTPError as e:
         pp.error(str(e))
         return {}
 
-    if response.status_code != 200:  # noqa: PLR2004
-        pp.error(f"Error querying Sonarr: {response.status_code} {response.reason}")
-        return {}
+    # Log response for tracing
+    if pp.is_trace:
+        pp.trace("SONARR: Response received")
+        console.log(response.json())
 
-    pp.trace("SONARR: Response received")
     return response.json()
