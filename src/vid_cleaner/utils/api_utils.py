@@ -1,6 +1,6 @@
 """API utilities."""
 
-import requests
+import httpx
 from nclutils import console, pp
 
 from vid_cleaner import settings
@@ -34,9 +34,9 @@ def query_tmdb(search: str) -> dict:  # pragma: no cover
         pp.trace(f"TMDB: Querying {url}?{args}")
 
     try:
-        response = requests.get(url, params=params, timeout=15)
+        response = httpx.get(url, params=params, timeout=15)
         response.raise_for_status()
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         pp.error(str(e))
         return {}
 
@@ -71,9 +71,9 @@ def query_radarr(search: str) -> dict:  # pragma: no cover
     }
 
     try:
-        response = requests.get(url, params=params, timeout=15)
+        response = httpx.get(url, params=params, timeout=15)
         response.raise_for_status()
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         pp.error(str(e))
         return {}
 
@@ -108,9 +108,9 @@ def query_sonarr(search: str) -> dict:  # pragma: no cover
     }
 
     try:
-        response = requests.get(url, params=params, timeout=15)
+        response = httpx.get(url, params=params, timeout=15)
         response.raise_for_status()
-    except requests.RequestException as e:
+    except httpx.HTTPError as e:
         pp.error(str(e))
         return {}
 
