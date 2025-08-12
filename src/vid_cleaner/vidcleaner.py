@@ -430,7 +430,7 @@ class SearchCommand:
 
 
 def main() -> None:  # pragma: no cover
-    """Main function."""  # noqa: DOC501
+    """Main function."""
     install(show_locals=True)
 
     try:

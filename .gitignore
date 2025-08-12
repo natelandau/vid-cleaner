@@ -6,7 +6,9 @@ dev-config.toml
 .cursor/
 GEMINI.md
 .tmp/
-.development/
+.github/copilot-instructions.md
+.github/instructions/
+
 
 # video files maybe used during development
 *.mkv
@@ -27,6 +29,3 @@ __pycache__/
 # python specific
 .venv/
 dist/
-
-# Python
-*.py[cdo]
