@@ -59,7 +59,7 @@ repos:
         entry: yamllint --strict --config-file .yamllint.yml
 
   - repo: "https://github.com/astral-sh/ruff-pre-commit"
-    rev: "v0.12.8"
+    rev: "v0.12.9"
     hooks:
       - id: ruff
         exclude: tests/
@@ -80,7 +80,7 @@ repos:
 
   # mirrors-typos is a fork of typos that removes the v.1 mutable tag
   - repo: "https://github.com/adhtruong/mirrors-typos"
-    rev: v1.35.3
+    rev: v1.35.4
     hooks:
       - id: typos
         args: ["--force-exclude"]

@@ -434,9 +434,11 @@ def main() -> None:  # pragma: no cover
     install(show_locals=True)
 
     try:
-        cappa.invoke(obj=VidCleaner, deps=[create_default_config, config_subcommand])
+        cappa.invoke(
+            obj=VidCleaner, deps=[create_default_config, config_subcommand], completion=False
+        )
     except KeyboardInterrupt as e:
-        pp.info("Exiting...")
+        pp.info("\nExiting...")
         raise cappa.Exit(code=1) from e
 
 

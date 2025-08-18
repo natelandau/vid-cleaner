@@ -271,11 +271,16 @@ class VideoFile:
                         "2",
                         f"-b:a:{new_index}",
                         "256k",
+                        f"-filter:a:{new_index}",
+                        "pan=stereo|FL=0.274804*FC+0.388631*FL+0.336565*SL+0.194316*SR+0.336565*BL+0.194316*BR+0.274804*LFE|FR=0.274804*FC+0.388631*FR+0.336565*SR+0.194316*SL+0.336565*BR+0.194316*BL+0.274804*LFE"
+                        f"-ar:a:{new_index}",
+                        "48000",
                         f"-metadata:s:a:{new_index}",
                         "title=2.0",
                     ],
                 )
                 new_index += 1
+                has_stereo = True
 
         pp.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
         return downmix_command

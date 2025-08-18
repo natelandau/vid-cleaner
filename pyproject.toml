@@ -11,7 +11,7 @@
         "ffmpeg-progress-yield>=1.0.1",
         "ffmpeg-progress>=0.0.5",
         "ffmpeg-python>=0.2.0",
-        "httpx>=0.27.2",
+        "httpx>=0.28.1",
         "iso639-lang>=2.6.3",
         "nclutils>=2.1.0",
         "python-box>=7.3.2",
@@ -39,7 +39,7 @@
 [dependency-groups]
     dev = [
         "commitizen>=4.8.3",
-        "coverage>=7.10.3",
+        "coverage>=7.10.4",
         "duty>=1.6.2",
         "mypy>=1.17.1",
         "pre-commit>=4.3.0",
@@ -48,11 +48,11 @@
         "pytest-env>=1.1.5",
         "pytest-mock>=3.14.1",
         "pytest-pretty-terminal>=1.1.0",
-        "pytest-sugar>=1.0.0",
+        "pytest-sugar>=1.1.0",
         "pytest-xdist>=3.8.0",
         "pytest>=8.4.1",
-        "ruff>=0.12.8",
-        "typos>=1.35.3",
+        "ruff>=0.12.9",
+        "typos>=1.35.4",
         "yamllint>=1.37.1",
     ]
 
