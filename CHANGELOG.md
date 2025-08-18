@@ -1,3 +1,9 @@
+## v0.7.3 (2025-08-18)
+
+### Fix
+
+- fix bug downmixing 7.1 to stereo
+
 ## v0.7.2 (2025-08-18)
 
 ### Fix

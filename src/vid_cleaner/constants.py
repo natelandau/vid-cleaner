@@ -98,7 +98,7 @@ EXCLUDED_VIDEO_CODECS = {"mjpeg", "mjpg", "png"}
 FFMPEG_APPEND: list[str] = ["-max_muxing_queue_size", "9999"]
 FFMPEG_PREPEND: list[str] = ["-y", "-hide_banner"]
 H265_CODECS = {"hevc", "vp9"}
-VERSION = "0.7.2"
+VERSION = "0.7.3"
 FHD_RESOLUTION = Resolution(width=1920, height=1080)
 UHDTV_RESOLUTION = Resolution(width=3840, height=2160)
 HDTV_RESOLUTION = Resolution(width=1280, height=720)
