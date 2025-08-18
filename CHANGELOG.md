@@ -1,3 +1,10 @@
+## v0.7.2 (2025-08-18)
+
+### Fix
+
+- **downmix**: improve channel mappings from 7.1 to stereo
+- improve api error handling and logging (#63)
+
 ## v0.7.1 (2025-07-20)
 
 ### Fix
