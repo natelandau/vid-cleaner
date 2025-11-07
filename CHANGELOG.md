@@ -1,3 +1,9 @@
+## v0.7.4 (2025-11-07)
+
+### Fix
+
+- **inspect**: fix bug with channels without codecs (#65)
+
 ## v0.7.3 (2025-08-18)
 
 ### Fix
