@@ -30,8 +30,8 @@ def stream_table(ffprobe_box: Box) -> Table:
         table.add_row(
             str(stream.index),
             stream.codec_type.value,
-            stream.codec_name,
-            stream.language,
+            stream.codec_name or "",
+            stream.language or "",
             str(stream.channels.value) if stream.channels else "",
             stream.channel_layout or "",
             str(stream.width) if stream.width else "",
