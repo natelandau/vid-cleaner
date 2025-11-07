@@ -431,7 +431,7 @@ class SearchCommand:
 
 def main() -> None:  # pragma: no cover
     """Main function."""
-    install(show_locals=True)
+    install(show_locals=False)
 
     try:
         cappa.invoke(
