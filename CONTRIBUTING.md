@@ -8,9 +8,9 @@ Once uv is installed, follow these steps to start developing.
 
 1. Clone this repository. `git clone https://github.com/natelandau/vid-cleaner`
 2. `cd` into the repository `cd vid-cleaner`
-3. Instal the venv with uv `uv sync`
+3. Install the venv with uv `uv sync`
 4. Activate your virtual environment with `source .venv/bin/activate`
-5. Install the pre-commit hooks with `pre-commit install --install-hooks`.
+5. Install the [prek](https://github.com/j178/prek) hooks with `prek install`.
 
 Confirm everything is up and running by running `which vid-cleaner`. The output should reference your virtual environment and be something like `/Users/your-username/vid-cleaner/.venv/bin/vid-cleaner`.
 
@@ -30,7 +30,7 @@ Some things to consider when developing:
 
 ### Committing
 
-Confirm you have installed the [pre-commit hooks](https://pre-commit.com/#installation) included in the repository. These automatically run some of the checks described earlier each time you run git commit, and over time can reduce development overhead quite considerably.
+Confirm you have installed the [prek hooks](https://github.com/j178/prek) included in the repository. These automatically run some of the checks described earlier each time you run git commit, and over time can reduce development overhead quite considerably.
 
 We use [Commitizen](https://github.com/commitizen-tools/commitizen) to manage commits and [Semantic Versioning](https://semver.org/) to manage version numbers.
 

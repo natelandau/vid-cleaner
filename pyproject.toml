@@ -42,7 +42,7 @@
         "coverage>=7.10.4",
         "duty>=1.6.2",
         "mypy>=1.17.1",
-        "pre-commit>=4.3.0",
+        "prek>=0.2.13",
         "pytest-clarity>=1.0.1",
         "pytest-cov>=6.2.1",
         "pytest-env>=1.1.5",
@@ -54,7 +54,7 @@
         "ruff>=0.12.9",
         "typos>=1.35.4",
         "yamllint>=1.37.1",
-    ]
+]
 
 [tool.commitizen]
     bump_message               = "bump(release): v$current_version → v$new_version"
