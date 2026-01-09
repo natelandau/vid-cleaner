@@ -7,16 +7,16 @@
         "Programming Language :: Python :: 3.14",
     ]
     dependencies = [
-        "cappa>=0.30.0",
-        "dynaconf>=3.2.11",
-        "ffmpeg-progress-yield>=1.0.1",
-        "ffmpeg-progress>=0.0.5",
+        "cappa>=0.31.0",
+        "dynaconf>=3.2.12",
+        "ffmpeg-progress-yield>=1.0.5",
+        "ffmpeg-progress>=0.0.6",
         "ffmpeg-python>=0.2.0",
         "httpx>=0.28.1",
         "iso639-lang>=2.6.3",
         "nclutils>=2.1.0",
         "python-box>=7.3.2",
-        "rich>=14.1.0",
+        "rich>=14.2.0",
         "validators>=0.35.0",
     ]
     description = "Tools to transcode, inspect and convert videos."
@@ -39,21 +39,21 @@
 
 [dependency-groups]
     dev = [
-        "commitizen>=4.8.3",
-        "coverage>=7.10.4",
-        "duty>=1.6.2",
-        "mypy>=1.17.1",
-        "prek>=0.2.13",
+        "commitizen>=4.11.0",
+        "coverage>=7.13.1",
+        "duty>=1.6.3",
+        "mypy>=1.19.1",
+        "prek>=0.2.27",
         "pytest-clarity>=1.0.1",
-        "pytest-cov>=6.2.1",
-        "pytest-env>=1.1.5",
-        "pytest-mock>=3.14.1",
+        "pytest-cov>=7.0.0",
+        "pytest-env>=1.2.0",
+        "pytest-mock>=3.15.1",
         "pytest-pretty-terminal>=1.1.0",
-        "pytest-sugar>=1.1.0",
+        "pytest-sugar>=1.1.1",
         "pytest-xdist>=3.8.0",
-        "pytest>=8.4.1",
-        "ruff>=0.12.9",
-        "typos>=1.35.4",
+        "pytest>=9.0.2",
+        "ruff>=0.14.11",
+        "typos>=1.42.0",
         "yamllint>=1.37.1",
     ]
 
