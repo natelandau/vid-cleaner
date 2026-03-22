@@ -25,11 +25,11 @@ def main(clip_cmd: ClipCommand) -> None:
     time_pattern = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 
     if not time_pattern.match(clip_cmd.start):
-        pp.error("`--start` must be in format HH:MM:SS")  # type: ignore [unreachable]
+        pp.error("`--start` must be in format HH:MM:SS")
         raise cappa.Exit(code=1)
 
     if not time_pattern.match(clip_cmd.duration):
-        pp.error("`--duration` must be in format HH:MM:SS")  # type: ignore [unreachable]
+        pp.error("`--duration` must be in format HH:MM:SS")
         raise cappa.Exit(code=1)
 
     for video in coerce_video_files(clip_cmd.files):
