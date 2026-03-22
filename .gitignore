@@ -29,3 +29,6 @@ __pycache__/
 # python specific
 .venv/
 dist/
+
+# docs
+docs/
