@@ -9,14 +9,14 @@
     dependencies = [
         "cappa>=0.31.0",
         "dynaconf>=3.2.13",
-        "ffmpeg-progress-yield>=1.1.2",
+        "ffmpeg-progress-yield>=1.1.3",
         "ffmpeg-progress>=0.0.6",
         "ffmpeg-python>=0.2.0",
         "httpx>=0.28.1",
         "iso639-lang>=2.6.3",
         "nclutils>=2.1.0",
         "python-box>=7.4.1",
-        "rich>=14.3.3",
+        "rich>=15.0.0",
         "validators>=0.35.0",
     ]
     description = "Tools to transcode, inspect and convert videos."
