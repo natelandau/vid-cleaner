@@ -30,7 +30,7 @@ def set_default_settings(tmp_path, mocker, mock_ffprobe_box):
     )
 
 
-def test_search_no_video_files(tmp_path, clean_stdout, mocker, debug):
+def test_search_no_video_files(tmp_path, capsys, mocker, debug):
     """Test that the search command returns no results when there are no video files."""
     # Given: A directory with no video files
     directory = Path(tmp_path) / "no_videos"
@@ -42,16 +42,16 @@ def test_search_no_video_files(tmp_path, clean_stdout, mocker, debug):
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
-    output = clean_stdout()
+    output = capsys.readouterr().err
     # Then: The command should return no results
-    # debug(output, "output")
+    debug(output, "output")
     assert exc_info.value.code == 0
     assert "No video files found" in output
 
 
 def test_search_with_results(
     tmp_path,
-    clean_stdout,
+    capsys,
     mocker,
     mock_video_path,
     # mock_video_file,
@@ -71,7 +71,7 @@ def test_search_with_results(
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
-    output = clean_stdout()
+    output = capsys.readouterr().out
     # Then: The command should return results
     # debug(output, "output")
 
@@ -82,7 +82,7 @@ def test_search_with_results(
 
 def test_search_with_no_results(
     tmp_path,
-    clean_stdout,
+    capsys,
     mocker,
     mock_video_path,
     # mock_video_file,
@@ -102,11 +102,11 @@ def test_search_with_no_results(
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
-    output = clean_stdout()
+    output, error = capsys.readouterr()
     # Then: The command should return results
     # debug(output, "output")
 
     assert exc_info.value.code == 1
     assert "Found 1 video files in 1/1 directories" in output
-    assert "No video files found matching 'reorder'" in output
+    assert "No video files found matching 'reorder'" in error
     assert "Matching filters" not in output

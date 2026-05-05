@@ -1,3 +1,4 @@
+# type: ignore
 """Test cache subcommand."""
 
 import cappa
@@ -27,7 +28,7 @@ def tmp_cache_dir(tmp_path):
     return cache_dir
 
 
-def test_cache_list(tmp_cache_dir, clean_stdout, debug):
+def test_cache_list(tmp_cache_dir, capsys, debug):
     """Verify cache list displays directory tree structure."""
     # Given: Cache directory path in settings
     args = ["cache"]
@@ -38,14 +39,14 @@ def test_cache_list(tmp_cache_dir, clean_stdout, debug):
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Output contains expected tree structure
-    output = clean_stdout()
+    output = capsys.readouterr().out
     assert exc_info.value.code == 0
     assert "│   └── 📄 " in output
     assert "├── 📂 " in output
     assert "└── 📄 " in output
 
 
-def test_cache_clean(tmp_cache_dir, clean_stdout, debug):
+def test_cache_clean(tmp_cache_dir, capsys, debug):
     """Verify cache clean removes all cached files."""
     # Given: Cache directory path in settings
     args = ["cache", "-c"]
@@ -56,9 +57,9 @@ def test_cache_clean(tmp_cache_dir, clean_stdout, debug):
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Success message is displayed
-    output = clean_stdout()
+    output = capsys.readouterr().out
     assert exc_info.value.code == 0
-    assert "Success: Cache cleared" in output
+    assert "Cache cleared" in output
 
     # And: Cache directory is empty
     assert not any(tmp_cache_dir.iterdir())

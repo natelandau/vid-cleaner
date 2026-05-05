@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 
 import pytest
-from nclutils.pytest_fixtures import clean_stdout, debug  # noqa: F401
 from rich.console import Console
 
 from vid_cleaner.utils import get_probe_as_box

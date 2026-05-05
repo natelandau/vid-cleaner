@@ -1,7 +1,8 @@
 """API utilities."""
 
 import httpx
-from nclutils import console, pp
+from nllog import error, trace
+from rich.json import JSON
 
 from vid_cleaner import settings
 
@@ -28,22 +29,17 @@ def query_tmdb(search: str) -> dict:  # pragma: no cover
         "external_source": "imdb_id",
     }
 
-    # Log query parameters for tracing
-    if pp.is_trace:
-        args = "&".join([f"{k}={v}" for k, v in params.items()])
-        pp.trace(f"TMDB: Querying {url}?{args}")
+    args = "&".join([f"{k}={v}" for k, v in params.items()])
+    trace(f"TMDB: Query {url}?{args}")
 
     try:
         response = httpx.get(url, params=params, timeout=15)
         response.raise_for_status()
     except httpx.HTTPError as e:
-        pp.error(str(e))
+        error(str(e))
         return {}
 
-    # Log response for tracing
-    if pp.is_trace:
-        pp.trace("TMDB: Response received")
-        console.log(response.json())
+    trace("TMDB: Response received", details=[JSON(response.text)])
 
     return response.json()
 
@@ -74,13 +70,10 @@ def query_radarr(search: str) -> dict:  # pragma: no cover
         response = httpx.get(url, params=params, timeout=15)
         response.raise_for_status()
     except httpx.HTTPError as e:
-        pp.error(str(e))
+        error(str(e))
         return {}
 
-    # Log response for tracing
-    if pp.is_trace:
-        pp.trace("RADARR: Response received")
-        console.log(response.json())
+    trace("RADARR: Response received", details=[JSON(response.text)])
 
     return response.json()
 
@@ -111,12 +104,9 @@ def query_sonarr(search: str) -> dict:  # pragma: no cover
         response = httpx.get(url, params=params, timeout=15)
         response.raise_for_status()
     except httpx.HTTPError as e:
-        pp.error(str(e))
+        error(str(e))
         return {}
 
-    # Log response for tracing
-    if pp.is_trace:
-        pp.trace("SONARR: Response received")
-        console.log(response.json())
+    trace("SONARR: Response received", details=[JSON(response.text)])
 
     return response.json()

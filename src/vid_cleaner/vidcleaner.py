@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Annotated
 
 import cappa
-from nclutils import pp, print_debug
+from nllog import configure, info, trace
 from rich.traceback import install
 
 from vid_cleaner import settings
@@ -23,10 +23,14 @@ def config_subcommand(vidcleaner: VidCleaner) -> None:
     Args:
         vidcleaner (VidCleaner): The main CLI application object containing command and configuration options.
     """
-    pp.configure(
-        debug=vidcleaner.verbosity in {PrintLevel.DEBUG, PrintLevel.TRACE},
-        trace=vidcleaner.verbosity == PrintLevel.TRACE,
+    nllog_level = (
+        1
+        if vidcleaner.verbosity == PrintLevel.DEBUG
+        else 2
+        if vidcleaner.verbosity == PrintLevel.TRACE
+        else 0
     )
+    configure(verbosity=nllog_level)
 
     langs_to_keep = getattr(vidcleaner.command, "langs_to_keep", None)
     if langs_to_keep and isinstance(langs_to_keep, str):
@@ -60,15 +64,7 @@ def config_subcommand(vidcleaner: VidCleaner) -> None:
 
     SettingsManager.apply_cli_settings(cli_settings)
 
-    if pp.is_trace:
-        print_debug(
-            custom=[
-                {"Settings": settings.to_dict()},
-                {"vidcleaner": vidcleaner.__dict__},
-            ],
-            envar_prefix="VIDCLEANER",
-            packages=["cappa", "dynaconf", "rich", "nclutils"],
-        )
+    trace("Settings", details=[settings.to_dict(), vidcleaner.__dict__])
 
 
 @cappa.command(
@@ -438,7 +434,7 @@ def main() -> None:  # pragma: no cover
             obj=VidCleaner, deps=[create_default_config, config_subcommand], completion=False
         )
     except KeyboardInterrupt as e:
-        pp.info("\nExiting...")
+        info("\nExiting...")
         raise cappa.Exit(code=1) from e
 
 
