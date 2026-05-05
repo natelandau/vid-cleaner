@@ -1,3 +1,4 @@
+# type: ignore
 """Test the vidcleaner inspect subcommand."""
 
 import re
@@ -10,7 +11,7 @@ from vid_cleaner import settings
 from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 
 
-def test_inspect_table(tmp_path, clean_stdout, debug, mock_video_path, mock_ffprobe_box, mocker):
+def test_inspect_table(tmp_path, capsys, debug, mock_video_path, mock_ffprobe_box, mocker):
     """Verify inspect command displays video information in table format."""
     # Given: Mock video file and ffprobe data
     args = ["inspect", str(mock_video_path)]
@@ -25,7 +26,7 @@ def test_inspect_table(tmp_path, clean_stdout, debug, mock_video_path, mock_ffpr
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Output contains expected table data
-    output = clean_stdout()
+    output = capsys.readouterr().out
     assert exc_info.value.code == 0
     assert re.search(r"0 │ video +│ h264", output)
     assert re.search(r"9 │ video +│ mjpeg", output)
@@ -33,7 +34,7 @@ def test_inspect_table(tmp_path, clean_stdout, debug, mock_video_path, mock_ffpr
     assert re.search(r"1920 +│ 1080 +│ Test", output)
 
 
-def test_inspect_json(tmp_path, clean_stdout, debug, mock_video_path, mock_ffprobe, mocker):
+def test_inspect_json(tmp_path, capsys, debug, mock_video_path, mock_ffprobe, mocker):
     """Verify inspect command displays video information in JSON format."""
     # Given: Mock video file and ffprobe data
     args = ["inspect", "--json", str(mock_video_path)]
@@ -48,7 +49,7 @@ def test_inspect_json(tmp_path, clean_stdout, debug, mock_video_path, mock_ffpro
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Output contains expected JSON data
-    output = clean_stdout()
+    output = capsys.readouterr().out
     assert exc_info.value.code == 0
     assert "'bit_rate': '26192239'," in output
     assert "'channel_layout': '7.1'," in output

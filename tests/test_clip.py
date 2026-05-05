@@ -12,11 +12,11 @@ from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 @pytest.mark.parametrize(
     ("args", "expected"),
     [
-        (["--start", "0:0"], "Error: --start must be in format HH:MM:SS"),
-        (["--duration", "0:0"], "Error: --duration must be in format HH:MM:SS"),
+        (["--start", "0:0"], "`--start` must be in format HH:MM:SS"),
+        (["--duration", "0:0"], "`--duration` must be in format HH:MM:SS"),
     ],
 )
-def test_clip_option_errors(debug, tmp_path, clean_stdout, mock_video_path, args, expected):
+def test_clip_option_errors(debug, tmp_path, capsys, mock_video_path, args, expected):
     """Verify clip command validates time format arguments."""
     # Given: Invalid time format arguments
     args = ["clip", *args, str(mock_video_path)]
@@ -27,7 +27,7 @@ def test_clip_option_errors(debug, tmp_path, clean_stdout, mock_video_path, args
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Error message is displayed
-    output = clean_stdout()
+    output = capsys.readouterr().err
     assert exc_info.value.code == 1
     assert expected in output
 
@@ -44,7 +44,7 @@ def test_clip_option_errors(debug, tmp_path, clean_stdout, mock_video_path, args
 def test_clipping_video(
     mocker,
     mock_ffprobe_box,
-    clean_stdout,
+    capsys,
     mock_video_path,
     tmp_path,
     mock_ffmpeg,
@@ -69,7 +69,7 @@ def test_clipping_video(
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
-    output = clean_stdout()
+    output = capsys.readouterr().out
     # debug(output, "output")
 
     # THEN verify ffmpeg was called with correct parameters
@@ -80,7 +80,7 @@ def test_clipping_video(
 
     # And: Success message is displayed
     assert exc_info.value.code == 0
-    assert "✅ Success: clipped_video.mkv" in output
+    assert "clipped_video.mkv" in output
 
 
 @pytest.mark.parametrize(
@@ -94,7 +94,7 @@ def test_clipping_video(
 )
 def test_clipping_video_dryrun(
     mocker,
-    clean_stdout,
+    capsys,
     mock_ffprobe_box,
     mock_video_path,
     tmp_path,
@@ -118,11 +118,11 @@ def test_clipping_video_dryrun(
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
-    output = clean_stdout()
+    output = capsys.readouterr().out
     # debug(output, "output")
 
     # THEN verify ffmpeg was not called
     mock_ffmpeg.assert_not_called()
     assert exc_info.value.code == 0
     assert "dry run" in output
-    assert "✅ Success: clipped_video.mkv" not in output
+    assert "clipped_video.mkv" not in output

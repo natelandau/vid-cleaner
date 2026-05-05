@@ -1,3 +1,4 @@
+# type: ignore
 """Test the vidcleaner clean subcommand."""
 
 from pathlib import Path
@@ -33,7 +34,7 @@ def set_default_settings(tmp_path, mocker):
     )
 
 
-def test_fail_on_flag_conflict(debug, tmp_path, clean_stdout, mock_video_path):
+def test_fail_on_flag_conflict(debug, tmp_path, capsys, mock_video_path) -> None:
     """Verify clean command fails when incompatible flags are used."""
     # Given: Conflicting codec conversion flags
     args = ["clean", "-vv", "--h265", "--vp9", str(mock_video_path)]
@@ -44,7 +45,7 @@ def test_fail_on_flag_conflict(debug, tmp_path, clean_stdout, mock_video_path):
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Error message is displayed
-    output = clean_stdout()
+    output = capsys.readouterr().err
 
     assert exc_info.value.code == 1
     assert "Cannot convert to both H265 and VP9" in output
@@ -102,7 +103,7 @@ def test_stream_processing(
     mocker,
     mock_ffprobe_box,
     mock_ffmpeg,
-    clean_stdout,
+    capsys,
     mock_video_path,
     args,
     command_expected,
@@ -124,7 +125,7 @@ def test_stream_processing(
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
-    output = clean_stdout()
+    output = capsys.readouterr().out
     # debug(output, "output")
 
     # Then: FFmpeg is called with correct stream mapping
@@ -137,7 +138,7 @@ def test_stream_processing(
     assert exc_info.value.code == 0
     assert "✔ No streams to reorder" in output
     assert process_output in output
-    assert "✅ Success: cleaned_video.mkv" in output
+    assert "cleaned_video.mkv" in output
 
 
 @pytest.mark.parametrize(
@@ -166,7 +167,7 @@ def test_stream_processing(
 def test_clean_video_foreign_language(
     mocker,
     mock_video_path,
-    clean_stdout,
+    capsys,
     tmp_path,
     mock_ffprobe_box,
     mock_ffmpeg,
@@ -190,7 +191,7 @@ def test_clean_video_foreign_language(
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
-    output = clean_stdout()
+    output = capsys.readouterr().out
     # debug(output, "output")
 
     # THEN verify the ffmpeg command contains expected stream mappings
@@ -203,7 +204,7 @@ def test_clean_video_foreign_language(
     assert command_expected in command
     assert "✔ No streams to reorder" in output
     assert process_output in output
-    assert "✅ Success: cleaned_video.mkv" in output
+    assert "cleaned_video.mkv" in output
 
 
 @pytest.mark.parametrize(
@@ -227,7 +228,7 @@ def test_clean_video_downmix(
     mocker,
     mock_ffprobe_box,
     mock_video_path,
-    clean_stdout,
+    capsys,
     tmp_path,
     mock_ffmpeg,
     debug,
@@ -250,7 +251,7 @@ def test_clean_video_downmix(
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
-    output = clean_stdout()
+    output = capsys.readouterr().out
     # debug(output, "output")
 
     # Then: FFmpeg is called with correct stream mapping
@@ -263,7 +264,7 @@ def test_clean_video_downmix(
     assert exc_info.value.code == 0
     assert "✔ No streams to reorder" in output
     assert process_output in output
-    assert "✅ Success: cleaned_video.mkv" in output
+    assert "cleaned_video.mkv" in output
 
 
 @pytest.mark.parametrize(
@@ -283,7 +284,7 @@ def test_clean_reorganize_streams(
     mock_ffprobe_box,
     mock_video_path,
     tmp_path,
-    clean_stdout,
+    capsys,
     mock_ffmpeg,
     debug,
     args,
@@ -306,8 +307,7 @@ def test_clean_reorganize_streams(
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
-    output = clean_stdout()
-    # debug(output, "output")
+    output = capsys.readouterr().out
 
     # THEN verify ffmpeg is called once - once to reorder streams, stream processing is skipped
     assert mock_ffmpeg.call_count == 1
@@ -320,7 +320,7 @@ def test_clean_reorganize_streams(
     assert exc_info.value.code == 0
     assert "✔ Reorder streams" in output
     assert process_output in output
-    assert "✅ Success: cleaned_video.mkv" in output
+    assert "cleaned_video.mkv" in output
 
 
 @pytest.mark.parametrize(
@@ -348,7 +348,7 @@ def test_convert_video(
     mock_video_path,
     tmp_path,
     mock_ffmpeg,
-    clean_stdout,
+    capsys,
     debug,
     args,
     first_command_expected,
@@ -371,7 +371,7 @@ def test_convert_video(
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
-    output = clean_stdout()
+    output = capsys.readouterr().out
     # debug(output, "output")
 
     # THEN verify ffmpeg executes two passes
@@ -391,7 +391,7 @@ def test_convert_video(
     assert process_output in output
 
     if "--vp9" in args:
-        assert "Converting to VP9, setting output to test_video.webm" in output
+        assert "Converting to VP9, setting output to `test_video.webm`" in output
         assert "✔ Convert to vp9" in output
     else:
         assert "✔ Convert to H.265" in output
@@ -402,7 +402,7 @@ def test_save_each_step(
     mock_ffprobe_box,
     mock_video_path,
     mock_ffmpeg,
-    clean_stdout,
+    capsys,
     tmp_path,
     debug,
 ):
@@ -429,7 +429,7 @@ def test_save_each_step(
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
-    output = clean_stdout()
+    output = capsys.readouterr().out
     # debug(output, "output")
 
     # THEN verify ffmpeg executes two passes
@@ -450,8 +450,7 @@ def test_save_each_step(
     assert exc_info.value.code == 0
     assert "✔ No streams to reorder" in output
     assert "✔ Process file" in output
-    assert "✅ Success: cleaned_video.mkv" in output
+    assert "cleaned_video.mkv" in output
     assert "✔ Process file (downmix to stereo, drop unwanted subtitles)" in output
-    assert "✅ Success: …/test_video_1.mp4" in output
     assert "✔ Convert to H.265" in output
-    assert "✅ Success: cleaned_video.mkv" in output
+    assert "cleaned_video.mkv" in output

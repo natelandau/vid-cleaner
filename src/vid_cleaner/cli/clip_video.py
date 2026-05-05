@@ -3,7 +3,8 @@
 import re
 
 import cappa
-from nclutils import copy_file, pp
+from nclutils import copy_file
+from nllog import error, info, success
 
 from vid_cleaner import settings
 from vid_cleaner.utils import coerce_video_files
@@ -25,16 +26,16 @@ def main(clip_cmd: ClipCommand) -> None:
     time_pattern = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 
     if not time_pattern.match(clip_cmd.start):
-        pp.error("`--start` must be in format HH:MM:SS")
+        error("`--start` must be in format HH:MM:SS")
         raise cappa.Exit(code=1)
 
     if not time_pattern.match(clip_cmd.duration):
-        pp.error("`--duration` must be in format HH:MM:SS")
+        error("`--duration` must be in format HH:MM:SS")
         raise cappa.Exit(code=1)
 
     for video in coerce_video_files(clip_cmd.files):
         settings.out_path = settings.out_path or video.path
-        pp.info(f"⇨ {video.path.name}")
+        info(f"⇨ {video.path.name}")
 
         video.clip(clip_cmd.start, clip_cmd.duration)
 
@@ -47,6 +48,6 @@ def main(clip_cmd: ClipCommand) -> None:
                 transient=True,
             )
             video.temp_file.clean_up()
-            pp.success(f"{out_file}")
+            success(f"{out_file}")
 
     raise cappa.Exit(code=0)

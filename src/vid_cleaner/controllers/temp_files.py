@@ -3,7 +3,7 @@
 import uuid
 from pathlib import Path
 
-from nclutils import pp
+from nllog import debug, trace
 
 from vid_cleaner import settings
 
@@ -71,7 +71,7 @@ class TempFile:
         for file in self.tmp_dir.iterdir():
             if file.stem.startswith(f"{self.tmp_file_number}_"):
                 self.tmp_file_number += 1
-        pp.trace(f"Create new tmp file: {self.tmp_file_number}_{step_name}{suffix}")
+        trace(f"Create new tmp file: {self.tmp_file_number}_{step_name}{suffix}")
         return self.tmp_dir / f"{self.tmp_file_number}_{step_name}{suffix}"
 
     def created_temp_file(self, path: Path) -> None:
@@ -96,7 +96,7 @@ class TempFile:
             for file in self.tmp_dir.iterdir():
                 tmp_file_number = int(file.stem.split("_")[0])
                 if tmp_file_number < self.tmp_file_number:
-                    pp.trace(f"Remove tmp file: {file}")
+                    trace(f"Remove tmp file: {file}")
                     file.unlink()
 
     def clean_up(self) -> None:
@@ -106,11 +106,11 @@ class TempFile:
         processing and the temporary directory itself.
         """
         if self.tmp_dir.exists():
-            pp.debug("Clean up temporary files")
+            debug("Clean up temporary files")
 
             for file in self.tmp_dir.iterdir():
-                pp.trace(f"Remove tmp file: {file}")
+                trace(f"Remove tmp file: {file}")
                 file.unlink()
 
-            pp.trace(f"Remove: {self.tmp_dir}")
+            trace(f"Remove: {self.tmp_dir}")
             self.tmp_dir.rmdir()
