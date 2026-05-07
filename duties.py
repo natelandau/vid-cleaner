@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from duty import duty, tools
-from nclutils import console
+from nclutils import pp
 
 if TYPE_CHECKING:
     from duty.context import Context
@@ -311,7 +311,7 @@ def dev_setup(ctx: Context) -> None:
 def _create_subtitles() -> None:
     """Create subtitles for the development environment."""
 
-    def _create_srt_file(filename, line1_text, line2_text) -> None:
+    def _create_srt_file(filename: str, line1_text: str, line2_text: str) -> None:
         """Creates an SRT file with two subtitle entries.
 
         Args:
@@ -332,13 +332,13 @@ def _create_subtitles() -> None:
     """
         subtitle_folder = DEV_DIR / "subtitles"
         subtitle_folder.mkdir(parents=True, exist_ok=True)
-        filename = subtitle_folder / filename
+        filepath = subtitle_folder / filename
         try:
-            with filename.open("w", encoding="utf-8") as f:
+            with filepath.open("w", encoding="utf-8") as f:
                 f.write(content)
-            console.print(f"Successfully created '{filename}'")
+            pp.info(f"Successfully created '{filepath}'")
         except OSError as e:
-            console.print(f"Error creating file '{filename}': {e}")
+            pp.error(f"Error creating file '{filepath}': {e}")
 
     subtitles_data = [
         {

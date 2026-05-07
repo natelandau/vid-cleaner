@@ -1,7 +1,7 @@
 """API utilities."""
 
 import httpx
-from nllog import error, trace
+from nclutils import pp
 from rich.json import JSON
 
 from vid_cleaner import settings
@@ -30,16 +30,16 @@ def query_tmdb(search: str) -> dict:  # pragma: no cover
     }
 
     args = "&".join([f"{k}={v}" for k, v in params.items()])
-    trace(f"TMDB: Query {url}?{args}")
+    pp.trace(f"TMDB: Query {url}?{args}")
 
     try:
         response = httpx.get(url, params=params, timeout=15)
         response.raise_for_status()
     except httpx.HTTPError as e:
-        error(str(e))
+        pp.error(str(e))
         return {}
 
-    trace("TMDB: Response received", details=[JSON(response.text)])
+    pp.trace("TMDB: Response received", details=[JSON(response.text)])
 
     return response.json()
 
@@ -70,10 +70,10 @@ def query_radarr(search: str) -> dict:  # pragma: no cover
         response = httpx.get(url, params=params, timeout=15)
         response.raise_for_status()
     except httpx.HTTPError as e:
-        error(str(e))
+        pp.error(str(e))
         return {}
 
-    trace("RADARR: Response received", details=[JSON(response.text)])
+    pp.trace("RADARR: Response received", details=[JSON(response.text)])
 
     return response.json()
 
@@ -104,9 +104,9 @@ def query_sonarr(search: str) -> dict:  # pragma: no cover
         response = httpx.get(url, params=params, timeout=15)
         response.raise_for_status()
     except httpx.HTTPError as e:
-        error(str(e))
+        pp.error(str(e))
         return {}
 
-    trace("SONARR: Response received", details=[JSON(response.text)])
+    pp.trace("SONARR: Response received", details=[JSON(response.text)])
 
     return response.json()

@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 
 import cappa
-from nllog import error, info
+from nclutils import pp
 
 from vid_cleaner.constants import (
     DEFAULT_CONFIG_PATH,
@@ -52,7 +52,7 @@ def create_default_config() -> None:
         USER_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         USER_CONFIG_PATH.touch(exist_ok=True)
         shutil.copy(DEFAULT_CONFIG_PATH, USER_CONFIG_PATH)
-        info(f"Default configuration file created: `{USER_CONFIG_PATH}`")
+        pp.info(f"Default configuration file created: `{USER_CONFIG_PATH}`")
 
 
 def parse_trait_filters(facets: str) -> set[VideoTrait]:
@@ -70,5 +70,5 @@ def parse_trait_filters(facets: str) -> set[VideoTrait]:
     try:
         return {VideoTrait(facet.lower()) for facet in facets.split(",")}
     except ValueError as e:
-        error(f"Invalid facet: {e}")
+        pp.error(f"Invalid facet: {e}")
         raise cappa.Exit(code=1) from e

@@ -9,7 +9,7 @@ import cappa
 from box import Box
 from ffmpeg_progress_yield import FfmpegProgress
 from iso639 import Lang
-from nllog import console, debug, error, header, info, trace, warning
+from nclutils import pp
 from rich.markdown import Markdown
 from rich.progress import Progress
 
@@ -255,7 +255,7 @@ class VideoFile:
                 has_stereo = True
 
         if not has_stereo and surround7:
-            debug(
+            pp.debug(
                 "PROCESS AUDIO: Audio track is 5 channel, no 2 channel exists. Creating 2 channel from 5 channel",
             )
             # For 7.1, use default ffmpeg downmixing since custom pan filter would be too complex
@@ -278,7 +278,7 @@ class VideoFile:
                 new_index += 1
                 has_stereo = True
 
-        trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
+        pp.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
         return downmix_command
 
     def _find_original_language(self) -> Lang:  # pragma: no cover
@@ -306,7 +306,7 @@ class VideoFile:
             original_language = response["tv_results"][0].get("original_language")
 
         if not original_language:
-            debug(f"Could not find original language for: {self.name}")
+            pp.debug(f"Could not find original language for: {self.name}")
             return None
 
         # TMDB uses 'cn' for Chinese but iso639 expects 'zh'
@@ -316,7 +316,7 @@ class VideoFile:
         try:
             language = Lang(original_language)
         except Exception:  # noqa: BLE001
-            debug(f"iso639: Could not find language for: {self.name}")
+            pp.debug(f"iso639: Could not find language for: {self.name}")
             return None
 
         self.language = language
@@ -368,7 +368,7 @@ class VideoFile:
                 and stream.title
                 and re.search(COMMENTARY_STREAM_TITLE_REGEX, stream.title, re.IGNORECASE)
             ):
-                trace(rf"PROCESS AUDIO: Remove stream #{stream.index} [commentary]")
+                pp.trace(rf"PROCESS AUDIO: Remove stream #{stream.index} [commentary]")
                 continue
 
             if stream.language == "und" or Lang(stream.language) in langs:
@@ -376,7 +376,7 @@ class VideoFile:
                 streams_to_keep.append(stream)
                 continue
 
-            trace(f"PROCESS AUDIO: Remove stream #{stream.index}")
+            pp.trace(f"PROCESS AUDIO: Remove stream #{stream.index}")
 
         # If all streams would be removed, keep them all to prevent silent video
         if not command:
@@ -389,7 +389,7 @@ class VideoFile:
             self._downmix_to_stereo(streams_to_keep) if settings.downmix_stereo else []
         )
 
-        trace(f"PROCESS AUDIO: {command}")
+        pp.trace(f"PROCESS AUDIO: {command}")
         return command, downmix_command
 
     def _process_subtitles(self) -> list[str]:
@@ -425,7 +425,7 @@ class VideoFile:
                 and stream.title is not None
                 and re.search(COMMENTARY_STREAM_TITLE_REGEX, stream.title, re.IGNORECASE)
             ):
-                trace(rf"PROCESS SUBTITLES: Remove stream #{stream.index} [commentary]")
+                pp.trace(rf"PROCESS SUBTITLES: Remove stream #{stream.index} [commentary]")
                 continue
 
             if settings.keep_all_subtitles:
@@ -438,7 +438,7 @@ class VideoFile:
                 if settings.keep_local_subtitles and (
                     stream.language.lower() == "und" or Lang(stream.language) in langs
                 ):
-                    trace(f"PROCESS SUBTITLES: Keep stream #{stream.index} (local language)")
+                    pp.trace(f"PROCESS SUBTITLES: Keep stream #{stream.index} (local language)")
                     command.extend(["-map", f"0:{stream.index}"])
                     continue
 
@@ -450,13 +450,13 @@ class VideoFile:
                     and original_language not in langs
                     and (stream.language.lower == "und" or Lang(stream.language) in langs)
                 ):
-                    trace(f"PROCESS SUBTITLES: Keep stream #{stream.index} (original language)")
+                    pp.trace(f"PROCESS SUBTITLES: Keep stream #{stream.index} (original language)")
                     command.extend(["-map", f"0:{stream.index}"])
                     continue
 
-            trace(f"PROCESS SUBTITLES: Remove stream #{stream.index}")
+            pp.trace(f"PROCESS SUBTITLES: Remove stream #{stream.index}")
 
-        trace(f"PROCESS SUBTITLES: {command}")
+        pp.trace(f"PROCESS SUBTITLES: {command}")
         return command
 
     def _process_video(self) -> list[str]:
@@ -474,7 +474,7 @@ class VideoFile:
 
             command.extend(["-map", f"0:{stream.index}"])
 
-        trace(f"PROCESS VIDEO: {command}")
+        pp.trace(f"PROCESS VIDEO: {command}")
         return command
 
     def _query_arr_apps_for_imdb_id(self) -> str | None:
@@ -528,12 +528,12 @@ class VideoFile:
         cmd.extend(command)
         cmd.extend([*FFMPEG_APPEND, str(output_path)])
 
-        trace(f"RUN FFMPEG:\n{' '.join(cmd)}")
+        pp.trace(f"RUN FFMPEG:\n{' '.join(cmd)}")
 
         if settings.dryrun:
-            header(f"{title} (dry run)")
+            pp.header(f"{title} (dry run)")
             markdown_command = Markdown(f"```console\n{' '.join(cmd)}\n```")
-            console().print(markdown_command)
+            pp.console().print(markdown_command)
             return output_path
 
         # Use FfmpegProgress to get real-time progress updates during encoding
@@ -547,14 +547,14 @@ class VideoFile:
         except KeyboardInterrupt as e:
             # Clean up temporary files if user interrupts to avoid orphaned files
             self.temp_file.clean_up()
-            warning(f"KeyboardInterrupt during {title.lower()}")
-            info("Exiting...")
+            pp.warning(f"KeyboardInterrupt during {title.lower()}")
+            pp.info("Exiting...")
             raise cappa.Exit(code=1) from e
 
-        info(f"{SYMBOL_CHECK} {title}")
+        pp.info(f"{SYMBOL_CHECK} {title}")
 
         self.temp_file.created_temp_file(output_path)
-        trace(f"Created temp file: {output_path}")
+        pp.trace(f"Created temp file: {output_path}")
         return output_path
 
     def clip(self, start: str, duration: str) -> Path:
@@ -591,11 +591,11 @@ class VideoFile:
         )
 
         if not video_stream:
-            error("No video stream found")
+            pp.error("No video stream found")
             return input_path
 
         if not settings.force and video_stream.codec_name.lower() in H265_CODECS:
-            warning(
+            pp.warning(
                 "H265 ENCODE: Video already H.265 or VP9.",
                 details=["Run with `--force` to re-encode.", "Skipping"],
             )
@@ -605,14 +605,14 @@ class VideoFile:
         # This formula provides good quality while maintaining reasonable file sizes
         stream_duration = float(self.probe_box.duration) or float(video_stream.duration)
         if not stream_duration:
-            error("Could not calculate video duration")
+            pp.error("Could not calculate video duration")
             return input_path
 
         # Convert duration to minutes for bitrate calculation
         duration = stream_duration * 0.0166667
 
         stat = input_path.stat()
-        trace(f"File size: {stat}")
+        pp.trace(f"File size: {stat}")
         file_size_megabytes = stat.st_size / 1000000
 
         # Calculate bitrates with a target of 50% of original size while maintaining quality
@@ -659,19 +659,19 @@ class VideoFile:
         )
 
         if not video_stream:
-            error("No video stream found")
+            pp.error("No video stream found")
             return input_path
 
         # Skip re-encoding if already in modern codec unless forced
         if not settings.force and video_stream.codec_name.lower() in H265_CODECS:
-            warning(
+            pp.warning(
                 "VP9 ENCODE: Video already H.265 or VP9.",
                 details=["Run with `--force` to re-encode.", "Skipping"],
             )
             return input_path
 
         if Path(settings.out_path).suffix != ".webm":
-            info(
+            pp.info(
                 f"Converting to VP9, setting output to `{settings.out_path.with_suffix('.webm').name}`"
             )
             settings.out_path = settings.out_path.with_suffix(".webm")
@@ -733,7 +733,7 @@ class VideoFile:
 
         comparison_list = [f"0:{x}" for x in range(len(self.all_streams))]
         if len(comparison_list) == len(all_commands):
-            info(f"{SYMBOL_CHECK} No streams to process")
+            pp.info(f"{SYMBOL_CHECK} No streams to process")
             return self.temp_file.latest_temp_path()
 
         return self._run_ffmpeg(
@@ -758,15 +758,15 @@ class VideoFile:
             cappa.Exit: If no video or audio streams are found in the video file.
         """
         if not self.video_streams:
-            error("No video streams found")
+            pp.error("No video streams found")
             raise cappa.Exit(code=1)
         if not self.audio_streams:
-            error("No audio streams found")
+            pp.error("No audio streams found")
             raise cappa.Exit(code=1)
 
         # Skip reordering if streams are already in the desired order (video->audio->subtitles)
         if not self._need_stream_reorder():
-            info(f"{SYMBOL_CHECK} No streams to reorder")
+            pp.info(f"{SYMBOL_CHECK} No streams to reorder")
             return self.temp_file.latest_temp_path()
 
         # Use -c copy to avoid re-encoding when reordering streams
@@ -801,12 +801,12 @@ class VideoFile:
         )
 
         if not video_stream:
-            error("No video stream found")
+            pp.error("No video stream found")
             return input_path
 
         # Skip downscaling if video is already 1080p or smaller, unless forced
         if not settings.force and getattr(video_stream, "width", 0) <= 1920:  # noqa: PLR2004
-            info(f"{SYMBOL_CHECK} No convert to 1080p needed")
+            pp.info(f"{SYMBOL_CHECK} No convert to 1080p needed")
             return input_path
 
         # Use -2 for height to maintain aspect ratio while ensuring even dimensions for compatibility

@@ -3,8 +3,8 @@
 from pathlib import Path
 
 import cappa
-from nclutils import copy_file
-from nllog import debug, error, info, success
+from nclutils import pp
+from nclutils.fs import copy_file
 
 from vid_cleaner import settings
 from vid_cleaner.utils import coerce_video_files
@@ -29,8 +29,9 @@ def save_each_step(video: VideoFile) -> VideoFile:
             keep_backup=not settings.overwrite,
             with_progress=True,
             transient=True,
+            console=pp.console(),
         )
-        success(f"{out_file}")
+        pp.success(f"{out_file}")
         video.temp_file.clean_up()
 
         return VideoFile(Path(out_file))
@@ -51,7 +52,7 @@ def main(clean_cmd: CleanCommand) -> None:
         cappa.Exit: If incompatible options are specified (e.g., both H265 and VP9)
     """
     if settings.h265 and settings.vp9:
-        error("Cannot convert to both H265 and VP9")
+        pp.error("Cannot convert to both H265 and VP9")
         raise cappa.Exit(code=1)
 
     for video in coerce_video_files(clean_cmd.files):
@@ -59,7 +60,7 @@ def main(clean_cmd: CleanCommand) -> None:
 
         video_file = video
 
-        info(f"⇨ {video_file.path.name}")
+        pp.info(f"⇨ {video_file.path.name}")
         video_file.reorder_streams()
         video_file.process_streams()
         video_file = save_each_step(video_file)
@@ -76,7 +77,7 @@ def main(clean_cmd: CleanCommand) -> None:
 
         if not settings.dryrun:
             if video_file.temp_file.latest_temp_path() == video_file.path:
-                success(f"No changes made: `{video_file.name}`")
+                pp.success(f"No changes made: `{video_file.name}`")
                 continue
 
             out_file = copy_file(
@@ -85,13 +86,14 @@ def main(clean_cmd: CleanCommand) -> None:
                 keep_backup=not settings.overwrite,
                 with_progress=True,
                 transient=True,
+                console=pp.console(),
             )
             video_file.temp_file.clean_up()
 
             if settings.overwrite and out_file != video_file.path:
-                debug(f"Delete: {video_file.path}")
+                pp.debug(f"Delete: {video_file.path}")
                 video_file.path.unlink()
 
-            success(f"{out_file}")
+            pp.success(f"{out_file}")
 
     raise cappa.Exit(code=0)
