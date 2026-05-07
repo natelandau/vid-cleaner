@@ -1,8 +1,8 @@
 """Search subcommand."""
 
 import cappa
-from nclutils import find_files, find_subdirectories
-from nllog import console, error, warning
+from nclutils import pp
+from nclutils.fs import find_files, find_subdirectories
 from rich.live import Live
 from rich.progress import track
 from rich.table import Table
@@ -32,7 +32,7 @@ def main(search_cmd: SearchCommand) -> None:
 
     video_files = []
 
-    with Live(console=console(), auto_refresh=True) as live:
+    with Live(console=pp.console(), auto_refresh=True) as live:
         for i, directory in enumerate(directories_to_search):
             video_files.extend(
                 coerce_video_files(
@@ -54,7 +54,7 @@ def main(search_cmd: SearchCommand) -> None:
         live.stop()
 
     if len(video_files) == 0:
-        warning(f"No video files found in {search_cmd.directory}")
+        pp.warning(f"No video files found in {search_cmd.directory}")
         raise cappa.Exit(code=0)
 
     table = Table(title="Video Files")
@@ -79,9 +79,9 @@ def main(search_cmd: SearchCommand) -> None:
         table.add_row(str(i), video_file.name, ", ".join(matches), ", ".join(video_traits))
 
     if i == 0:
-        error(f"No video files found matching {human_readable_filters}")
+        pp.error(f"No video files found matching {human_readable_filters}")
         raise cappa.Exit(code=1)
 
-    console().print(table)
+    pp.console().print(table)
 
     raise cappa.Exit(code=0)

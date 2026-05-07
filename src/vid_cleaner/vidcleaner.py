@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Annotated
 
 import cappa
-from nllog import configure, info, trace
+from nclutils import pp
 from rich.traceback import install
 
 from vid_cleaner import settings
@@ -30,7 +30,7 @@ def config_subcommand(vidcleaner: VidCleaner) -> None:
         if vidcleaner.verbosity == PrintLevel.TRACE
         else 0
     )
-    configure(verbosity=nllog_level)
+    pp.configure(verbosity=nllog_level)
 
     langs_to_keep = getattr(vidcleaner.command, "langs_to_keep", None)
     if langs_to_keep and isinstance(langs_to_keep, str):
@@ -64,7 +64,7 @@ def config_subcommand(vidcleaner: VidCleaner) -> None:
 
     SettingsManager.apply_cli_settings(cli_settings)
 
-    trace("Settings", details=[settings.to_dict(), vidcleaner.__dict__])
+    pp.trace("Settings", details=[settings.to_dict(), vidcleaner.__dict__])
 
 
 @cappa.command(
@@ -434,7 +434,7 @@ def main() -> None:  # pragma: no cover
             obj=VidCleaner, deps=[create_default_config, config_subcommand], completion=False
         )
     except KeyboardInterrupt as e:
-        info("\nExiting...")
+        pp.info("\nExiting...")
         raise cappa.Exit(code=1) from e
 
 

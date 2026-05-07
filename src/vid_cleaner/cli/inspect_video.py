@@ -1,7 +1,7 @@
 """Inspect subcommand."""
 
 import cappa
-from nllog import console
+from nclutils import pp
 
 from vid_cleaner.utils import coerce_video_files
 from vid_cleaner.vidcleaner import InspectCommand
@@ -22,9 +22,9 @@ def main(inspect_cmd: InspectCommand) -> None:
     """
     for video in coerce_video_files(inspect_cmd.files):
         if inspect_cmd.json_output:
-            console().print(video.ffprobe_json())
+            pp.console().print(video.ffprobe_json())
             continue
 
-        console().print(stream_table(video.probe_box))
+        pp.console().print(stream_table(video.probe_box))
 
     raise cappa.Exit(code=0)

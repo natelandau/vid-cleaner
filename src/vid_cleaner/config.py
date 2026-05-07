@@ -7,7 +7,7 @@ from typing import Any
 
 import cappa
 from dynaconf import Dynaconf, ValidationError, Validator
-from nllog import error
+from nclutils import pp
 from validators import url as url_validate
 
 from vid_cleaner.constants import CACHE_DIR, DEFAULT_CONFIG_PATH, DEV_CONFIG_PATH, USER_CONFIG_PATH
@@ -125,10 +125,10 @@ class SettingsManager:
         except ValidationError as e:
             accumulative_errors = e.details
             for err in accumulative_errors:
-                error(err[1])
+                pp.error(err[1])
             raise cappa.Exit(code=1) from e
         except ValueError as e:
-            error(str(e))
+            pp.error(str(e))
             raise cappa.Exit(code=1) from e
 
         cls._instance = settings
@@ -149,7 +149,7 @@ class SettingsManager:
         settings = cls._instance
         if settings is None:  # pragma: no cover
             msg = "Settings not initialized"
-            error(msg)
+            pp.error(msg)
             raise cappa.Exit(code=1)
 
         # Filter out None values to avoid overriding with None

@@ -5,7 +5,7 @@ from pathlib import Path
 import cappa
 import ffmpeg as python_ffmpeg
 from box import Box
-from nllog import error
+from nclutils import pp
 
 from vid_cleaner.constants import AudioLayout, CodecTypes
 
@@ -58,7 +58,7 @@ def run_ffprobe(path: Path) -> dict:  # pragma: no cover
     try:
         probe = python_ffmpeg.probe(path)
     except python_ffmpeg.Error as e:
-        error(e.stderr)
+        pp.error(e.stderr)
         raise cappa.Exit(code=1) from e
 
     return probe

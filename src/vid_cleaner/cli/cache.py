@@ -3,8 +3,8 @@
 import shutil
 
 import cappa
-from nclutils import directory_tree
-from nllog import console, info, success
+from nclutils import pp
+from nclutils.fs import directory_tree
 
 from vid_cleaner import settings
 from vid_cleaner.vidcleaner import CacheCommand
@@ -23,19 +23,19 @@ def main(cache_cmd: CacheCommand) -> None:
         cappa.Exit: If the cache directory is not found or if the cache is cleared
     """
     if not settings.CACHE_DIR.exists():
-        info(f"Cache directory not found: `{settings.CACHE_DIR}`")
+        pp.info(f"Cache directory not found: `{settings.CACHE_DIR}`")
         raise cappa.Exit(code=0)
 
     if cache_cmd.clear:
         shutil.rmtree(settings.CACHE_DIR)
         settings.CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        success(f"Cache cleared: `{settings.CACHE_DIR}`")
+        pp.success(f"Cache cleared: `{settings.CACHE_DIR}`")
         raise cappa.Exit(code=0)
 
     if len(list(settings.CACHE_DIR.iterdir())) > 0:
         tree = directory_tree(settings.CACHE_DIR, show_hidden=True)
-        console().print(tree)
+        pp.console().print(tree)
     else:
-        info(f"Cache directory is empty: `{settings.CACHE_DIR}`")
+        pp.info(f"Cache directory is empty: `{settings.CACHE_DIR}`")
 
     raise cappa.Exit(code=0)
