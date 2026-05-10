@@ -1,3 +1,13 @@
+## v0.7.5 (2026-05-10)
+
+### Fix
+
+- **build**: support nclutils >= v3.0.0 (#74)
+
+### Refactor
+
+- migrate from nclutils to nllog (#73)
+
 ## v0.7.4 (2025-11-07)
 
 ### Fix
