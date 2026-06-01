@@ -82,29 +82,31 @@ def main(clean_cmd: CleanCommand) -> None:
         video_file = video
 
         # Print the video name first so live progress bars render beneath it, then collect each
-        # operation's outcome and render the result tree once the file is done.
+        # operation's outcome and render the result tree once the file is done. The render runs in
+        # `finally` so completed steps are still shown if a later operation raises.
         pp.info(f"⇨ {video_file.path.name}")
         substeps: list[str] = []
 
-        substeps.extend(video_file.reorder_streams())
-        substeps.extend(video_file.process_streams())
-        video_file, saved = save_each_step(video_file)
-        substeps.extend(saved)
-
-        if settings.video_1080:
-            substeps.extend(video_file.video_to_1080p())
+        try:
+            substeps.extend(video_file.reorder_streams())
+            substeps.extend(video_file.process_streams())
             video_file, saved = save_each_step(video_file)
             substeps.extend(saved)
 
-        if settings.h265:
-            substeps.extend(video_file.convert_to_h265())
+            if settings.video_1080:
+                substeps.extend(video_file.video_to_1080p())
+                video_file, saved = save_each_step(video_file)
+                substeps.extend(saved)
 
-        if settings.vp9:
-            substeps.extend(video_file.convert_to_vp9())
+            if settings.h265:
+                substeps.extend(video_file.convert_to_h265())
 
-        if not settings.dryrun:
-            substeps.extend(write_output(video_file))
+            if settings.vp9:
+                substeps.extend(video_file.convert_to_vp9())
 
-        render_substeps(substeps)
+            if not settings.dryrun:
+                substeps.extend(write_output(video_file))
+        finally:
+            render_substeps(substeps)
 
     raise cappa.Exit(code=0)

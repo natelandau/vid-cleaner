@@ -37,21 +37,23 @@ def main(clip_cmd: ClipCommand) -> None:
         settings.out_path = settings.out_path or video.path
 
         # Print the video name first so live progress bars render beneath it, then collect each
-        # operation's outcome and render the result tree once the file is done.
+        # operation's outcome and render the result tree once the file is done. The render runs in
+        # `finally` so completed steps are still shown if a later operation raises.
         pp.info(f"⇨ {video.path.name}")
         substeps: list[str] = []
 
-        substeps.extend(video.clip(clip_cmd.start, clip_cmd.duration))
+        try:
+            substeps.extend(video.clip(clip_cmd.start, clip_cmd.duration))
 
-        if not settings.dryrun:
-            _, messages = copy_to_output(
-                video.temp_file.latest_temp_path(),
-                Path(settings.out_path),
-                overwrite=settings.overwrite,
-            )
-            video.temp_file.clean_up()
-            substeps.extend(messages)
-
-        render_substeps(substeps)
+            if not settings.dryrun:
+                _, messages = copy_to_output(
+                    video.temp_file.latest_temp_path(),
+                    Path(settings.out_path),
+                    overwrite=settings.overwrite,
+                )
+                video.temp_file.clean_up()
+                substeps.extend(messages)
+        finally:
+            render_substeps(substeps)
 
     raise cappa.Exit(code=0)

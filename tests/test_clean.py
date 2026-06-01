@@ -460,3 +460,31 @@ def test_save_each_step(
     assert "✔ Process file (downmix to stereo, drop unwanted subtitles)" in output
     assert "✔ Convert to H.265" in output
     assert "cleaned_video.mkv" in output
+
+
+def test_clean_renders_completed_steps_on_error(
+    mocker,
+    mock_ffprobe_box,
+    mock_ffmpeg,
+    capsys,
+    mock_video_path,
+) -> None:
+    """Verify steps completed before a failure are still displayed."""
+    # Given: mocked metadata and a conversion that fails partway through
+    args = ["clean", "--h265", str(mock_video_path)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(
+        VideoFile, "convert_to_h265", autospec=True, side_effect=RuntimeError("boom")
+    )
+
+    # When: running clean and the H.265 conversion raises
+    with pytest.raises(RuntimeError):
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: the earlier completed steps are still rendered despite the failure
+    output = capsys.readouterr().out
+    assert "✔ No streams to reorder" in output
