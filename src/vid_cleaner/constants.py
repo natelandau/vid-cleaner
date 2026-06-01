@@ -93,6 +93,8 @@ class Resolution:
 
 
 SYMBOL_CHECK = "✔"
+TREE_BRANCH = "├─"  # Connector for a non-final child line in faked step output
+TREE_LAST = "└─"  # Connector for the final child line in faked step output
 COMMENTARY_STREAM_TITLE_REGEX = r"commentary|sdh|description"
 EXCLUDED_VIDEO_CODECS = {"mjpeg", "mjpg", "png"}
 FFMPEG_APPEND: list[str] = ["-max_muxing_queue_size", "9999"]

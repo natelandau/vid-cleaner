@@ -1,13 +1,13 @@
 """Clip subcommand."""
 
 import re
+from pathlib import Path
 
 import cappa
 from nclutils import pp
-from nclutils.fs import copy_file
 
 from vid_cleaner import settings
-from vid_cleaner.utils import coerce_video_files
+from vid_cleaner.utils import coerce_video_files, copy_to_output, render_substeps
 from vid_cleaner.vidcleaner import ClipCommand
 
 
@@ -35,20 +35,25 @@ def main(clip_cmd: ClipCommand) -> None:
 
     for video in coerce_video_files(clip_cmd.files):
         settings.out_path = settings.out_path or video.path
+
+        # Print the video name first so live progress bars render beneath it, then collect each
+        # operation's outcome and render the result tree once the file is done. The render runs in
+        # `finally` so completed steps are still shown if a later operation raises.
         pp.info(f"⇨ {video.path.name}")
+        substeps: list[str] = []
 
-        video.clip(clip_cmd.start, clip_cmd.duration)
+        try:
+            substeps.extend(video.clip(clip_cmd.start, clip_cmd.duration))
 
-        if not settings.dryrun:
-            out_file = copy_file(
-                src=video.temp_file.latest_temp_path(),
-                dst=settings.out_path,
-                keep_backup=not settings.overwrite,
-                with_progress=True,
-                transient=True,
-                console=pp.console(),
-            )
-            video.temp_file.clean_up()
-            pp.success(f"{out_file}")
+            if not settings.dryrun:
+                _, messages = copy_to_output(
+                    video.temp_file.latest_temp_path(),
+                    Path(settings.out_path),
+                    overwrite=settings.overwrite,
+                )
+                video.temp_file.clean_up()
+                substeps.extend(messages)
+        finally:
+            render_substeps(substeps)
 
     raise cappa.Exit(code=0)
