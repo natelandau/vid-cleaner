@@ -9,6 +9,7 @@ from .cli import (  # isort: skip
     copy_to_output,
     create_default_config,
     parse_trait_filters,
+    resolve_out_path_override,
 )
 
 __all__ = [
@@ -22,5 +23,6 @@ __all__ = [
     "query_sonarr",
     "query_tmdb",
     "render_substeps",
+    "resolve_out_path_override",
     "run_ffprobe",
 ]

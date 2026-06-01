@@ -6,7 +6,12 @@ import cappa
 from nclutils import pp
 
 from vid_cleaner import settings
-from vid_cleaner.utils import coerce_video_files, copy_to_output, render_substeps
+from vid_cleaner.utils import (
+    coerce_video_files,
+    copy_to_output,
+    render_substeps,
+    resolve_out_path_override,
+)
 from vid_cleaner.vidcleaner import CleanCommand
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
@@ -76,8 +81,10 @@ def main(clean_cmd: CleanCommand) -> None:
         pp.error("Cannot convert to both H265 and VP9")
         raise cappa.Exit(code=1)
 
+    out_path_override = resolve_out_path_override(clean_cmd.files)
+
     for video in coerce_video_files(clean_cmd.files):
-        settings.out_path = settings.out_path or video.path
+        settings.out_path = out_path_override or video.path
 
         video_file = video
 
