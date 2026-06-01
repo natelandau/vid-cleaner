@@ -23,6 +23,7 @@ def set_default_settings(tmp_path, mocker):
         {
             "cache_dir": cache_dir,
             "langs_to_keep": ["en"],
+            "out_path": None,
             "downmix_stereo": False,
             "keep_local_subtitles": False,
             "keep_commentary": False,
@@ -49,6 +50,25 @@ def test_fail_on_flag_conflict(debug, tmp_path, capsys, mock_video_path) -> None
 
     assert exc_info.value.code == 1
     assert "Cannot convert to both H265 and VP9" in output
+
+
+def test_clean_out_with_multiple_files_errors(debug, tmp_path, capsys) -> None:
+    """Verify clean command rejects --out when given more than one input file."""
+    # Given: an explicit --out alongside two input files
+    first = Path(tmp_path / "first_video.mkv")
+    first.touch()
+    second = Path(tmp_path / "second_video.mkv")
+    second.touch()
+    args = ["clean", "-vv", "--out", str(tmp_path / "out.mkv"), str(first), str(second)]
+
+    # When: running clean with --out and multiple files
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: the command exits with an error explaining the conflict
+    output = capsys.readouterr().err
+    assert exc_info.value.code == 1
+    assert "`--out` cannot be used with multiple input files" in output
 
 
 @pytest.mark.parametrize(
@@ -460,6 +480,78 @@ def test_save_each_step(
     assert "✔ Process file (downmix to stereo, drop unwanted subtitles)" in output
     assert "✔ Convert to H.265" in output
     assert "cleaned_video.mkv" in output
+
+
+def test_clean_multiple_files_use_distinct_output_paths(
+    mocker,
+    mock_ffprobe_box,
+    mock_ffmpeg,
+    capsys,
+    tmp_path,
+) -> None:
+    """Verify each input file is written to its own output path, not the first file's."""
+    # Given: two distinct input files
+    first = Path(tmp_path / "first_video.mkv")
+    first.touch()
+    second = Path(tmp_path / "second_video.mkv")
+    second.touch()
+
+    args = ["clean", "-vv", "--downmix", str(first), str(second)]
+
+    # And: mocked external dependencies; copy_file echoes the destination it was handed
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
+    )
+    mock_copy = mocker.patch("vid_cleaner.utils.cli.copy_file", side_effect=lambda *, dst, **_: dst)
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+
+    # When: cleaning both files in a single invocation
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: each file is copied to its own destination, not both to the first file's path
+    assert exc_info.value.code == 0
+    destinations = [call.kwargs["dst"] for call in mock_copy.mock_calls]
+    assert destinations == [first.resolve(), second.resolve()]
+
+
+def test_clean_multiple_files_overwrite_each_in_place(
+    mocker,
+    mock_ffprobe_box,
+    mock_ffmpeg,
+    capsys,
+    tmp_path,
+) -> None:
+    """Verify each file overwrites itself with --overwrite, leaving no original deleted."""
+    # Given: two distinct input files
+    first = Path(tmp_path / "first_video.mkv")
+    first.touch()
+    second = Path(tmp_path / "second_video.mkv")
+    second.touch()
+
+    args = ["clean", "-vv", "--overwrite", "--downmix", str(first), str(second)]
+
+    # And: mocked external dependencies; copy_file echoes the destination it was handed
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
+    )
+    mock_copy = mocker.patch("vid_cleaner.utils.cli.copy_file", side_effect=lambda *, dst, **_: dst)
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+
+    # When: cleaning both files in place
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: each file overwrites itself and neither original is deleted
+    assert exc_info.value.code == 0
+    destinations = [call.kwargs["dst"] for call in mock_copy.mock_calls]
+    assert destinations == [first.resolve(), second.resolve()]
+    assert first.exists()
+    assert second.exists()
 
 
 def test_clean_renders_completed_steps_on_error(

@@ -7,6 +7,7 @@ import cappa
 from nclutils import pp
 from nclutils.fs import backup_path, copy_file
 
+from vid_cleaner import settings
 from vid_cleaner.constants import (
     DEFAULT_CONFIG_PATH,
     SYMBOL_CHECK,
@@ -43,6 +44,27 @@ def coerce_video_files(files: list[Path]) -> list[VideoFile]:
             raise cappa.Exit(msg, code=1)
 
     return [VideoFile(path.expanduser().resolve().absolute()) for path in files]
+
+
+def resolve_out_path_override(files: list[Path]) -> Path | None:
+    """Capture the explicit `--out` override before per-file processing mutates it.
+
+    Read `settings.out_path` once up front so the first file's resolved path can't leak into later files and overwrite them all with the first file's name. Reject a single `--out` paired with multiple inputs, since one path cannot name many outputs.
+
+    Args:
+        files (list[Path]): The input files the command will process.
+
+    Returns:
+        Path | None: The user's explicit `--out` value, or None when not set.
+
+    Raises:
+        cappa.Exit: If `--out` is combined with more than one input file.
+    """
+    override = settings.out_path
+    if override and len(files) > 1:
+        pp.error("`--out` cannot be used with multiple input files")
+        raise cappa.Exit(code=1)
+    return override
 
 
 def copy_to_output(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list[str]]:
