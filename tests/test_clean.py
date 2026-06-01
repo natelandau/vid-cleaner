@@ -118,7 +118,8 @@ def test_stream_processing(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
     )
-    mocker.patch("vid_cleaner.cli.clean_video.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: Running clean command
@@ -184,7 +185,8 @@ def test_clean_video_foreign_language(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
     )
-    mocker.patch("vid_cleaner.cli.clean_video.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("fr")])
 
     # When: Processing the video file
@@ -244,7 +246,8 @@ def test_clean_video_downmix(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("no_stereo.json"),
     )
-    mocker.patch("vid_cleaner.cli.clean_video.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: Processing the video file
@@ -300,7 +303,8 @@ def test_clean_reorganize_streams(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("wrong_order.json"),
     )
-    mocker.patch("vid_cleaner.cli.clean_video.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: Processing the video file
@@ -362,7 +366,8 @@ def test_convert_video(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
     )
-    mocker.patch("vid_cleaner.cli.clean_video.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
     mocker.patch.object(TempFile, "new_tmp_path", return_value=(mock_video_path))
     mocker.patch.object(TempFile, "latest_temp_path", return_value=(mock_video_path))
@@ -418,9 +423,10 @@ def test_save_each_step(
         return_value=mock_ffprobe_box("reference.json"),
     )
     mocker.patch(
-        "vid_cleaner.cli.clean_video.copy_file",
+        "vid_cleaner.utils.cli.copy_file",
         side_effect=[mock_video_path_1, "cleaned_video.mkv"],
     )
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
     mocker.patch.object(TempFile, "new_tmp_path", return_value=(mock_video_path))
     mocker.patch.object(TempFile, "latest_temp_path", return_value=(mock_video_path))

@@ -5,9 +5,11 @@ from pathlib import Path
 
 import cappa
 from nclutils import pp
+from nclutils.fs import backup_path, copy_file
 
 from vid_cleaner.constants import (
     DEFAULT_CONFIG_PATH,
+    SYMBOL_CHECK,
     USER_CONFIG_PATH,
     VideoContainerTypes,
     VideoTrait,
@@ -41,6 +43,41 @@ def coerce_video_files(files: list[Path]) -> list[VideoFile]:
             raise cappa.Exit(msg, code=1)
 
     return [VideoFile(path.expanduser().resolve().absolute()) for path in files]
+
+
+def copy_to_output(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list[str]]:
+    """Copy a processed file to its destination, backing up any existing file first.
+
+    Own the backup explicitly rather than letting ``copy_file`` make a silent one, so the backup's location can be reported back to the user.
+
+    Args:
+        src (Path): The processed temporary file to copy.
+        dst (Path): The destination path to write to.
+        overwrite (bool): When True, replace the destination without keeping a backup.
+
+    Returns:
+        tuple[Path, list[str]]: The written file and substep messages describing the backup (if any) and the save.
+    """
+    # Resolve up front so the backup and save messages report the same canonical path.
+    dst = dst.expanduser().resolve()
+    messages: list[str] = []
+
+    if not overwrite and dst.exists():
+        backup = backup_path(dst, with_progress=True, transient=True, console=pp.console())
+        if backup:
+            messages.append(f"{SYMBOL_CHECK} Backed up original to {backup}")
+
+    out_file = copy_file(
+        src=src,
+        dst=dst,
+        keep_backup=False,  # already handled above so the backup path can be surfaced
+        with_progress=True,
+        transient=True,
+        console=pp.console(),
+    )
+    messages.append(f"{SYMBOL_CHECK} Saved to {out_file}")
+
+    return out_file, messages
 
 
 def create_default_config() -> None:

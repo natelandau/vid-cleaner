@@ -4,39 +4,60 @@ from pathlib import Path
 
 import cappa
 from nclutils import pp
-from nclutils.fs import copy_file
 
 from vid_cleaner import settings
-from vid_cleaner.utils import coerce_video_files
+from vid_cleaner.utils import coerce_video_files, copy_to_output, render_substeps
 from vid_cleaner.vidcleaner import CleanCommand
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
-def save_each_step(video: VideoFile) -> VideoFile:
-    """Save each step of the video processing.
+def save_each_step(video: VideoFile) -> tuple[VideoFile, list[str]]:
+    """Save the intermediate result of the current processing step.
 
     Args:
         video (VideoFile): The video file to save
 
     Returns:
-        VideoFile: The saved video file
+        tuple[VideoFile, list[str]]: The (possibly new) video file and substep messages describing the save, empty when nothing was saved.
     """
     if not settings.dryrun and settings.save_each_step:
-        out_file = copy_file(
-            src=video.temp_file.latest_temp_path(),
-            dst=settings.out_path,
-            keep_backup=not settings.overwrite,
-            with_progress=True,
-            transient=True,
-            console=pp.console(),
+        out_file, messages = copy_to_output(
+            video.temp_file.latest_temp_path(),
+            Path(settings.out_path),
+            overwrite=settings.overwrite,
         )
-        pp.success(f"{out_file}")
         video.temp_file.clean_up()
 
-        return VideoFile(Path(out_file))
+        return VideoFile(Path(out_file)), messages
 
-    return video
+    return video, []
+
+
+def write_output(video_file: VideoFile) -> list[str]:
+    """Copy the processed result to the output path and return the closing substep messages.
+
+    Args:
+        video_file (VideoFile): The processed video file to write out.
+
+    Returns:
+        list[str]: Substep messages describing the backup and save, or a single note when nothing changed.
+    """
+    if video_file.temp_file.latest_temp_path() == video_file.path:
+        return [f"No changes made: `{video_file.name}`"]
+
+    out_file, messages = copy_to_output(
+        video_file.temp_file.latest_temp_path(),
+        Path(settings.out_path),
+        overwrite=settings.overwrite,
+    )
+    video_file.temp_file.clean_up()
+
+    if settings.overwrite and out_file != video_file.path:
+        pp.debug(f"Delete: {video_file.path}")
+        video_file.path.unlink()
+
+    return messages
 
 
 def main(clean_cmd: CleanCommand) -> None:
@@ -60,40 +81,30 @@ def main(clean_cmd: CleanCommand) -> None:
 
         video_file = video
 
+        # Print the video name first so live progress bars render beneath it, then collect each
+        # operation's outcome and render the result tree once the file is done.
         pp.info(f"⇨ {video_file.path.name}")
-        video_file.reorder_streams()
-        video_file.process_streams()
-        video_file = save_each_step(video_file)
+        substeps: list[str] = []
+
+        substeps.extend(video_file.reorder_streams())
+        substeps.extend(video_file.process_streams())
+        video_file, saved = save_each_step(video_file)
+        substeps.extend(saved)
 
         if settings.video_1080:
-            video_file.video_to_1080p()
-            video_file = save_each_step(video_file)
+            substeps.extend(video_file.video_to_1080p())
+            video_file, saved = save_each_step(video_file)
+            substeps.extend(saved)
 
         if settings.h265:
-            video_file.convert_to_h265()
+            substeps.extend(video_file.convert_to_h265())
 
         if settings.vp9:
-            video_file.convert_to_vp9()
+            substeps.extend(video_file.convert_to_vp9())
 
         if not settings.dryrun:
-            if video_file.temp_file.latest_temp_path() == video_file.path:
-                pp.success(f"No changes made: `{video_file.name}`")
-                continue
+            substeps.extend(write_output(video_file))
 
-            out_file = copy_file(
-                src=video_file.temp_file.latest_temp_path(),
-                dst=settings.out_path,
-                keep_backup=not settings.overwrite,
-                with_progress=True,
-                transient=True,
-                console=pp.console(),
-            )
-            video_file.temp_file.clean_up()
-
-            if settings.overwrite and out_file != video_file.path:
-                pp.debug(f"Delete: {video_file.path}")
-                video_file.path.unlink()
-
-            pp.success(f"{out_file}")
+        render_substeps(substeps)
 
     raise cappa.Exit(code=0)
