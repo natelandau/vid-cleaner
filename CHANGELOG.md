@@ -1,3 +1,13 @@
+## v0.8.0 (2026-06-02)
+
+### Feat
+
+- **cli**: show step tree and report file backups (#75)
+
+### Fix
+
+- **clean**: give each input its own output path (#76)
+
 ## v0.7.5 (2026-05-10)
 
 ### Fix
