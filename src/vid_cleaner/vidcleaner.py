@@ -256,7 +256,9 @@ class CleanCommand:
             show_default=True,
             group="Configuration",
         ),
-    ] = settings.langs_to_keep
+        # Join to a string default so the dataclass field is hashable; dynaconf >=3.3 returns an
+        # unhashable DataList that cappa's @dataclass rejects as a mutable default.
+    ] = ",".join(settings.langs_to_keep)
     h265: Annotated[
         bool,
         cappa.Arg(
