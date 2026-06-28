@@ -1,3 +1,9 @@
+## v0.8.1 (2026-06-27)
+
+### Fix
+
+- **cli**: keep --langs default hashable for dynaconf 3.3+
+
 ## v0.8.0 (2026-06-02)
 
 ### Feat
