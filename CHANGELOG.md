@@ -1,3 +1,9 @@
+## v0.8.2 (2026-07-17)
+
+### Fix
+
+- **clean**: downmix surround audio when only commentary is stereo
+
 ## v0.8.1 (2026-06-27)
 
 ### Fix
