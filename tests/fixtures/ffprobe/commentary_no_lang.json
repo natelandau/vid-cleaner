@@ -1,0 +1,79 @@
+{
+    // Surround main track plus stereo commentary tracks with NO language tag.
+    // Reproduces the case where untitled-language commentary tracks are kept
+    // (unknown language) and must not block downmixing the main surround track.
+    "format": {
+        "bit_rate": "26192239",
+        "duration": "60.268000",
+        "filename": "test_movie.mkv",
+        "format_long_name": "Matroska / WebM",
+        "format_name": "matroska,webm",
+        "size": "197319234",
+        "start_time": "0.000000",
+        "tags": {
+            "ENCODER": "Lavf60.3.100",
+            "title": "Test Move"
+        }
+    },
+    "streams": [
+        // 0: 1080p H264 video
+        {
+            "index": 0,
+            "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+            "codec_name": "h264",
+            "codec_type": "video",
+            "coded_height": 1080,
+            "coded_width": 1920,
+            "height": 1080,
+            "sample_aspect_ratio": "1:1",
+            "start_time": "0.000000",
+            "tags": {
+                "BPS": "16232147",
+                "DURATION": "00:01:00.226000000",
+                "NUMBER_OF_BYTES": "15505439888",
+                "NUMBER_OF_FRAMES": "183221",
+                "language": "eng",
+                "title": "Test Movie"
+            },
+            "width": 1920
+        },
+        // 1: 7.1 DTS, eng (main audio)
+        {
+            "index": 1,
+            "codec_name": "dts",
+            "codec_long_name": "DCA (DTS Coherent Acoustics)",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 8,
+            "channel_layout": "6.1",
+            "start_time": "0.000000",
+            "tags": {
+                "language": "eng",
+                "BPS": "3123209",
+                "NUMBER_OF_FRAMES": "11766956",
+                "NUMBER_OF_BYTES": "3828195236",
+                "SOURCE_ID": "001100",
+                "DURATION": "00:01:00.000000000"
+            }
+        },
+        // 2: stereo commentary, no language tag
+        {
+            "index": 2,
+            "codec_name": "vorbis",
+            "codec_long_name": "Vorbis",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 2,
+            "channel_layout": "stereo",
+            "bit_rate": "224000",
+            "tags": {
+                "BPS": "224000",
+                "NUMBER_OF_FRAMES": "306432",
+                "NUMBER_OF_BYTES": "274563072",
+                "SOURCE_ID": "001106",
+                "DURATION": "00:01:00.000000000",
+                "title": "Commentary 1"
+            }
+        }
+    ]
+}

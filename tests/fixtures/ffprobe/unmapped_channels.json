@@ -1,0 +1,59 @@
+{
+    // Audio track with an unmapped channel count (3ch / 2.1), which
+    // channels_to_layout() maps to None. Downmixing must skip it, not crash.
+    "format": {
+        "bit_rate": "26192239",
+        "duration": "60.268000",
+        "filename": "test_movie.mkv",
+        "format_long_name": "Matroska / WebM",
+        "format_name": "matroska,webm",
+        "size": "197319234",
+        "start_time": "0.000000",
+        "tags": {
+            "ENCODER": "Lavf60.3.100",
+            "title": "Test Move"
+        }
+    },
+    "streams": [
+        // 0: 1080p H264 video
+        {
+            "index": 0,
+            "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+            "codec_name": "h264",
+            "codec_type": "video",
+            "coded_height": 1080,
+            "coded_width": 1920,
+            "height": 1080,
+            "sample_aspect_ratio": "1:1",
+            "start_time": "0.000000",
+            "tags": {
+                "BPS": "16232147",
+                "DURATION": "00:01:00.226000000",
+                "NUMBER_OF_BYTES": "15505439888",
+                "NUMBER_OF_FRAMES": "183221",
+                "language": "eng",
+                "title": "Test Movie"
+            },
+            "width": 1920
+        },
+        // 1: 3-channel (2.1) AC3, eng - unmapped channel count
+        {
+            "index": 1,
+            "codec_name": "ac3",
+            "codec_long_name": "ATSC A/52A (AC-3)",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 3,
+            "channel_layout": "2.1",
+            "bit_rate": "448000",
+            "tags": {
+                "language": "eng",
+                "BPS": "448000",
+                "NUMBER_OF_FRAMES": "306432",
+                "NUMBER_OF_BYTES": "549126144",
+                "SOURCE_ID": "001100",
+                "DURATION": "00:01:00.000000000"
+            }
+        }
+    ]
+}

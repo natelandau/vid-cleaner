@@ -154,9 +154,7 @@ class VideoFile:
         """
         traits = []
         for stream in self.audio_streams:
-            if stream.title and re.search(
-                COMMENTARY_STREAM_TITLE_REGEX, stream.title, re.IGNORECASE
-            ):
+            if self._is_commentary_stream(stream):
                 traits.append(VideoTrait.COMMENTARY)
             elif stream.channels == AudioLayout.STEREO:
                 traits.append(VideoTrait.STEREO)
@@ -199,6 +197,22 @@ class VideoFile:
         return traits
 
     @staticmethod
+    def _is_commentary_stream(stream: Box) -> bool:
+        """Check whether a stream is a commentary, SDH, or description track.
+
+        Identify supplementary tracks by matching the stream title against the commentary regex so callers can treat them differently from main content.
+
+        Args:
+            stream (Box): The stream to inspect.
+
+        Returns:
+            bool: True if the stream title marks it as commentary/SDH/description.
+        """
+        return bool(
+            stream.title and re.search(COMMENTARY_STREAM_TITLE_REGEX, stream.title, re.IGNORECASE)
+        )
+
+    @staticmethod
     def _downmix_to_stereo(streams: list[Box]) -> list[str]:
         """Generate a partial ffmpeg command to downmix audio streams to stereo if needed.
 
@@ -212,19 +226,25 @@ class VideoFile:
         """
         downmix_command: list[str] = []
         new_index = 0
-        has_stereo = False
         surround5 = []  # Track 5.1 streams for potential downmixing
         surround7 = []  # Track 7.1 streams for potential downmixing
 
+        # Commentary tracks are often stereo but are not a stereo mix of the main audio,
+        # so they must not satisfy the "stereo already exists" check below.
+        has_stereo = any(
+            stream.channels == AudioLayout.STEREO and not VideoFile._is_commentary_stream(stream)
+            for stream in streams
+        )
+
         for stream in streams:
             match stream.channels:
-                case AudioLayout.STEREO:
-                    has_stereo = True
                 case AudioLayout.SURROUND5:
                     surround5.append(stream)
                 case AudioLayout.SURROUND7:
                     surround7.append(stream)
-                case AudioLayout.MONO:
+                # Stereo/mono need no downmix; None is an unmapped channel count
+                # (e.g. 3ch/4ch audio) that cannot be downmixed, so leave it as mapped.
+                case AudioLayout.STEREO | AudioLayout.MONO | None:
                     pass
                 case _:
                     assert_never(stream.channels)
@@ -363,11 +383,7 @@ class VideoFile:
                 continue
 
             # Commentary tracks are often unwanted and take up space
-            if (
-                not settings.keep_commentary
-                and stream.title
-                and re.search(COMMENTARY_STREAM_TITLE_REGEX, stream.title, re.IGNORECASE)
-            ):
+            if not settings.keep_commentary and self._is_commentary_stream(stream):
                 pp.trace(rf"PROCESS AUDIO: Remove stream #{stream.index} [commentary]")
                 continue
 
@@ -420,11 +436,7 @@ class VideoFile:
         for stream in self.subtitle_streams:
             # Remove commentary/SDH/description tracks unless explicitly kept
             # These are typically supplementary and take up extra space
-            if (
-                not settings.keep_commentary
-                and stream.title is not None
-                and re.search(COMMENTARY_STREAM_TITLE_REGEX, stream.title, re.IGNORECASE)
-            ):
+            if not settings.keep_commentary and self._is_commentary_stream(stream):
                 pp.trace(rf"PROCESS SUBTITLES: Remove stream #{stream.index} [commentary]")
                 continue
 

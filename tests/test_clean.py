@@ -290,6 +290,72 @@ def test_clean_video_downmix(
     assert "cleaned_video.mkv" in output
 
 
+def test_clean_video_downmix_stereo_commentary_kept(
+    mocker,
+    mock_ffprobe_box,
+    mock_video_path,
+    capsys,
+    mock_ffmpeg,
+    debug,
+):
+    """Verify a kept stereo commentary track does not block downmixing the main track."""
+    # Given: A file with a surround main track and a no-language stereo commentary track
+    args = ["clean", "-vv", "--downmix", str(mock_video_path)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("commentary_no_lang.json"),
+    )
+    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+
+    # When: Processing the video file with downmix requested
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: The main surround track is downmixed despite the stereo commentary track
+    mock_ffmpeg.assert_called_once()
+    call_args, _ = mock_ffmpeg.call_args
+    command = " ".join(call_args[0])
+    assert "-map 0:1 -c:a:0 aac -ac:a:0 2" in command
+
+    # And: The commentary track is kept and the file is processed
+    assert exc_info.value.code == 0
+    assert "-map 0:2" in command
+    assert "✔ Process file (downmix to stereo)" in output
+
+
+def test_clean_video_downmix_unmapped_channel_count(
+    mocker,
+    mock_ffprobe_box,
+    mock_video_path,
+    capsys,
+    mock_ffmpeg,
+    debug,
+):
+    """Verify downmix skips audio with an unmapped channel count instead of crashing."""
+    # Given: A file whose only audio track has an unmapped channel count (3ch -> None)
+    args = ["clean", "-vv", "--downmix", str(mock_video_path)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("unmapped_channels.json"),
+    )
+    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+
+    # When: Processing the video file with downmix requested
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: It completes successfully without raising an unexpected error
+    assert exc_info.value.code == 0
+    output = capsys.readouterr().out
+    assert "No streams to process" in output
+
+
 @pytest.mark.parametrize(
     ("args", "first_command_expected", "second_command_expected", "process_output"),
     [
