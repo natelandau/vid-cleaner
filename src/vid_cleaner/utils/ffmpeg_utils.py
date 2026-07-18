@@ -95,6 +95,9 @@ def get_probe_as_box(input_path: Path) -> Box:
         stream.codec_type = CodecTypes(stream.codec_type.lower())
         stream.bps = stream.tags.BPS or None
         stream.title = stream.tags.title or None
+        # Preserve the raw count before it is bucketed into an enum; the downmix logic needs
+        # it to detect >7.1 (Atmos) layouts, which have no AudioLayout member.
+        stream.channel_count = stream.channels if isinstance(stream.channels, int) else None
         stream.channels = channels_to_layout(stream.channels)
         stream.language = stream.language or stream.tags.language or None
 

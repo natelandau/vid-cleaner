@@ -96,6 +96,21 @@ SYMBOL_CHECK = "✔"
 TREE_BRANCH = "├─"  # Connector for a non-final child line in faked step output
 TREE_LAST = "└─"  # Connector for the final child line in faked step output
 COMMENTARY_STREAM_TITLE_REGEX = r"commentary|sdh|description"
+
+# Dialogue-forward surround-to-stereo filter chain, shared by every surround layout.
+# The pan is addressed by channel NAME, so one matrix serves 5.1, 7.1 and Atmos (>7.1):
+# ffmpeg silently treats channels a layout lacks as zero and ignores the height channels
+# (TFL/TFR/...) we do not name. Center (dialogue) stays dominant at 0.8 while the fronts and
+# surrounds sit at 0.25. LFE is dropped entirely, as every standard downmix (ITU-R BS.775,
+# ATSC A/52) does, because its sub-bass energy masks speech. acompressor then narrows the gap
+# between loud effects and quiet dialogue, and loudnorm sets a consistent delivery loudness.
+DOWNMIX_STEREO_FILTER = (
+    "pan=stereo|"
+    "FL=0.8*FC+0.25*FL+0.25*SL+0.25*BL|"
+    "FR=0.8*FC+0.25*FR+0.25*SR+0.25*BR,"
+    "acompressor=threshold=-18dB:ratio=3:attack=20:release=250:makeup=3,"
+    "loudnorm=I=-16:TP=-1.5:LRA=11"
+)
 EXCLUDED_VIDEO_CODECS = {"mjpeg", "mjpg", "png"}
 FFMPEG_APPEND: list[str] = ["-max_muxing_queue_size", "9999"]
 FFMPEG_PREPEND: list[str] = ["-y", "-hide_banner"]

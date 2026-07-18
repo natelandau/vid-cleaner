@@ -3,7 +3,6 @@
 import atexit
 import re
 from pathlib import Path
-from typing import assert_never
 
 import cappa
 from box import Box
@@ -16,6 +15,7 @@ from rich.progress import Progress
 from vid_cleaner import settings
 from vid_cleaner.constants import (
     COMMENTARY_STREAM_TITLE_REGEX,
+    DOWNMIX_STEREO_FILTER,
     EXCLUDED_VIDEO_CODECS,
     FFMPEG_APPEND,
     FFMPEG_PREPEND,
@@ -216,7 +216,7 @@ class VideoFile:
     def _downmix_to_stereo(streams: list[Box]) -> list[str]:
         """Generate a partial ffmpeg command to downmix audio streams to stereo if needed.
 
-        Analyze the provided audio streams and construct a command to downmix 5.1 or 7.1 audio streams to stereo. Handle cases where stereo is already present or needs to be created from surround sound streams.
+        Analyze the provided audio streams and, when no stereo mix already exists, construct a command to downmix the simplest surround bed present (5.1, then 7.1, then Atmos layouts above 7.1) to a dialogue-forward stereo track. Skip the work when a non-commentary stereo stream is already available.
 
         Args:
             streams (list[Box]): List of audio stream dictionaries.
@@ -225,78 +225,49 @@ class VideoFile:
             list[str]: A list of strings forming part of an ffmpeg command for audio downmixing.
         """
         downmix_command: list[str] = []
-        new_index = 0
-        surround5 = []  # Track 5.1 streams for potential downmixing
-        surround7 = []  # Track 7.1 streams for potential downmixing
 
         # Commentary tracks are often stereo but are not a stereo mix of the main audio,
-        # so they must not satisfy the "stereo already exists" check below.
+        # so they must not satisfy the "stereo already exists" check.
         has_stereo = any(
             stream.channels == AudioLayout.STEREO and not VideoFile._is_commentary_stream(stream)
             for stream in streams
         )
+        if has_stereo:
+            pp.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
+            return downmix_command
 
-        for stream in streams:
-            match stream.channels:
-                case AudioLayout.SURROUND5:
-                    surround5.append(stream)
-                case AudioLayout.SURROUND7:
-                    surround7.append(stream)
-                # Stereo/mono need no downmix; None is an unmapped channel count
-                # (e.g. 3ch/4ch audio) that cannot be downmixed, so leave it as mapped.
-                case AudioLayout.STEREO | AudioLayout.MONO | None:
-                    pass
-                case _:
-                    assert_never(stream.channels)
+        # Group surround sources by layout tier and downmix the simplest bed present:
+        # 5.1 (5-6ch) over 7.1 (7-8ch) over Atmos (>8ch). A single dialogue-forward filter
+        # serves every tier, so a >7.1 track no longer passes through un-downmixed.
+        surround5 = [s for s in streams if s.channel_count in (5, 6)]
+        surround7 = [s for s in streams if s.channel_count in (7, 8)]
+        surround_gt7 = [
+            s for s in streams if s.channel_count and s.channel_count > AudioLayout.SURROUND7.value
+        ]
 
-        if not has_stereo and surround5:
-            for surround5_stream in surround5:
-                # Custom pan filter to preserve center channel dialogue and add LFE for bass impact
-                # Coefficients tuned to maintain dialogue clarity while preserving surround ambiance
-                downmix_command.extend(
-                    [
-                        "-map",
-                        f"0:{surround5_stream.index}",
-                        f"-c:a:{new_index}",
-                        "aac",
-                        f"-ac:a:{new_index}",
-                        "2",
-                        f"-b:a:{new_index}",
-                        "256k",
-                        f"-filter:a:{new_index}",
-                        "pan=stereo|FL=FC+0.30*FL+0.30*FLC+0.30*BL+0.30*SL+0.60*LFE|FR=FC+0.30*FR+0.30*FRC+0.30*BR+0.30*SR+0.60*LFE,loudnorm",
-                        f"-ar:a:{new_index}",
-                        "48000",
-                        f"-metadata:s:a:{new_index}",
-                        "title=2.0",
-                    ],
-                )
-                new_index += 1
-                has_stereo = True
-
-        if not has_stereo and surround7:
-            pp.debug(
-                "PROCESS AUDIO: Audio track is 5 channel, no 2 channel exists. Creating 2 channel from 5 channel",
+        # The downmix streams are mapped after every kept stream, so their output audio index
+        # starts past the kept ones. Numbering from 0 would bind these options to a kept track,
+        # re-encoding it and leaving the real downmix source untouched.
+        for offset, stream in enumerate(surround5 or surround7 or surround_gt7):
+            new_index = len(streams) + offset
+            downmix_command.extend(
+                [
+                    "-map",
+                    f"0:{stream.index}",
+                    f"-c:a:{new_index}",
+                    "aac",
+                    f"-ac:a:{new_index}",
+                    "2",
+                    f"-b:a:{new_index}",
+                    "256k",
+                    f"-filter:a:{new_index}",
+                    DOWNMIX_STEREO_FILTER,
+                    f"-ar:a:{new_index}",
+                    "48000",
+                    f"-metadata:s:a:{new_index}",
+                    "title=2.0",
+                ],
             )
-            # For 7.1, use default ffmpeg downmixing since custom pan filter would be too complex
-            # and the default algorithm provides good results for 7.1 sources
-            for surround7_stream in surround7:
-                downmix_command.extend(
-                    [
-                        "-map",
-                        f"0:{surround7_stream.index}",
-                        f"-c:a:{new_index}",
-                        "aac",
-                        f"-ac:a:{new_index}",
-                        "2",
-                        f"-b:a:{new_index}",
-                        "256k",
-                        f"-filter:a:{new_index}",
-                        "pan=stereo|FL=0.274804*FC+0.388631*FL+0.336565*SL+0.194316*SR+0.336565*BL+0.194316*BR+0.274804*LFE|FR=0.274804*FC+0.388631*FR+0.336565*SR+0.194316*SL+0.336565*BR+0.194316*BL+0.274804*LFE",
-                    ],
-                )
-                new_index += 1
-                has_stereo = True
 
         pp.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
         return downmix_command

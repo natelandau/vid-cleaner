@@ -240,7 +240,7 @@ def test_clean_video_foreign_language(
         ),
         pytest.param(
             ["--downmix"],
-            "-map 0:1 -map 0:2 -c copy -map 0:2 -c:a:0 aac -ac:a:0 2 -b:a:0 256k -filter:a:0",
+            "-map 0:1 -map 0:2 -c copy -map 0:2 -c:a:2 aac -ac:a:2 2 -b:a:2 256k -filter:a:2",
             "✔ Process file (downmix to stereo)",
             id="Defaults",
         ),
@@ -315,11 +315,12 @@ def test_clean_video_downmix_stereo_commentary_kept(
 
     output = capsys.readouterr().out
 
-    # Then: The main surround track is downmixed despite the stereo commentary track
+    # Then: The main surround track is downmixed despite the stereo commentary track.
+    # Two audio streams are kept, so the downmix is output audio stream index 2.
     mock_ffmpeg.assert_called_once()
     call_args, _ = mock_ffmpeg.call_args
     command = " ".join(call_args[0])
-    assert "-map 0:1 -c:a:0 aac -ac:a:0 2" in command
+    assert "-map 0:1 -c:a:2 aac -ac:a:2 2" in command
 
     # And: The commentary track is kept and the file is processed
     assert exc_info.value.code == 0
@@ -354,6 +355,108 @@ def test_clean_video_downmix_unmapped_channel_count(
     assert exc_info.value.code == 0
     output = capsys.readouterr().out
     assert "No streams to process" in output
+
+
+def test_clean_video_downmix_dialogue_forward_filter(
+    mocker,
+    mock_ffprobe_box,
+    mock_video_path,
+    capsys,
+    mock_ffmpeg,
+    debug,
+):
+    """Verify the downmix uses the dialogue-forward filter with LFE dropped."""
+    # Given: A file with surround audio and no stereo track
+    args = ["clean", "-vv", "--downmix", str(mock_video_path)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("no_stereo.json"),
+    )
+    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+
+    # When: Processing the video file with downmix requested
+    with pytest.raises(cappa.Exit):
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The dialogue-forward chain is applied, the center is dominant, and LFE is dropped
+    mock_ffmpeg.assert_called_once()
+    call_args, _ = mock_ffmpeg.call_args
+    command = " ".join(call_args[0])
+    assert "pan=stereo|FL=0.8*FC" in command
+    assert "acompressor=" in command
+    assert "loudnorm=" in command
+    assert "LFE" not in command
+
+
+def test_clean_video_downmix_atmos(
+    mocker,
+    mock_ffprobe_box,
+    mock_video_path,
+    capsys,
+    mock_ffmpeg,
+    debug,
+):
+    """Verify a channel-based Atmos track above 7.1 is downmixed to stereo."""
+    # Given: A file whose only audio is a 12-channel 7.1.4 Atmos track with no stereo
+    args = ["clean", "-vv", "--downmix", str(mock_video_path)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("atmos_no_stereo.json"),
+    )
+    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+
+    # When: Processing the video file with downmix requested
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The Atmos track is downmixed rather than passed through un-downmixed.
+    # One audio stream is kept, so the downmix is output audio stream index 1.
+    mock_ffmpeg.assert_called_once()
+    call_args, _ = mock_ffmpeg.call_args
+    command = " ".join(call_args[0])
+    output = capsys.readouterr().out
+    assert "-map 0:1 -c:a:1 aac -ac:a:1 2" in command
+    assert "pan=stereo|FL=0.8*FC" in command
+    assert exc_info.value.code == 0
+    assert "✔ Process file (downmix to stereo)" in output
+
+
+def test_clean_video_downmix_does_not_clobber_kept_stream(
+    mocker,
+    mock_ffprobe_box,
+    mock_video_path,
+    capsys,
+    mock_ffmpeg,
+    debug,
+):
+    """Verify the downmix targets its own output stream, not a kept surround track."""
+    # Given: A file with two surround tracks (7.1 + 5.1) and no stereo
+    args = ["clean", "-vv", "--downmix", str(mock_video_path)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("no_stereo.json"),
+    )
+    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+
+    # When: Processing the video file with downmix requested
+    with pytest.raises(cappa.Exit):
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The two kept streams are output audio 0 and 1, and the downmix codec/filter
+    # options bind to index 2, so no encode option lands on the copied surround tracks.
+    mock_ffmpeg.assert_called_once()
+    call_args, _ = mock_ffmpeg.call_args
+    command = " ".join(call_args[0])
+    assert "-filter:a:2" in command
+    assert "-c:a:0" not in command
+    assert "-c:a:1" not in command
+    assert "-filter:a:0" not in command
 
 
 @pytest.mark.parametrize(
