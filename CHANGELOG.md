@@ -1,3 +1,10 @@
+## v0.9.0 (2026-07-18)
+
+### Feat
+
+- **clean**: recreate the stereo track on --downmix --force
+- **clean**: make stereo downmixes keep dialogue clear
+
 ## v0.8.2 (2026-07-17)
 
 ### Fix
