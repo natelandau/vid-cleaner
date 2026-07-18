@@ -188,7 +188,7 @@ class CleanCommand:
     downmix_stereo: Annotated[
         bool,
         cappa.Arg(
-            help="Create a stereo track if none exist",
+            help="Create a stereo track if none exists (add --force to recreate an existing one)",
             long="--downmix",
             show_default=True,
             group="Configuration",
@@ -278,7 +278,7 @@ class CleanCommand:
     force: Annotated[
         bool,
         cappa.Arg(
-            help="Force processing of file even if it is already in the desired format",
+            help="Force processing of file even if it is already in the desired format. With --downmix, recreate the stereo track even if one already exists",
             long="--force",
             show_default=True,
         ),

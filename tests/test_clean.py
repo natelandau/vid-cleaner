@@ -749,3 +749,178 @@ def test_clean_renders_completed_steps_on_error(
     # Then: the earlier completed steps are still rendered despite the failure
     output = capsys.readouterr().out
     assert "✔ No streams to reorder" in output
+
+
+def test_clean_video_downmix_skip_when_stereo_exists(
+    mocker,
+    mock_ffprobe_box,
+    mock_video_path,
+    capsys,
+    mock_ffmpeg,
+    debug,
+):
+    """Verify --downmix without --force skips and notifies when a stereo track exists."""
+    # Given: reference.json keeps a 7.1, a 5.1, and a non-commentary stereo track
+    args = ["clean", "-vv", "--downmix", str(mock_video_path)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
+    )
+    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+
+    # When: Processing with downmix requested but not forced
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+    mock_ffmpeg.assert_called_once()
+    call_args, _ = mock_ffmpeg.call_args
+    command = " ".join(call_args[0])
+
+    # Then: The existing stereo track is kept and no downmix filter is added
+    assert exc_info.value.code == 0
+    assert "-map 0:4" in command
+    assert "-filter:a:" not in command
+    assert "Stereo track already exists" in output
+
+
+def test_clean_video_downmix_force_recreates_stereo(
+    mocker,
+    mock_ffprobe_box,
+    mock_video_path,
+    capsys,
+    mock_ffmpeg,
+    debug,
+):
+    """Verify --downmix --force drops the existing stereo track and rebuilds from surround."""
+    # Given: reference.json with a non-commentary stereo track at index 4
+    args = ["clean", "-vv", "--downmix", "--force", str(mock_video_path)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
+    )
+    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+
+    # When: Processing with downmix forced
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+    mock_ffmpeg.assert_called_once()
+    call_args, _ = mock_ffmpeg.call_args
+    command = " ".join(call_args[0])
+
+    # Then: The old stereo (index 4) is dropped and a fresh downmix is built from the 5.1
+    # (index 2). Two audio streams remain mapped, so the downmix is output audio index 2.
+    assert exc_info.value.code == 0
+    assert "-map 0:0 -map 0:1 -map 0:2 -map 0:6" in command
+    assert "-map 0:2 -c:a:2 aac -ac:a:2 2 -b:a:2 256k -filter:a:2" in command
+    assert "-map 0:4" not in command
+    # reference.json keeps an English subtitle, so the title also carries the subtitle flag
+    assert "✔ Process file (downmix to stereo, drop unwanted subtitles)" in output
+
+
+def test_clean_video_downmix_force_recreates_from_multiple_stereo(
+    mocker,
+    mock_ffprobe_box,
+    mock_video_path,
+    capsys,
+    mock_ffmpeg,
+    debug,
+):
+    """Verify --downmix --force drops every existing stereo track and rebuilds one from surround."""
+    # Given: two non-commentary stereo tracks plus a 5.1 surround bed
+    args = ["clean", "-vv", "--downmix", "--force", str(mock_video_path)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("two_stereo_and_surround.json"),
+    )
+    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+
+    # When: Forcing downmix with two stereo tracks present
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+    mock_ffmpeg.assert_called_once()
+    call_args, _ = mock_ffmpeg.call_args
+    command = " ".join(call_args[0])
+
+    # Then: Both stereo tracks (index 2 and 3) are dropped and one downmix is rebuilt from the
+    # 5.1 (index 1). Only the 5.1 remains mapped, so the downmix is output audio index 1.
+    assert exc_info.value.code == 0
+    assert "-map 0:2" not in command
+    assert "-map 0:3" not in command
+    assert "-map 0:1 -c:a:1 aac -ac:a:1 2 -b:a:1 256k -filter:a:1" in command
+    assert "✔ Process file (downmix to stereo)" in output
+
+
+def test_clean_video_downmix_force_no_surround_keeps_stereo(
+    mocker,
+    mock_ffprobe_box,
+    mock_video_path,
+    capsys,
+    mock_ffmpeg,
+    debug,
+):
+    """Verify --downmix --force keeps the existing stereo and notifies when no surround exists."""
+    # Given: A file whose only audio track is a non-commentary stereo track
+    args = ["clean", "-vv", "--downmix", "--force", str(mock_video_path)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("stereo_no_surround.json"),
+    )
+    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+
+    # When: Forcing downmix with no surround source to rebuild from
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: The stereo track is kept (all streams pass through) and the user is notified
+    assert exc_info.value.code == 0
+    assert "No surround source to recreate stereo" in output
+    assert "No streams to process" in output
+
+
+def test_clean_video_downmix_force_noop_without_existing_stereo(
+    mocker,
+    mock_ffprobe_box,
+    mock_video_path,
+    capsys,
+    mock_ffmpeg,
+    debug,
+):
+    """Verify --force does not change the normal downmix path when no stereo track exists."""
+    # Given: no_stereo.json (7.1 + 5.1 + a stereo commentary track only)
+    args = ["clean", "-vv", "--downmix", "--force", str(mock_video_path)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("no_stereo.json"),
+    )
+    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
+    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+
+    # When: Forcing downmix with no existing stereo mix
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+    mock_ffmpeg.assert_called_once()
+    call_args, _ = mock_ffmpeg.call_args
+    command = " ".join(call_args[0])
+
+    # Then: The downmix is built from the 5.1 exactly as an un-forced --downmix would
+    assert exc_info.value.code == 0
+    assert "-map 0:2 -c:a:2 aac -ac:a:2 2 -b:a:2 256k -filter:a:2" in command
+    assert "✔ Process file (downmix to stereo)" in output

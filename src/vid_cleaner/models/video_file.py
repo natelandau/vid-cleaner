@@ -213,28 +213,30 @@ class VideoFile:
         )
 
     @staticmethod
-    def _downmix_to_stereo(streams: list[Box]) -> list[str]:
-        """Generate a partial ffmpeg command to downmix audio streams to stereo if needed.
+    def _downmix_to_stereo(streams: list[Box]) -> tuple[list[str], list[Box]]:
+        """Plan an ffmpeg downmix of the simplest surround bed to a dialogue-forward stereo track.
 
-        Analyze the provided audio streams and, when no stereo mix already exists, construct a command to downmix the simplest surround bed present (5.1, then 7.1, then Atmos layouts above 7.1) to a dialogue-forward stereo track. Skip the work when a non-commentary stereo stream is already available.
+        Skip the work when a non-commentary stereo mix already exists, unless `settings.force`
+        is set, in which case the existing stereo track(s) are dropped and rebuilt from the
+        surround bed. Notify the user when downmix is skipped or cannot be recreated. Return the
+        downmix command plus the list of existing audio streams the caller must not map.
 
         Args:
-            streams (list[Box]): List of audio stream dictionaries.
+            streams (list[Box]): Audio streams that would otherwise be kept.
 
         Returns:
-            list[str]: A list of strings forming part of an ffmpeg command for audio downmixing.
+            tuple[list[str], list[Box]]: The downmix ffmpeg fragment and streams to drop.
         """
         downmix_command: list[str] = []
+        streams_to_drop: list[Box] = []
 
         # Commentary tracks are often stereo but are not a stereo mix of the main audio,
-        # so they must not satisfy the "stereo already exists" check.
-        has_stereo = any(
-            stream.channels == AudioLayout.STEREO and not VideoFile._is_commentary_stream(stream)
+        # so they must not count as an existing stereo mix.
+        existing_stereo = [
+            stream
             for stream in streams
-        )
-        if has_stereo:
-            pp.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
-            return downmix_command
+            if stream.channels == AudioLayout.STEREO and not VideoFile._is_commentary_stream(stream)
+        ]
 
         # Group surround sources by layout tier and downmix the simplest bed present:
         # 5.1 (5-6ch) over 7.1 (7-8ch) over Atmos (>8ch). A single dialogue-forward filter
@@ -244,12 +246,29 @@ class VideoFile:
         surround_gt7 = [
             s for s in streams if s.channel_count and s.channel_count > AudioLayout.SURROUND7.value
         ]
+        surround_source = surround5 or surround7 or surround_gt7
 
-        # The downmix streams are mapped after every kept stream, so their output audio index
-        # starts past the kept ones. Numbering from 0 would bind these options to a kept track,
-        # re-encoding it and leaving the real downmix source untouched.
-        for offset, stream in enumerate(surround5 or surround7 or surround_gt7):
-            new_index = len(streams) + offset
+        if existing_stereo:
+            if not settings.force:
+                pp.info(
+                    "Stereo track already exists; skipping downmix. Use --force to recreate it."
+                )
+                pp.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
+                return downmix_command, streams_to_drop
+            if not surround_source:
+                pp.info(
+                    "No surround source to recreate stereo from; keeping existing stereo track."
+                )
+                pp.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
+                return downmix_command, streams_to_drop
+            # Forced recreation: drop the existing stereo mix and rebuild it from the surround bed
+            streams_to_drop = existing_stereo
+
+        # The downmix output audio index starts after every mapped audio stream. Excluding
+        # dropped streams keeps the per-track options bound to the new downmix, not a kept track.
+        base_index = len(streams) - len(streams_to_drop)
+        for offset, stream in enumerate(surround_source):
+            new_index = base_index + offset
             downmix_command.extend(
                 [
                     "-map",
@@ -270,7 +289,7 @@ class VideoFile:
             )
 
         pp.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
-        return downmix_command
+        return downmix_command, streams_to_drop
 
     def _find_original_language(self) -> Lang:  # pragma: no cover
         """Find the original language of the video content.
@@ -345,11 +364,10 @@ class VideoFile:
             if original_language and original_language not in langs:
                 langs.append(original_language)
 
-        streams_to_keep = []
+        streams_to_keep: list[Box] = []
         for stream in self.audio_streams:
             # Unknown language streams are kept to avoid removing potentially important audio
             if not stream.language:
-                command.extend(["-map", f"0:{stream.index}"])
                 streams_to_keep.append(stream)
                 continue
 
@@ -359,22 +377,25 @@ class VideoFile:
                 continue
 
             if stream.language == "und" or Lang(stream.language) in langs:
-                command.extend(["-map", f"0:{stream.index}"])
                 streams_to_keep.append(stream)
                 continue
 
             pp.trace(f"PROCESS AUDIO: Remove stream #{stream.index}")
 
-        # If all streams would be removed, keep them all to prevent silent video
-        if not command:
-            for stream in self.audio_streams:
-                command.extend(["-map", f"0:{stream.index}"])
-                streams_to_keep.append(stream)
+        # If every stream would be removed, keep them all to prevent silent video
+        if not streams_to_keep:
+            streams_to_keep = list(self.audio_streams)
 
-        # Create stereo downmix commands if requested
-        downmix_command = (
-            self._downmix_to_stereo(streams_to_keep) if settings.downmix_stereo else []
+        # Plan the downmix; forced recreation can request dropping an existing stereo track
+        downmix_command, streams_to_drop = (
+            self._downmix_to_stereo(streams_to_keep) if settings.downmix_stereo else ([], [])
         )
+
+        drop_indices = {stream.index for stream in streams_to_drop}
+        for stream in streams_to_keep:
+            if stream.index in drop_indices:
+                continue
+            command.extend(["-map", f"0:{stream.index}"])
 
         pp.trace(f"PROCESS AUDIO: {command}")
         return command, downmix_command

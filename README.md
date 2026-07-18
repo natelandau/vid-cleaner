@@ -11,7 +11,7 @@ Tools to transcode, inspect and convert videos. This package provides convenienc
 -   Integrate with TMDb and Radarr/Sonarr to determine languages of videos
 -   Convert to H.265 or VP9
 -   Convert 4k to 1080p
--   Downmix any surround layout (5.1, 7.1, and Atmos above 7.1) into a missing stereo track, using a dialogue-forward filter that keeps speech clear
+-   Downmix any surround layout (5.1, 7.1, and Atmos above 7.1) into a stereo track when one is missing, or recreate an existing stereo track with `--force`, using a dialogue-forward filter that keeps speech clear
 -   Remove unwanted audio and subtitle tracks, optionally keeping the original language audio track
 -   Create clips from a video file
 -   Search for video files under a directory that match specific criteria

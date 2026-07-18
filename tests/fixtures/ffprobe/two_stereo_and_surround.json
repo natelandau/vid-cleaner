@@ -1,0 +1,84 @@
+// Streams:
+// 0: 1080p H264 video
+// 1: 5.1 AC3, eng
+// 2: stereo AC3, eng
+// 3: stereo AAC, eng
+{
+    "format": {
+        "bit_rate": "26192239",
+        "duration": "60.268000",
+        "filename": "test_movie.mkv",
+        "format_long_name": "Matroska / WebM",
+        "format_name": "matroska,webm",
+        "size": "197319234",
+        "start_time": "0.000000",
+        "tags": {
+            "ENCODER": "Lavf60.3.100",
+            "title": "Test Move"
+        }
+    },
+    "streams": [
+        // 0: 1080p H264 video
+        {
+            "index": 0,
+            "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+            "codec_name": "h264",
+            "codec_type": "video",
+            "coded_height": 1080,
+            "coded_width": 1920,
+            "height": 1080,
+            "sample_aspect_ratio": "1:1",
+            "start_time": "0.000000",
+            "tags": {
+                "language": "eng",
+                "title": "Test Movie"
+            },
+            "width": 1920
+        },
+        // 1: 5.1 AC3, eng
+        {
+            "index": 1,
+            "codec_name": "ac3",
+            "codec_long_name": "ATSC A/52A (AC-3)",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 6,
+            "channel_layout": "5.1(side)",
+            "bit_rate": "448000",
+            "tags": {
+                "language": "eng",
+                "DURATION": "00:01:00.000000000"
+            }
+        },
+        // 2: stereo AC3, eng
+        {
+            "index": 2,
+            "codec_name": "ac3",
+            "codec_long_name": "ATSC A/52A (AC-3)",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 2,
+            "channel_layout": "stereo",
+            "bit_rate": "224000",
+            "tags": {
+                "language": "eng",
+                "DURATION": "00:01:00.000000000"
+            }
+        },
+        // 3: stereo AAC, eng
+        {
+            "index": 3,
+            "codec_name": "aac",
+            "codec_long_name": "AAC (Advanced Audio Coding)",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 2,
+            "channel_layout": "stereo",
+            "bit_rate": "192000",
+            "tags": {
+                "language": "eng",
+                "DURATION": "00:01:00.000000000"
+            }
+        }
+    ]
+}
