@@ -90,8 +90,10 @@ def copy_to_output(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list
 
     # Stage beside dst (same filesystem) so the final swap is an atomic rename.
     # copy_file verifies the copied size, so a short or failed copy raises here,
-    # before the original is ever touched.
-    staged = dst.with_name(f".{dst.name}.vidcleaner-tmp-{uuid.uuid4().hex}")
+    # before the original is ever touched. Keep the temp name a fixed length
+    # (not dst.name + suffix) so a long-but-valid destination name can't push
+    # the staged path past the filesystem's 255-byte component limit.
+    staged = dst.with_name(f".vidcleaner-tmp-{uuid.uuid4().hex}{dst.suffix}")
     backup: Path | None = None
     try:
         copy_file(
