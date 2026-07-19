@@ -1,11 +1,13 @@
 """Utilities for CLI."""
 
 import shutil
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 import cappa
 from nclutils import pp
-from nclutils.fs import backup_path, copy_file
+from nclutils.fs import copy_file
 
 from vid_cleaner import settings
 from vid_cleaner.constants import (
@@ -68,9 +70,11 @@ def resolve_out_path_override(files: list[Path]) -> Path | None:
 
 
 def copy_to_output(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list[str]]:
-    """Copy a processed file to its destination, backing up any existing file first.
+    """Copy a processed file to its destination via an atomic same-filesystem rename.
 
-    Own the backup explicitly rather than letting ``copy_file`` make a silent one, so the backup's location can be reported back to the user.
+    Stage the copy beside ``dst`` and swap it into place with ``Path.replace`` so a
+    crash or I/O error mid-copy leaves the original intact rather than truncated. Own
+    the backup explicitly so its location can be reported back to the user.
 
     Args:
         src (Path): The processed temporary file to copy.
@@ -84,22 +88,35 @@ def copy_to_output(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list
     dst = dst.expanduser().resolve()
     messages: list[str] = []
 
-    if not overwrite and dst.exists():
-        backup = backup_path(dst, with_progress=True, transient=True, console=pp.console())
-        if backup:
+    # Stage beside dst (same filesystem) so the final swap is an atomic rename.
+    # copy_file verifies the copied size, so a short or failed copy raises here,
+    # before the original is ever touched.
+    staged = dst.with_name(f".{dst.name}.vidcleaner-tmp-{uuid.uuid4().hex}")
+    try:
+        copy_file(
+            src=src,
+            dst=staged,
+            keep_backup=False,
+            with_progress=True,
+            transient=True,
+            console=pp.console(),
+        )
+
+        # Move (not copy) the original aside so peak destination disk stays at 2x,
+        # then free the slot for the atomic swap below.
+        if dst.exists() and not overwrite:
+            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+            backup = dst.with_name(f"{dst.name}.{stamp}-{uuid.uuid4().hex[:8]}.bak")
+            dst.replace(backup)
             messages.append(f"{SYMBOL_CHECK} Backed up original to {backup}")
 
-    out_file = copy_file(
-        src=src,
-        dst=dst,
-        keep_backup=False,  # already handled above so the backup path can be surfaced
-        with_progress=True,
-        transient=True,
-        console=pp.console(),
-    )
-    messages.append(f"{SYMBOL_CHECK} Saved to {out_file}")
+        staged.replace(dst)  # atomic within the destination filesystem
+    finally:
+        # No-op on success (staged was renamed away); removes the partial temp on failure.
+        staged.unlink(missing_ok=True)
 
-    return out_file, messages
+    messages.append(f"{SYMBOL_CHECK} Saved to {dst}")
+    return dst, messages
 
 
 def create_default_config() -> None:
