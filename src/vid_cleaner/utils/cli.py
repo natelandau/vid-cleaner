@@ -92,6 +92,7 @@ def copy_to_output(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list
     # copy_file verifies the copied size, so a short or failed copy raises here,
     # before the original is ever touched.
     staged = dst.with_name(f".{dst.name}.vidcleaner-tmp-{uuid.uuid4().hex}")
+    backup: Path | None = None
     try:
         copy_file(
             src=src,
@@ -110,7 +111,15 @@ def copy_to_output(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list
             dst.replace(backup)
             messages.append(f"{SYMBOL_CHECK} Backed up original to {backup}")
 
-        staged.replace(dst)  # atomic within the destination filesystem
+        try:
+            staged.replace(dst)  # atomic within the destination filesystem
+        except OSError:
+            # A same-filesystem rename failing here is near-impossible, but if it does
+            # after the original was moved aside, put the original back at its expected
+            # path rather than stranding it under the .bak name.
+            if backup is not None:
+                backup.replace(dst)
+            raise
     finally:
         # No-op on success (staged was renamed away); removes the partial temp on failure.
         staged.unlink(missing_ok=True)
