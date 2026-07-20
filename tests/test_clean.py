@@ -138,8 +138,10 @@ def test_stream_processing(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: Running clean command
@@ -205,8 +207,10 @@ def test_clean_video_foreign_language(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("fr")])
 
     # When: Processing the video file
@@ -266,8 +270,10 @@ def test_clean_video_downmix(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("no_stereo.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: Processing the video file
@@ -305,8 +311,10 @@ def test_clean_video_downmix_stereo_commentary_kept(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("commentary_no_lang.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: Processing the video file with downmix requested
@@ -343,8 +351,10 @@ def test_clean_video_downmix_unmapped_channel_count(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("unmapped_channels.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: Processing the video file with downmix requested
@@ -372,8 +382,10 @@ def test_clean_video_downmix_dialogue_forward_filter(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("no_stereo.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: Processing the video file with downmix requested
@@ -405,8 +417,10 @@ def test_clean_video_downmix_atmos(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("atmos_no_stereo.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: Processing the video file with downmix requested
@@ -440,8 +454,10 @@ def test_clean_video_downmix_does_not_clobber_kept_stream(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("no_stereo.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: Processing the video file with downmix requested
@@ -492,8 +508,10 @@ def test_clean_reorganize_streams(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("wrong_order.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: Processing the video file
@@ -555,8 +573,10 @@ def test_convert_video(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
     mocker.patch.object(TempFile, "new_tmp_path", return_value=(mock_video_path))
     mocker.patch.object(TempFile, "latest_temp_path", return_value=(mock_video_path))
@@ -612,10 +632,12 @@ def test_save_each_step(
         return_value=mock_ffprobe_box("reference.json"),
     )
     mocker.patch(
-        "vid_cleaner.utils.cli.copy_file",
-        side_effect=[mock_video_path_1, "cleaned_video.mkv"],
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=[
+            (mock_video_path_1, ["✔ Saved to intermediate"]),
+            (Path("cleaned_video.mkv"), ["✔ Saved to cleaned_video.mkv"]),
+        ],
     )
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
     mocker.patch.object(TempFile, "new_tmp_path", return_value=(mock_video_path))
     mocker.patch.object(TempFile, "latest_temp_path", return_value=(mock_video_path))
@@ -672,8 +694,10 @@ def test_clean_multiple_files_use_distinct_output_paths(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
     )
-    mock_copy = mocker.patch("vid_cleaner.utils.cli.copy_file", side_effect=lambda *, dst, **_: dst)
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mock_copy = mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: cleaning both files in a single invocation
@@ -682,7 +706,7 @@ def test_clean_multiple_files_use_distinct_output_paths(
 
     # Then: each file is copied to its own destination, not both to the first file's path
     assert exc_info.value.code == 0
-    destinations = [call.kwargs["dst"] for call in mock_copy.mock_calls]
+    destinations = [call.args[1] for call in mock_copy.mock_calls]
     assert destinations == [first.resolve(), second.resolve()]
 
 
@@ -707,8 +731,10 @@ def test_clean_multiple_files_overwrite_each_in_place(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
     )
-    mock_copy = mocker.patch("vid_cleaner.utils.cli.copy_file", side_effect=lambda *, dst, **_: dst)
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mock_copy = mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: cleaning both files in place
@@ -717,7 +743,7 @@ def test_clean_multiple_files_overwrite_each_in_place(
 
     # Then: each file overwrites itself and neither original is deleted
     assert exc_info.value.code == 0
-    destinations = [call.kwargs["dst"] for call in mock_copy.mock_calls]
+    destinations = [call.args[1] for call in mock_copy.mock_calls]
     assert destinations == [first.resolve(), second.resolve()]
     assert first.exists()
     assert second.exists()
@@ -766,8 +792,10 @@ def test_clean_video_downmix_skip_when_stereo_exists(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: Processing with downmix requested but not forced
@@ -801,8 +829,10 @@ def test_clean_video_downmix_force_recreates_stereo(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: Processing with downmix forced
@@ -839,8 +869,10 @@ def test_clean_video_downmix_force_recreates_from_multiple_stereo(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("two_stereo_and_surround.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: Forcing downmix with two stereo tracks present
@@ -876,8 +908,10 @@ def test_clean_video_downmix_force_no_surround_keeps_stereo(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("stereo_no_surround.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: Forcing downmix with no surround source to rebuild from
@@ -907,8 +941,10 @@ def test_clean_video_downmix_force_noop_without_existing_stereo(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("no_stereo.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="cleaned_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
 
     # When: Forcing downmix with no existing stereo mix

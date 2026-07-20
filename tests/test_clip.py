@@ -63,8 +63,10 @@ def test_clipping_video(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="clipped_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clip_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to clipped_video.mkv"]),
+    )
 
     # When: Running clip command
     with pytest.raises(cappa.Exit) as exc_info:
@@ -113,8 +115,10 @@ def test_clipping_video_dryrun(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
     )
-    mocker.patch("vid_cleaner.utils.cli.copy_file", return_value="clipped_video.mkv")
-    mocker.patch("vid_cleaner.utils.cli.backup_path", return_value=None)
+    mocker.patch(
+        "vid_cleaner.cli.clip_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to clipped_video.mkv"]),
+    )
 
     # When: Running clip command in dry-run mode
     with pytest.raises(cappa.Exit) as exc_info:

@@ -67,3 +67,110 @@ def test_copy_to_output_overwrite_skips_backup(tmp_path: Path) -> None:
     assert out_file.read_text() == "new content"
     assert all("Backed up" not in m for m in messages)
     assert any("Saved to" in m for m in messages)
+
+
+def test_copy_to_output_preserves_original_when_staging_fails(tmp_path: Path, mocker) -> None:
+    """Verify a staging failure leaves the original intact with no backup or temp file."""
+    # Given: an existing destination and a source, with the staging copy set to fail
+    #        after partially writing (mimicking a real mid-copy I/O error)
+    src = tmp_path / "processed.mkv"
+    src.write_text("new content")
+    dst = tmp_path / "movie.mkv"
+    dst.write_text("original content")
+
+    def _fail_mid_copy(*, src, dst, **kwargs):
+        Path(dst).write_text("corrupt partial")
+        raise OSError(5, "Input/output error")
+
+    mocker.patch("vid_cleaner.utils.cli.copy_file", autospec=True, side_effect=_fail_mid_copy)
+
+    # When: the staging copy fails
+    with pytest.raises(OSError, match="Input/output error"):
+        copy_to_output(src, dst, overwrite=True)
+
+    # Then: the original is byte-for-byte intact and nothing is left behind
+    assert dst.read_text() == "original content"
+    assert list(tmp_path.glob("*.bak")) == []
+    assert list(tmp_path.glob(".*vidcleaner-tmp*")) == []
+
+
+@pytest.mark.parametrize("overwrite", [True, False])
+def test_copy_to_output_leaves_no_temp_file_on_success(tmp_path: Path, *, overwrite: bool) -> None:
+    """Verify a successful write leaves no staging temp file behind in either mode."""
+    # Given: a processed source and an existing destination
+    src = tmp_path / "processed.mkv"
+    src.write_text("new content")
+    dst = tmp_path / "movie.mkv"
+    dst.write_text("original content")
+
+    # When: copying to the destination
+    copy_to_output(src, dst, overwrite=overwrite)
+
+    # Then: the content is written and no staging temp remains
+    assert dst.read_text() == "new content"
+    assert list(tmp_path.glob(".*vidcleaner-tmp*")) == []
+
+
+@pytest.mark.parametrize("overwrite", [True, False])
+def test_copy_to_output_creates_new_destination(tmp_path: Path, *, overwrite: bool) -> None:
+    """Verify copying to a non-existent destination creates it in both modes."""
+    # Given: a processed source and a destination that does not exist yet
+    src = tmp_path / "processed.mkv"
+    src.write_text("new content")
+    dst = tmp_path / "movie.mkv"
+
+    # When: copying to the missing destination
+    out_file, messages = copy_to_output(src, dst, overwrite=overwrite)
+
+    # Then: the destination is created with no backup and the save is reported
+    assert out_file.read_text() == "new content"
+    assert list(tmp_path.glob("*.bak")) == []
+    assert any("Saved to" in m for m in messages)
+
+
+def test_copy_to_output_restores_original_when_swap_fails(tmp_path: Path, mocker) -> None:
+    """Verify a failed final swap restores the original to its path instead of stranding it."""
+    # Given: an existing destination and source, with the atomic swap (but not the backup
+    #        move) set to fail, mimicking a rename failure after the original was moved aside
+    src = tmp_path / "processed.mkv"
+    src.write_text("new content")
+    dst = tmp_path / "movie.mkv"
+    dst.write_text("original content")
+
+    real_replace = Path.replace
+
+    def _fail_swap(self: Path, target: Path) -> Path:
+        # Only the staged temp -> dst swap fails; the dst -> .bak move and the
+        # .bak -> dst restore both run for real.
+        if "vidcleaner-tmp" in self.name:
+            raise OSError(5, "Input/output error")
+        return real_replace(self, target)
+
+    mocker.patch.object(Path, "replace", autospec=True, side_effect=_fail_swap)
+
+    # When: the swap fails after the backup move
+    with pytest.raises(OSError, match="Input/output error"):
+        copy_to_output(src, dst, overwrite=False)
+
+    # Then: the original is back at its expected path, with nothing stranded
+    assert dst.read_text() == "original content"
+    assert list(tmp_path.glob("*.bak")) == []
+    assert list(tmp_path.glob(".*vidcleaner-tmp*")) == []
+
+
+def test_copy_to_output_overwrite_does_not_mutate_hardlink(tmp_path: Path) -> None:
+    """Verify overwriting replaces the inode so existing hardlinks keep the original content."""
+    # Given: a destination with a hardlink sharing its inode (as *arr apps / seeding create)
+    src = tmp_path / "processed.mkv"
+    src.write_text("new content")
+    dst = tmp_path / "movie.mkv"
+    dst.write_text("original content")
+    link = tmp_path / "seed.mkv"
+    link.hardlink_to(dst)
+
+    # When: overwriting the destination
+    copy_to_output(src, dst, overwrite=True)
+
+    # Then: the destination has the new content but the hardlink keeps the original
+    assert dst.read_text() == "new content"
+    assert link.read_text() == "original content"
