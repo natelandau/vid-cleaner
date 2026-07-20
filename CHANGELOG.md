@@ -1,3 +1,13 @@
+## v0.10.0 (2026-07-20)
+
+### Feat
+
+- **language**: find original language from filenames and metadata (#82)
+
+### Fix
+
+- **clean**: write output atomically to protect the original file (#81)
+
 ## v0.9.0 (2026-07-18)
 
 ### Feat
