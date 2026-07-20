@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from box import Box
 from rich.console import Console
 
 from vid_cleaner.utils import get_probe_as_box
@@ -95,3 +96,27 @@ def mock_ffmpeg(mocker):
     mock_instance = mock_ffmpeg_progress.return_value
     mock_instance.run_command_with_progress.return_value = iter([0, 25, 50, 75, 100])
     return mock_ffmpeg_progress
+
+
+@pytest.fixture
+def mock_probe_tags(mocker):
+    """Patch VideoFile.probe_box to expose only the given container format tags.
+
+    Lets language-discovery tests control `format.tags` without a full ffprobe fixture.
+
+    Usage:
+        def test_something(mock_probe_tags):
+            mock_probe_tags({"TMDB": "movie/1399"})
+
+    Returns:
+        Callable[[dict[str, str] | None], None]: Call with a tags mapping (or nothing
+            for no tags) to patch `get_probe_as_box` accordingly.
+    """
+
+    def _inner(tags: dict[str, str] | None = None) -> None:
+        mocker.patch(
+            "vid_cleaner.models.video_file.get_probe_as_box",
+            return_value=Box({"format": {"tags": tags or {}}}, default_box=True),
+        )
+
+    return _inner

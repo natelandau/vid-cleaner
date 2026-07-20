@@ -83,24 +83,24 @@ def test_clean_out_with_multiple_files_errors(debug, tmp_path, capsys) -> None:
         pytest.param(
             ["--downmix"],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
-            "✔ Process file (downmix to stereo, drop unwanted subtitles)",
+            "✔ Process file (downmix to stereo)",
             id="Don't convert audio to stereo when stereo exists",
         ),
         pytest.param(
             ["--keep-commentary"],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:5",
-            "✔ Process file (keep commentary, drop unwanted subtitles)",
+            "✔ Process file (keep commentary)",
             id="Keep commentary",
         ),
         pytest.param(
             ["--drop-original"],
             "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
-            "✔ Process file (drop original audio, drop unwanted subtitles)",
+            "✔ Process file (drop original audio)",
             id="Keep local language from config even when dropped",
         ),
         pytest.param(
             ["--langs", "fr,es"],
-            "-map 0:0 -map 0:3 -map 0:8",
+            "-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4 -map 0:8",
             "✔ Process file (drop unwanted subtitles)",
             id="Keep specified languages",
         ),
@@ -142,7 +142,7 @@ def test_stream_processing(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Running clean command
     with pytest.raises(cappa.Exit) as exc_info:
@@ -164,12 +164,60 @@ def test_stream_processing(
     assert "cleaned_video.mkv" in output
 
 
+def test_clean_video_foreign_language_keeps_und_subtitle(
+    mocker,
+    mock_video_path,
+    capsys,
+    tmp_path,
+    mock_ffprobe_box,
+    mock_ffmpeg,
+    debug,
+):
+    """Verify a subtitle tagged "und" is kept when the original audio language differs.
+
+    Regression test for a bug where `stream.language.lower` was compared to `"und"`
+    without calling it, so the comparison was always False and the "und" subtitle was
+    silently dropped instead of kept.
+    """
+    # Given: a video whose original audio language (fr) is not in langs_to_keep (en),
+    # forcing the "keep subtitles when original audio differs" branch to decide, and a
+    # subtitle stream tagged "und" that branch must keep
+    args = ["clean", "-vv", str(mock_video_path)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("und_subtitle.json"),
+    )
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("fr"))
+
+    # When: processing the video file
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: the "und" subtitle (index 7) is kept alongside the English subtitle (index 6),
+    # while the French subtitle (index 8) is dropped
+    mock_ffmpeg.assert_called_once()
+    call_args, _ = mock_ffmpeg.call_args
+    command = " ".join(call_args[0])
+    assert exc_info.value.code == 0
+    assert "-map 0:6" in command
+    assert "-map 0:7" in command
+    assert "-map 0:8" not in command
+    assert "✔ No streams to reorder" in output
+    assert "cleaned_video.mkv" in output
+
+
 @pytest.mark.parametrize(
     ("args", "command_expected", "process_output"),
     [
         pytest.param(
             [],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:6",
+            "-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4 -map 0:6",
             "✔ Process file (drop unwanted subtitles)",
             id="Defaults keep local and original audio, local subs",
         ),
@@ -181,7 +229,7 @@ def test_stream_processing(
         ),
         pytest.param(
             ["--drop-local-subs"],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
+            "-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4",
             "✔ Process file",
             id="Drop local subs",
         ),
@@ -211,7 +259,7 @@ def test_clean_video_foreign_language(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("fr")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("fr"))
 
     # When: Processing the video file
     with pytest.raises(cappa.Exit) as exc_info:
@@ -274,7 +322,7 @@ def test_clean_video_downmix(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Processing the video file
     with pytest.raises(cappa.Exit) as exc_info:
@@ -315,7 +363,7 @@ def test_clean_video_downmix_stereo_commentary_kept(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Processing the video file with downmix requested
     with pytest.raises(cappa.Exit) as exc_info:
@@ -355,7 +403,7 @@ def test_clean_video_downmix_unmapped_channel_count(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Processing the video file with downmix requested
     with pytest.raises(cappa.Exit) as exc_info:
@@ -386,7 +434,7 @@ def test_clean_video_downmix_dialogue_forward_filter(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Processing the video file with downmix requested
     with pytest.raises(cappa.Exit):
@@ -421,7 +469,7 @@ def test_clean_video_downmix_atmos(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Processing the video file with downmix requested
     with pytest.raises(cappa.Exit) as exc_info:
@@ -458,7 +506,7 @@ def test_clean_video_downmix_does_not_clobber_kept_stream(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Processing the video file with downmix requested
     with pytest.raises(cappa.Exit):
@@ -482,7 +530,7 @@ def test_clean_video_downmix_does_not_clobber_kept_stream(
             [],
             "-c copy -map 0:2 -map 0:1 -map 0:3 -map 0:0",
             "-map 0:2 -map 0:1 -map 0:3",
-            "✔ No streams to process",
+            "✔ Process file",
             id="Defaults, reorder streams, then process streams",
         ),
     ],
@@ -512,7 +560,7 @@ def test_clean_reorganize_streams(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Processing the video file
     with pytest.raises(cappa.Exit) as exc_info:
@@ -520,12 +568,17 @@ def test_clean_reorganize_streams(
 
     output = capsys.readouterr().out
 
-    # THEN verify ffmpeg is called once - once to reorder streams, stream processing is skipped
-    assert mock_ffmpeg.call_count == 1
+    # THEN verify ffmpeg is called twice - once to reorder streams, once to drop the
+    # local-language subtitle (kept only when it differs from the original audio language)
+    assert mock_ffmpeg.call_count == 2
 
     # AND verify the first ffmpeg command contains expected stream reordering
     first_command = " ".join(mock_ffmpeg.mock_calls[0].args[0])
     assert first_command_expected in first_command
+
+    # AND verify the second ffmpeg command contains expected stream processing
+    second_command = " ".join(mock_ffmpeg.mock_calls[2].args[0])
+    assert second_command_expected in second_command
 
     # AND verify the command output indicates successful processing
     assert exc_info.value.code == 0
@@ -577,7 +630,7 @@ def test_convert_video(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
     mocker.patch.object(TempFile, "new_tmp_path", return_value=(mock_video_path))
     mocker.patch.object(TempFile, "latest_temp_path", return_value=(mock_video_path))
 
@@ -638,7 +691,7 @@ def test_save_each_step(
             (Path("cleaned_video.mkv"), ["✔ Saved to cleaned_video.mkv"]),
         ],
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
     mocker.patch.object(TempFile, "new_tmp_path", return_value=(mock_video_path))
     mocker.patch.object(TempFile, "latest_temp_path", return_value=(mock_video_path))
 
@@ -668,7 +721,7 @@ def test_save_each_step(
     assert "✔ No streams to reorder" in output
     assert "✔ Process file" in output
     assert "cleaned_video.mkv" in output
-    assert "✔ Process file (downmix to stereo, drop unwanted subtitles)" in output
+    assert "✔ Process file (downmix to stereo)" in output
     assert "✔ Convert to H.265" in output
     assert "cleaned_video.mkv" in output
 
@@ -698,7 +751,7 @@ def test_clean_multiple_files_use_distinct_output_paths(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: cleaning both files in a single invocation
     with pytest.raises(cappa.Exit) as exc_info:
@@ -735,7 +788,7 @@ def test_clean_multiple_files_overwrite_each_in_place(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: cleaning both files in place
     with pytest.raises(cappa.Exit) as exc_info:
@@ -763,7 +816,7 @@ def test_clean_renders_completed_steps_on_error(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
     mocker.patch.object(
         VideoFile, "convert_to_h265", autospec=True, side_effect=RuntimeError("boom")
     )
@@ -796,7 +849,7 @@ def test_clean_video_downmix_skip_when_stereo_exists(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Processing with downmix requested but not forced
     with pytest.raises(cappa.Exit) as exc_info:
@@ -833,7 +886,7 @@ def test_clean_video_downmix_force_recreates_stereo(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Processing with downmix forced
     with pytest.raises(cappa.Exit) as exc_info:
@@ -847,11 +900,13 @@ def test_clean_video_downmix_force_recreates_stereo(
     # Then: The old stereo (index 4) is dropped and a fresh downmix is built from the 5.1
     # (index 2). Two audio streams remain mapped, so the downmix is output audio index 2.
     assert exc_info.value.code == 0
-    assert "-map 0:0 -map 0:1 -map 0:2 -map 0:6" in command
+    assert "-map 0:0 -map 0:1 -map 0:2" in command
     assert "-map 0:2 -c:a:2 aac -ac:a:2 2 -b:a:2 256k -filter:a:2" in command
     assert "-map 0:4" not in command
-    # reference.json keeps an English subtitle, so the title also carries the subtitle flag
-    assert "✔ Process file (downmix to stereo, drop unwanted subtitles)" in output
+    # reference.json's English subtitle matches langs_to_keep and the original language,
+    # so it is dropped rather than kept, and the title carries no subtitle flag
+    assert "-map 0:6" not in command
+    assert "✔ Process file (downmix to stereo)" in output
 
 
 def test_clean_video_downmix_force_recreates_from_multiple_stereo(
@@ -873,7 +928,7 @@ def test_clean_video_downmix_force_recreates_from_multiple_stereo(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Forcing downmix with two stereo tracks present
     with pytest.raises(cappa.Exit) as exc_info:
@@ -912,7 +967,7 @@ def test_clean_video_downmix_force_no_surround_keeps_stereo(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Forcing downmix with no surround source to rebuild from
     with pytest.raises(cappa.Exit) as exc_info:
@@ -945,7 +1000,7 @@ def test_clean_video_downmix_force_noop_without_existing_stereo(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=[Lang("en")])
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Forcing downmix with no existing stereo mix
     with pytest.raises(cappa.Exit) as exc_info:
@@ -960,3 +1015,148 @@ def test_clean_video_downmix_force_noop_without_existing_stereo(
     assert exc_info.value.code == 0
     assert "-map 0:2 -c:a:2 aac -ac:a:2 2 -b:a:2 256k -filter:a:2" in command
     assert "✔ Process file (downmix to stereo)" in output
+
+
+# ---------------------------------------------------------------------------
+# VideoFile._find_original_language orchestration
+#
+# These call _find_original_language() directly rather than through the CLI,
+# mocking at the query_tmdb/query_tmdb_by_id/_query_arr_apps_for_imdb_id
+# boundary so the real ID-discovery and fallback ordering is exercised.
+# ---------------------------------------------------------------------------
+
+
+def test_find_original_language_skips_arr_when_filename_id_resolves(
+    mocker, tmp_path, mock_probe_tags
+) -> None:
+    """Verify Radarr/Sonarr are not queried once a filename-derived ID resolves."""
+    # Given: a filename carrying a resolvable IMDb ID and no container tags
+    path = tmp_path / "Some Movie (1999) tt0133093.mkv"
+    path.touch()
+    video_file = VideoFile(path)
+    mock_probe_tags()
+    mock_query_tmdb = mocker.patch(
+        "vid_cleaner.models.video_file.query_tmdb",
+        return_value={"movie_results": [{"original_language": "en"}]},
+    )
+    mock_query_arr = mocker.patch.object(VideoFile, "_query_arr_apps_for_imdb_id")
+
+    # When: finding the original language
+    result = video_file._find_original_language()  # noqa: SLF001
+
+    # Then: the filename's IMDb ID resolves the language and Radarr/Sonarr are never queried
+    assert result == Lang("en")
+    mock_query_tmdb.assert_called_once_with("tt0133093")
+    mock_query_arr.assert_not_called()
+
+
+def test_find_original_language_consults_arr_when_no_id_resolves(
+    mocker, tmp_path, mock_probe_tags
+) -> None:
+    """Verify Radarr/Sonarr are consulted as a last resort when no ID is discoverable."""
+    # Given: a filename and container with no discoverable media ID
+    path = tmp_path / "Some Movie (1999).mkv"
+    path.touch()
+    video_file = VideoFile(path)
+    mock_probe_tags()
+    mock_query_tmdb = mocker.patch(
+        "vid_cleaner.models.video_file.query_tmdb",
+        return_value={"movie_results": [{"original_language": "fr"}]},
+    )
+    mock_query_arr = mocker.patch.object(
+        VideoFile, "_query_arr_apps_for_imdb_id", return_value="tt0245712"
+    )
+
+    # When: finding the original language
+    result = video_file._find_original_language()  # noqa: SLF001
+
+    # Then: Radarr/Sonarr is queried and its IMDb ID resolves the language
+    assert result == Lang("fr")
+    mock_query_arr.assert_called_once()
+    mock_query_tmdb.assert_called_once_with("tt0245712")
+
+
+def test_find_original_language_caches_result(mocker, tmp_path, mock_probe_tags) -> None:
+    """Verify a second call reuses the cached language instead of re-querying."""
+    # Given: a filename with a resolvable IMDb ID
+    path = tmp_path / "Some Movie (1999) tt0133093.mkv"
+    path.touch()
+    video_file = VideoFile(path)
+    mock_probe_tags()
+    mock_query_tmdb = mocker.patch(
+        "vid_cleaner.models.video_file.query_tmdb",
+        return_value={"movie_results": [{"original_language": "en"}]},
+    )
+
+    # When: finding the original language twice
+    first = video_file._find_original_language()  # noqa: SLF001
+    second = video_file._find_original_language()  # noqa: SLF001
+
+    # Then: both calls return the cached language but only one query was made
+    assert first == Lang("en")
+    assert second == Lang("en")
+    mock_query_tmdb.assert_called_once()
+
+
+def test_find_original_language_falls_through_failed_candidate(
+    mocker, tmp_path, mock_probe_tags
+) -> None:
+    """Verify a failed first candidate falls through to the next discovered ID."""
+    # Given: a filename IMDb ID that fails to resolve and a container TMDB tag that does
+    path = tmp_path / "Some Movie (1999) tt9999999.mkv"
+    path.touch()
+    video_file = VideoFile(path)
+    mock_probe_tags({"TMDB": "movie/1399"})
+    mock_query_tmdb = mocker.patch("vid_cleaner.models.video_file.query_tmdb", return_value={})
+    mock_query_tmdb_by_id = mocker.patch(
+        "vid_cleaner.models.video_file.query_tmdb_by_id",
+        return_value={"original_language": "en"},
+    )
+
+    # When: finding the original language
+    result = video_file._find_original_language()  # noqa: SLF001
+
+    # Then: the unresolvable IMDb candidate is skipped and the TMDB candidate resolves
+    assert result == Lang("en")
+    mock_query_tmdb.assert_called_once_with("tt9999999")
+    mock_query_tmdb_by_id.assert_called_once_with(tmdb_id="1399", media_type="movie")
+
+
+@pytest.mark.parametrize(
+    ("radarr_response", "expected"),
+    [
+        pytest.param(
+            {"parsedMovieInfo": {"movieTitle": "Some Movie"}, "movie": {"imdbId": "tt0133093"}},
+            "tt0133093",
+            id="Radarr matched the movie",
+        ),
+        pytest.param(
+            {"parsedMovieInfo": {"movieTitle": "Some Movie"}},
+            None,
+            id="Radarr parsed the title but matched no movie",
+        ),
+        pytest.param(
+            {"movie": {"title": "Some Movie"}},
+            None,
+            id="Radarr matched a movie carrying no imdb id",
+        ),
+    ],
+)
+def test_query_arr_apps_for_imdb_id_radarr(mocker, tmp_path, radarr_response, expected) -> None:
+    """Verify the Radarr response is read for an IMDb ID without raising."""
+    # Given: a video file and a Radarr response
+    path = tmp_path / "Some Movie (1999).mkv"
+    path.touch()
+    video_file = VideoFile(path)
+    mocker.patch(
+        "vid_cleaner.models.video_file.query_radarr",
+        autospec=True,
+        return_value=radarr_response,
+    )
+    mocker.patch("vid_cleaner.models.video_file.query_sonarr", autospec=True, return_value={})
+
+    # When: querying the arr apps for an IMDb ID
+    result = video_file._query_arr_apps_for_imdb_id()  # noqa: SLF001
+
+    # Then: the IMDb ID is returned when present, otherwise None
+    assert result == expected

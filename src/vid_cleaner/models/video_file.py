@@ -8,6 +8,7 @@ import cappa
 from box import Box
 from ffmpeg_progress_yield import FfmpegProgress
 from iso639 import Lang
+from iso639.exceptions import DeprecatedLanguageValue, InvalidLanguageValue
 from nclutils import pp
 from rich.markdown import Markdown
 from rich.progress import Progress
@@ -29,7 +30,16 @@ from vid_cleaner.constants import (
     CodecTypes,
     VideoTrait,
 )
-from vid_cleaner.utils import get_probe_as_box, query_radarr, query_sonarr, query_tmdb, run_ffprobe
+from vid_cleaner.utils import (
+    MediaId,
+    find_media_ids,
+    get_probe_as_box,
+    query_radarr,
+    query_sonarr,
+    query_tmdb,
+    query_tmdb_by_id,
+    run_ffprobe,
+)
 
 from vid_cleaner.controllers import TempFile  # isort: skip
 
@@ -291,32 +301,24 @@ class VideoFile:
         pp.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
         return downmix_command, streams_to_drop
 
-    def _find_original_language(self) -> Lang:  # pragma: no cover
-        """Find the original language of the video content.
+    def _language_for(self, media_id: MediaId) -> Lang | None:
+        """Resolve a single media ID to the content's original language.
 
-        Query external APIs (IMDb, TMDB, Radarr, Sonarr) to determine the original language. Cache results to avoid repeated API calls.
+        Args:
+            media_id (MediaId): The identifier to look up.
 
         Returns:
-            Lang: The determined original language code
+            Lang | None: The original language, or None when it cannot be resolved.
         """
-        if self.ran_language_check:
-            return self.language
-
-        original_language = None
-
-        # Extract IMDb ID from filename if present (e.g. "Movie.Title.tt1234567.mkv")
-        match = re.search(r"(tt\d+)", self.stem)
-        imdb_id = match.group(0) if match else self._query_arr_apps_for_imdb_id()
-
-        response = query_tmdb(imdb_id) if imdb_id else None
-
-        if response and response.get("movie_results", None):
-            original_language = response["movie_results"][0].get("original_language")
-        if response and response.get("tv_results", None):
-            original_language = response["tv_results"][0].get("original_language")
+        if media_id.source == "imdb":
+            response = query_tmdb(media_id.value)
+            results = response.get("movie_results") or response.get("tv_results") or []
+            original_language = results[0].get("original_language") if results else None
+        else:
+            response = query_tmdb_by_id(tmdb_id=media_id.value, media_type=media_id.media_type)
+            original_language = response.get("original_language")
 
         if not original_language:
-            pp.debug(f"Could not find original language for: {self.name}")
             return None
 
         # TMDB uses 'cn' for Chinese but iso639 expects 'zh'
@@ -324,14 +326,50 @@ class VideoFile:
             original_language = "zh"
 
         try:
-            language = Lang(original_language)
-        except Exception:  # noqa: BLE001
-            pp.debug(f"iso639: Could not find language for: {self.name}")
+            return Lang(original_language)
+        except (InvalidLanguageValue, DeprecatedLanguageValue):
+            pp.debug(f"iso639: Unusable language '{original_language}' for: {self.name}")
             return None
 
-        self.language = language
+    def _find_original_language(self) -> Lang | None:
+        """Find the original language of the video content.
+
+        Check every ID discoverable from the filename and container tags, then fall back
+        to a Radarr/Sonarr title search. Cache the outcome so a miss is not retried.
+
+        Returns:
+            Lang | None: The determined language, or None when none could be found.
+        """
+        if self.ran_language_check:
+            return self.language
+
+        # Cache the attempt itself, so a miss does not re-query every API on each call
         self.ran_language_check = True
-        return language
+
+        media_ids = find_media_ids(stem=self.stem, format_tags=self.probe_box.format.tags)
+
+        for media_id in media_ids:
+            if language := self._language_for(media_id):
+                self.language = language
+                return language
+
+        # Last resort: Radarr/Sonarr require a network round trip, so only ask
+        # once every filename- and container-derived ID has failed to resolve.
+        imdb_id = self._query_arr_apps_for_imdb_id()
+
+        # Skip IDs already tried above; every one of them just failed to resolve
+        tried_imdb_ids = {media_id.value for media_id in media_ids if media_id.source == "imdb"}
+
+        if (
+            imdb_id
+            and imdb_id not in tried_imdb_ids
+            and (language := self._language_for(MediaId(source="imdb", value=imdb_id)))
+        ):
+            self.language = language
+            return language
+
+        pp.debug(f"Could not find original language for: {self.name}")
+        return None
 
     def _need_stream_reorder(self) -> bool:
         """Check if the video file needs stream reordering.
@@ -452,7 +490,7 @@ class VideoFile:
                     not settings.drop_local_subs
                     and langs
                     and original_language not in langs
-                    and (stream.language.lower == "und" or Lang(stream.language) in langs)
+                    and (stream.language.lower() == "und" or Lang(stream.language) in langs)
                 ):
                     pp.trace(f"PROCESS SUBTITLES: Keep stream #{stream.index} (original language)")
                     command.extend(["-map", f"0:{stream.index}"])
@@ -492,7 +530,7 @@ class VideoFile:
             str | None: The IMDb ID if found, otherwise None.
         """
         response = query_radarr(self.name)
-        if response and "movie" in response and "imdbId" in response["parsedMovieInfo"]:
+        if response and "movie" in response and "imdbId" in response["movie"]:
             return response["movie"]["imdbId"]
 
         response = query_sonarr(self.name)
