@@ -8,7 +8,7 @@ Tools to transcode, inspect and convert videos. This package provides convenienc
 
 -   Remove commentary tracks and subtitles
 -   Remove unwanted audio and subtitle tracks
--   Integrate with TMDb and Radarr/Sonarr to determine languages of videos
+-   Determine a video's original language from its filename, its container metadata, or the TMDb, Radarr, and Sonarr APIs
 -   Convert to H.265 or VP9
 -   Convert 4k to 1080p
 -   Downmix any surround layout (5.1, 7.1, and Atmos above 7.1) into a stereo track when one is missing, or recreate an existing stereo track with `--force`, using a dialogue-forward filter that keeps speech clear
@@ -44,7 +44,13 @@ Defaults for vid-cleaner are set in the configuration file located at `~/.config
 
 If you've updated your user config file, the flags for the cli will work in reverse order. For example, if you've set `downmix_stereo = true` in your user config file, the flag `--downmix` will actually disable downmixing.
 
-**Important:** Vid-cleaner makes decisions about which audio and subtitle tracks to keep based on the original language of the video. This is determined by querying the TMDb, Radarr, andSonarr APIs. To use this functionality, you must add the appropriate API keys to the configuration file.
+**Important:** Vid-cleaner makes decisions about which audio and subtitle tracks to keep based on the original language of the video. To find that language, it looks for an IMDb or TMDB id in three places, stopping at the first one that resolves:
+
+1. The filename, matching either a bare `tt0245712` or the `{tmdb-55}` naming convention.
+2. The container's own `IMDB` and `TMDB` metadata tags, as written by tools like mkvmerge.
+3. A Radarr or Sonarr title search.
+
+The first two need only `tmdb_api_key` in the configuration file. Set the `radarr_` and `sonarr_` keys if you want the title search as a fallback.
 
 ```toml
 # Languages to keep (list of ISO 639-1 codes)

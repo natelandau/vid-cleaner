@@ -1,5 +1,7 @@
 """API utilities."""
 
+from typing import Literal
+
 import httpx
 from nclutils import pp
 from rich.json import JSON
@@ -42,6 +44,47 @@ def query_tmdb(search: str) -> dict:  # pragma: no cover
     pp.trace("TMDB: Response received", details=[JSON(response.text)])
 
     return response.json()
+
+
+def query_tmdb_by_id(tmdb_id: str, media_type: Literal["movie", "tv"] | None = None) -> dict:
+    """Query The Movie Database API by its own ID rather than an external ID.
+
+    Args:
+        tmdb_id (str): The TMDB numeric ID to look up.
+        media_type (Literal["movie", "tv"] | None): The record type. When None, try
+            movie first and fall back to tv.
+
+    Returns:
+        dict: The Movie Database API response, or an empty dict when not found.
+    """
+    tmdb_api_key = settings.TMDB_API_KEY
+
+    if not tmdb_api_key:
+        return {}
+
+    for candidate_type in [media_type] if media_type else ["movie", "tv"]:
+        url = f"https://api.themoviedb.org/3/{candidate_type}/{tmdb_id}"
+        params = {"api_key": tmdb_api_key, "language": "en-US"}
+
+        pp.trace(f"TMDB: Query {url}")
+
+        try:
+            response = httpx.get(url, params=params, timeout=15)
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            # A 404 only means this was the wrong record type, so try the next one
+            if e.response.status_code == httpx.codes.NOT_FOUND:
+                continue
+            pp.error(str(e))
+            return {}
+        except httpx.HTTPError as e:
+            pp.error(str(e))
+            return {}
+
+        pp.trace("TMDB: Response received", details=[JSON(response.text)])
+        return response.json()
+
+    return {}
 
 
 def query_radarr(search: str) -> dict:  # pragma: no cover
