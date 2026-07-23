@@ -17,6 +17,7 @@ from vid_cleaner import settings
 from vid_cleaner.constants import (
     COMMENTARY_STREAM_TITLE_REGEX,
     DOWNMIX_STEREO_FILTER,
+    DROP_SUBTITLES_LABEL,
     EXCLUDED_VIDEO_CODECS,
     FFMPEG_APPEND,
     FFMPEG_PREPEND,
@@ -477,7 +478,7 @@ class VideoFile:
         else:
             reason = "no unwanted subtitles"
         plan.actions.append(
-            PlanAction(label="Drop unwanted subtitles", applied=dropped > 0, reason=reason)
+            PlanAction(label=DROP_SUBTITLES_LABEL, applied=dropped > 0, reason=reason)
         )
 
         return keep
@@ -667,7 +668,7 @@ class VideoFile:
             plan (ConversionPlan): The plan whose recorded action is updated in place.
         """
         for action in plan.actions:
-            if action.label == "Drop unwanted subtitles":
+            if action.label == DROP_SUBTITLES_LABEL:
                 action.applied = True
                 action.reason = None
 

@@ -638,7 +638,6 @@ def test_convert_video(
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
-    # debug(output, "output")
 
     # Then: ffmpeg runs exactly once with selection and conversion combined
     mock_ffmpeg.assert_called_once()
