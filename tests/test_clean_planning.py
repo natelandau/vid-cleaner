@@ -387,3 +387,175 @@ def test_clean_noop_skips_ffmpeg(make_video, mock_ffmpeg):
     # Then: ffmpeg never runs and the no-op substeps are returned
     mock_ffmpeg.assert_not_called()
     assert any("No streams to process" in step for step in substeps)
+
+
+def test_drop_audio_records_applied_when_streams_dropped(make_video):
+    """Verify drop-audio is applied when language filtering drops audio streams."""
+    # Given: reference.json (french and commentary audio dropped, english kept)
+    video = make_video("reference.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the drop-audio action is applied with no skip reason
+    drop = next(a for a in plan.actions if a.label == "Drop unwanted audio")
+    assert drop.applied is True
+    assert drop.reason is None
+
+
+def test_drop_audio_records_reason_when_nothing_dropped(make_video):
+    """Verify drop-audio records a reason when every audio stream matches the keep languages."""
+    # Given: audio_only.json (single english audio stream, langs_to_keep=["en"])
+    video = make_video("audio_only.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the drop-audio action is skipped with a matching-languages reason
+    drop = next(a for a in plan.actions if a.label == "Drop unwanted audio")
+    assert drop.applied is False
+    assert drop.reason == "all audio matches keep languages"
+
+
+def test_downmix_records_applied_when_planned(make_video):
+    """Verify downmix is applied when a surround source is downmixed to stereo."""
+    # Given: no_stereo.json (no existing stereo mix, 5.1 surround source) with --downmix
+    settings.update({"downmix_stereo": True})
+    video = make_video("no_stereo.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the downmix action is applied with no skip reason
+    downmix = next(a for a in plan.actions if a.label == "Downmix to stereo")
+    assert downmix.applied is True
+    assert downmix.reason is None
+
+
+def test_downmix_records_skip_when_stereo_exists(make_video):
+    """Verify downmix records a skip reason pointing to --force when stereo already exists."""
+    # Given: reference.json (existing non-commentary stereo track) with --downmix, no --force
+    settings.update({"downmix_stereo": True, "force": False})
+    video = make_video("reference.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the downmix action is skipped with a --force reason
+    downmix = next(a for a in plan.actions if a.label == "Downmix to stereo")
+    assert downmix.applied is False
+    assert "use --force" in downmix.reason
+
+
+def test_downmix_records_skip_when_no_surround_source_after_force(make_video):
+    """Verify a forced downmix with no surround source records a no-surround reason."""
+    # Given: stereo_no_surround.json (existing stereo, no surround bed) with --downmix --force
+    settings.update({"downmix_stereo": True, "force": True})
+    video = make_video("stereo_no_surround.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the downmix action is skipped with a no-surround-source reason
+    downmix = next(a for a in plan.actions if a.label == "Downmix to stereo")
+    assert downmix.applied is False
+    assert downmix.reason == "no surround source to downmix"
+
+
+def test_downmix_absent_when_flag_not_set(make_video):
+    """Verify no downmix action is recorded when --downmix is not requested."""
+    # Given: reference.json without --downmix
+    video = make_video("reference.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: no downmix action appears in the plan
+    assert all(a.label != "Downmix to stereo" for a in plan.actions)
+
+
+def test_actions_order_drop_audio_before_downmix(make_video):
+    """Verify the drop-audio action is recorded before the downmix action."""
+    # Given: no_stereo.json with --downmix
+    settings.update({"downmix_stereo": True})
+    video = make_video("no_stereo.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: drop-audio precedes downmix in the recorded actions
+    labels = [a.label for a in plan.actions]
+    assert labels.index("Drop unwanted audio") < labels.index("Downmix to stereo")
+
+
+def test_drop_subtitles_records_applied_when_dropped(make_video):
+    """Verify drop-subtitles is applied when default settings drop every local subtitle."""
+    # Given: reference.json (all subtitles dropped under default settings)
+    video = make_video("reference.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the drop-subtitles action is applied with no skip reason
+    drop = next(a for a in plan.actions if a.label == "Drop unwanted subtitles")
+    assert drop.applied is True
+    assert drop.reason is None
+
+
+def test_drop_subtitles_records_applied_via_early_drop_all_path(make_video):
+    """Verify drop-subtitles is applied when settings drop local subs before evaluation."""
+    # Given: reference.json with --drop-local-subs (skips per-stream evaluation entirely)
+    settings.update({"drop_local_subs": True})
+    video = make_video("reference.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the drop-subtitles action is still recorded exactly once and applied
+    drop_actions = [a for a in plan.actions if a.label == "Drop unwanted subtitles"]
+    assert len(drop_actions) == 1
+    assert drop_actions[0].applied is True
+
+
+def test_drop_subtitles_records_reason_when_no_subtitles(make_video):
+    """Verify drop-subtitles records a reason when the file has no subtitle streams."""
+    # Given: audio_only.json (no subtitle streams)
+    video = make_video("audio_only.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the drop-subtitles action is skipped with a no-subtitles reason
+    drop = next(a for a in plan.actions if a.label == "Drop unwanted subtitles")
+    assert drop.applied is False
+    assert drop.reason == "no subtitles to drop"
+
+
+def test_drop_subtitles_records_reason_when_keep_all_subtitles(make_video):
+    """Verify drop-subtitles records a --keep-all-subtitles reason when nothing is dropped."""
+    # Given: reference.json with --keep-all-subtitles (every subtitle stream kept)
+    settings.update({"keep_all_subtitles": True})
+    video = make_video("reference.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the drop-subtitles action is skipped with a --keep-all-subtitles reason
+    drop = next(a for a in plan.actions if a.label == "Drop unwanted subtitles")
+    assert drop.applied is False
+    assert drop.reason == "--keep-all-subtitles set"
+
+
+def test_drop_subtitles_records_reason_when_no_unwanted(make_video):
+    """Verify drop-subtitles records a generic reason when every subtitle matches local prefs."""
+    # Given: uhd.json (single english subtitle) with --keep-local-subtitles
+    settings.update({"keep_local_subtitles": True})
+    video = make_video("uhd.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the drop-subtitles action is skipped with a no-unwanted-subtitles reason
+    drop = next(a for a in plan.actions if a.label == "Drop unwanted subtitles")
+    assert drop.applied is False
+    assert drop.reason == "no unwanted subtitles"
