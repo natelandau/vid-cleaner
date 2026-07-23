@@ -1,3 +1,9 @@
+## v0.10.1 (2026-07-23)
+
+### Perf
+
+- **clean**: run all cleaning operations in a single ffmpeg pass (#83)
+
 ## v0.10.0 (2026-07-20)
 
 ### Feat
