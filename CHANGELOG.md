@@ -1,3 +1,9 @@
+## v0.10.2 (2026-07-23)
+
+### Fix
+
+- **clean**: report the operations actually performed (#84)
+
 ## v0.10.1 (2026-07-23)
 
 ### Perf
