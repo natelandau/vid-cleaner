@@ -313,8 +313,12 @@ def test_build_plan_vp9_drops_bitmap_subtitles(make_video):
     # When: building the plan
     plan = video._build_plan()  # noqa: SLF001
 
-    # Then: no subtitle stream survives into the WebM plan
+    # Then: no subtitle stream survives into the WebM plan, and the earlier
+    # "Drop unwanted subtitles" action is corrected to reflect that a drop happened
     assert all(s.codec_type != CodecTypes.SUBTITLE for s in plan.streams)
+    drop_subs = next(a for a in plan.actions if a.label == "Drop unwanted subtitles")
+    assert drop_subs.applied is True
+    assert drop_subs.reason is None
 
 
 def test_build_plan_vp9_downmix_uses_vorbis(make_video):
@@ -415,6 +419,22 @@ def test_drop_audio_records_reason_when_nothing_dropped(make_video):
     drop = next(a for a in plan.actions if a.label == "Drop unwanted audio")
     assert drop.applied is False
     assert drop.reason == "all audio matches keep languages"
+
+
+def test_drop_audio_records_fallback_reason_when_every_stream_filtered(make_video):
+    """Verify drop-audio records the fallback reason when language filtering drops everything."""
+    # Given: audio_only.json (single english audio stream) with langs_to_keep=["fr"] and
+    # drop_original_audio=True so nothing matches and the safety fallback keeps it anyway
+    settings.update({"langs_to_keep": ["fr"], "drop_original_audio": True})
+    video = make_video("audio_only.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the drop-audio action is truthfully unapplied with the fallback reason
+    drop = next(a for a in plan.actions if a.label == "Drop unwanted audio")
+    assert drop.applied is False
+    assert drop.reason == "kept all audio to avoid a silent file"
 
 
 def test_downmix_records_applied_when_planned(make_video):

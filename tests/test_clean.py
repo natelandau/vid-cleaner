@@ -797,8 +797,9 @@ def test_clean_multiple_files_overwrite_each_in_place(
 def test_clean_renders_completed_steps_on_error(
     mocker, mock_ffprobe_box, mock_ffmpeg, capsys, mock_video_path
 ) -> None:
-    """Verify steps completed by a successful clean() are still rendered when the write fails."""
-    # Given: a clean() that succeeds and produces substeps, but the final write raises
+    """Verify operations render up front even when the later write step raises."""
+    # Given: operations render up front inside clean(), before the write step, so a
+    # failing write can't hide what already completed
     args = ["clean", "-vv", "--h265", str(mock_video_path)]
     mocker.patch(
         "vid_cleaner.models.video_file.get_probe_as_box",

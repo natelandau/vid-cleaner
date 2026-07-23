@@ -354,17 +354,24 @@ class VideoFile:
             pp.trace(f"PLAN AUDIO: Remove stream #{stream.index}")
 
         # If every stream would be removed, keep them all to prevent silent video
-        if not streams_to_keep:
+        fallback_triggered = not streams_to_keep
+        if fallback_triggered:
             streams_to_keep = list(self.audio_streams)
 
         dropped = len(self.audio_streams) - len(streams_to_keep)
-        plan.actions.append(
-            PlanAction(
+        if fallback_triggered:
+            action = PlanAction(
+                label="Drop unwanted audio",
+                applied=False,
+                reason="kept all audio to avoid a silent file",
+            )
+        else:
+            action = PlanAction(
                 label="Drop unwanted audio",
                 applied=dropped > 0,
                 reason=None if dropped > 0 else "all audio matches keep languages",
             )
-        )
+        plan.actions.append(action)
 
         # Plan the downmix; forced recreation can request dropping an existing stereo track
         downmix_streams, streams_to_drop, downmix_action = (
@@ -642,11 +649,27 @@ class VideoFile:
                     pp.info(
                         f"Dropping image-based subtitle stream 0:{stream.source_index}; WebM only supports WebVTT"
                     )
+                    self._mark_subtitles_dropped(plan)
                     continue
             kept_streams.append(stream)
 
         plan.streams = kept_streams
         plan.actions.append(PlanAction(label="Convert to VP9", applied=True))
+
+    @staticmethod
+    def _mark_subtitles_dropped(plan: ConversionPlan) -> None:
+        """Correct the "Drop unwanted subtitles" action once VP9 drops an image subtitle.
+
+        `_plan_subtitle_streams` runs before VP9 adaptation and may have recorded
+        applied=False; a VP9-only drop makes that earlier outcome untruthful.
+
+        Args:
+            plan (ConversionPlan): The plan whose recorded action is updated in place.
+        """
+        for action in plan.actions:
+            if action.label == "Drop unwanted subtitles":
+                action.applied = True
+                action.reason = None
 
     def _plan_scale_to_1080p(self, plan: ConversionPlan) -> None:
         """Plan downscaling the video stream to 1080p.

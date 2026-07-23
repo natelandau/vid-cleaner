@@ -2,8 +2,7 @@
 """Test the ConversionPlan model."""
 
 from vid_cleaner.constants import CodecTypes
-from vid_cleaner.models import ConversionPlan, OutputStream
-from vid_cleaner.models.conversion_plan import PlanAction
+from vid_cleaner.models import ConversionPlan, OutputStream, PlanAction
 
 
 def test_build_command_maps_streams_in_order():
