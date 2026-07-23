@@ -714,6 +714,8 @@ def test_clean_video_h265_skip_hidden_in_normal_mode(
     assert settings.verbosity == 0
     assert "✖ Convert to H.265" not in output
     assert "already H.265/VP9; use --force" not in output
+    # But verify that rendering actually happened (positive assertion)
+    assert "✔ Drop unwanted audio" in output
 
 
 def test_clean_multiple_files_use_distinct_output_paths(
