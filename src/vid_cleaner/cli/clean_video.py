@@ -17,28 +17,6 @@ from vid_cleaner.vidcleaner import CleanCommand
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
-def save_each_step(video: VideoFile) -> tuple[VideoFile, list[str]]:
-    """Save the intermediate result of the current processing step.
-
-    Args:
-        video (VideoFile): The video file to save
-
-    Returns:
-        tuple[VideoFile, list[str]]: The (possibly new) video file and substep messages describing the save, empty when nothing was saved.
-    """
-    if not settings.dryrun and settings.save_each_step:
-        out_file, messages = copy_to_output(
-            video.temp_file.latest_temp_path(),
-            Path(settings.out_path),
-            overwrite=settings.overwrite,
-        )
-        video.temp_file.clean_up()
-
-        return VideoFile(Path(out_file)), messages
-
-    return video, []
-
-
 def write_output(video_file: VideoFile) -> list[str]:
     """Copy the processed result to the output path and return the closing substep messages.
 
@@ -68,10 +46,10 @@ def write_output(video_file: VideoFile) -> list[str]:
 def main(clean_cmd: CleanCommand) -> None:
     """Process video files according to specified cleaning options.
 
-    Apply video processing operations like stream reordering, audio/subtitle filtering, and format conversion based on command line arguments.
+    Compose stream reordering, audio/subtitle filtering, downmixing, scaling, and codec
+    conversion into a single ffmpeg pass per file.
 
     Args:
-        cmd (VidCleaner): Global command options and configuration
         clean_cmd (CleanCommand): Clean-specific command options
 
     Raises:
@@ -83,34 +61,17 @@ def main(clean_cmd: CleanCommand) -> None:
 
     out_path_override = resolve_out_path_override(clean_cmd.files)
 
-    for video in coerce_video_files(clean_cmd.files):
-        settings.out_path = out_path_override or video.path
+    for video_file in coerce_video_files(clean_cmd.files):
+        settings.out_path = out_path_override or video_file.path
 
-        video_file = video
-
-        # Print the video name first so live progress bars render beneath it, then collect each
-        # operation's outcome and render the result tree once the file is done. The render runs in
-        # `finally` so completed steps are still shown if a later operation raises.
+        # Print the video name first so live progress bars render beneath it, then collect the
+        # run's outcome and render the result tree once the file is done. The render runs in
+        # `finally` so completed steps are still shown if the operation raises.
         pp.info(f"⇨ {video_file.path.name}")
         substeps: list[str] = []
 
         try:
-            substeps.extend(video_file.reorder_streams())
-            substeps.extend(video_file.process_streams())
-            video_file, saved = save_each_step(video_file)
-            substeps.extend(saved)
-
-            if settings.video_1080:
-                substeps.extend(video_file.video_to_1080p())
-                video_file, saved = save_each_step(video_file)
-                substeps.extend(saved)
-
-            if settings.h265:
-                substeps.extend(video_file.convert_to_h265())
-
-            if settings.vp9:
-                substeps.extend(video_file.convert_to_vp9())
-
+            substeps.extend(video_file.clean())
             if not settings.dryrun:
                 substeps.extend(write_output(video_file))
         finally:

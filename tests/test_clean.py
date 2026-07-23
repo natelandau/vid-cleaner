@@ -76,43 +76,43 @@ def test_clean_out_with_multiple_files_errors(debug, tmp_path, capsys) -> None:
     [
         pytest.param(
             [],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
+            ["-map 0:0 -map 0:1 -map 0:2 -map 0:4"],
             "✔ Process file",
             id="Defaults (only keep local audio,no commentary)",
         ),
         pytest.param(
             ["--downmix"],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
+            ["-map 0:0 -map 0:1 -map 0:2 -map 0:4"],
             "✔ Process file (downmix to stereo)",
             id="Don't convert audio to stereo when stereo exists",
         ),
         pytest.param(
             ["--keep-commentary"],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:5",
+            ["-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:5"],
             "✔ Process file (keep commentary)",
             id="Keep commentary",
         ),
         pytest.param(
             ["--drop-original"],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
+            ["-map 0:0 -map 0:1 -map 0:2 -map 0:4"],
             "✔ Process file (drop original audio)",
             id="Keep local language from config even when dropped",
         ),
         pytest.param(
             ["--langs", "fr,es"],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4 -map 0:8",
+            ["-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4 -map 0:8"],
             "✔ Process file (drop unwanted subtitles)",
             id="Keep specified languages",
         ),
         pytest.param(
             ["--keep-subs"],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:6 -map 0:7 -map 0:8",
+            ["-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:6 -map 0:7 -map 0:8"],
             "✔ Process file (keep subtitles)",
             id="Keep all subtitles",
         ),
         pytest.param(
             ["--keep-local-subs"],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:6",
+            ["-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:6"],
             "✔ Process file (drop unwanted subtitles, keep local subtitles)",
             id="Keep local subtitles",
         ),
@@ -155,7 +155,8 @@ def test_stream_processing(
     mock_ffmpeg.assert_called_once()
     args, _ = mock_ffmpeg.call_args
     command = " ".join(args[0])
-    assert command_expected in command
+    for fragment in command_expected:
+        assert fragment in command
 
     # And: Success messages are displayed
     assert exc_info.value.code == 0
@@ -217,19 +218,19 @@ def test_clean_video_foreign_language_keeps_und_subtitle(
     [
         pytest.param(
             [],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4 -map 0:6",
+            ["-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4 -map 0:6"],
             "✔ Process file (drop unwanted subtitles)",
             id="Defaults keep local and original audio, local subs",
         ),
         pytest.param(
             ["--drop-original"],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:6",
+            ["-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:6"],
             "✔ Process file (drop original audio, drop unwanted subtitles)",
             id="Drop original audio (keeps local audio)",
         ),
         pytest.param(
             ["--drop-local-subs"],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4",
+            ["-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4"],
             "✔ Process file",
             id="Drop local subs",
         ),
@@ -275,7 +276,8 @@ def test_clean_video_foreign_language(
 
     # AND verify the command output indicates successful processing
     assert exc_info.value.code == 0
-    assert command_expected in command
+    for fragment in command_expected:
+        assert fragment in command
     assert "✔ No streams to reorder" in output
     assert process_output in output
     assert "cleaned_video.mkv" in output
@@ -286,13 +288,20 @@ def test_clean_video_foreign_language(
     [
         pytest.param(
             [],
-            "-map 0:0 -map 0:1 -map 0:2",
+            ["-map 0:0 -map 0:1 -map 0:2"],
             "✔ Process file",
             id="Defaults, drops commentary",
         ),
         pytest.param(
             ["--downmix"],
-            "-map 0:1 -map 0:2 -c copy -map 0:2 -c:a:2 aac -ac:a:2 2 -b:a:2 256k -filter:a:2",
+            [
+                "-map 0:0 -map 0:1 -map 0:2 -map 0:2",
+                "-c:a:0 copy",
+                "-c:a:1 copy",
+                "-c:a:2 aac -filter:a:2 pan=stereo",
+                "-ac:a:2 2 -b:a:2 256k -ar:a:2 48000",
+                "-metadata:s:a:2 title=2.0",
+            ],
             "✔ Process file (downmix to stereo)",
             id="Defaults",
         ),
@@ -335,7 +344,8 @@ def test_clean_video_downmix(
     mock_ffmpeg.assert_called_once()
     args, _ = mock_ffmpeg.call_args
     command = " ".join(args[0])
-    assert command_expected in command
+    for fragment in command_expected:
+        assert fragment in command
 
     # And: Success messages are displayed
     assert exc_info.value.code == 0
@@ -376,7 +386,9 @@ def test_clean_video_downmix_stereo_commentary_kept(
     mock_ffmpeg.assert_called_once()
     call_args, _ = mock_ffmpeg.call_args
     command = " ".join(call_args[0])
-    assert "-map 0:1 -c:a:2 aac -ac:a:2 2" in command
+    assert "-map 0:1 -map 0:2 -map 0:1" in command
+    assert "-c:a:2 aac" in command
+    assert "-ac:a:2 2" in command
 
     # And: The commentary track is kept and the file is processed
     assert exc_info.value.code == 0
@@ -481,7 +493,9 @@ def test_clean_video_downmix_atmos(
     call_args, _ = mock_ffmpeg.call_args
     command = " ".join(call_args[0])
     output = capsys.readouterr().out
-    assert "-map 0:1 -c:a:1 aac -ac:a:1 2" in command
+    assert "-map 0:1 -map 0:1" in command
+    assert "-c:a:1 aac" in command
+    assert "-ac:a:1 2" in command
     assert "pan=stereo|FL=0.8*FC" in command
     assert exc_info.value.code == 0
     assert "✔ Process file (downmix to stereo)" in output
@@ -517,41 +531,19 @@ def test_clean_video_downmix_does_not_clobber_kept_stream(
     mock_ffmpeg.assert_called_once()
     call_args, _ = mock_ffmpeg.call_args
     command = " ".join(call_args[0])
+    assert "-c:a:0 copy" in command
+    assert "-c:a:1 copy" in command
     assert "-filter:a:2" in command
-    assert "-c:a:0" not in command
-    assert "-c:a:1" not in command
     assert "-filter:a:0" not in command
+    assert "-filter:a:1" not in command
 
 
-@pytest.mark.parametrize(
-    ("args", "first_command_expected", "second_command_expected", "process_output"),
-    [
-        pytest.param(
-            [],
-            "-c copy -map 0:2 -map 0:1 -map 0:3 -map 0:0",
-            "-map 0:2 -map 0:1 -map 0:3",
-            "✔ Process file",
-            id="Defaults, reorder streams, then process streams",
-        ),
-    ],
-)
 def test_clean_reorganize_streams(
-    mocker,
-    mock_ffprobe_box,
-    mock_video_path,
-    tmp_path,
-    capsys,
-    mock_ffmpeg,
-    debug,
-    args,
-    first_command_expected,
-    second_command_expected,
-    process_output,
+    mocker, mock_ffprobe_box, mock_video_path, tmp_path, capsys, mock_ffmpeg, debug
 ):
-    """Verify that videos with incorrect stream order are properly reorganized."""
-    args = ["clean", "-vv", *args, str(mock_video_path)]
-
-    # And: Mock external dependencies
+    """Verify streams in the wrong order are remapped video-first in the single pass."""
+    # Given: a file whose video stream is not first
+    args = ["clean", "-vv", str(mock_video_path)]
     mocker.patch(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("wrong_order.json"),
@@ -568,40 +560,43 @@ def test_clean_reorganize_streams(
 
     output = capsys.readouterr().out
 
-    # THEN verify ffmpeg is called twice - once to reorder streams, once to drop the
-    # local-language subtitle (kept only when it differs from the original audio language)
-    assert mock_ffmpeg.call_count == 2
-
-    # AND verify the first ffmpeg command contains expected stream reordering
-    first_command = " ".join(mock_ffmpeg.mock_calls[0].args[0])
-    assert first_command_expected in first_command
-
-    # AND verify the second ffmpeg command contains expected stream processing
-    second_command = " ".join(mock_ffmpeg.mock_calls[2].args[0])
-    assert second_command_expected in second_command
-
-    # AND verify the command output indicates successful processing
+    # Then: one ffmpeg pass maps the streams in video-first order
+    mock_ffmpeg.assert_called_once()
+    call_args, _ = mock_ffmpeg.call_args
+    command = " ".join(call_args[0])
     assert exc_info.value.code == 0
+    assert "-map 0:2 -map 0:1 -map 0:3" in command
     assert "✔ Reorder streams" in output
-    assert process_output in output
+    assert "✔ Process file" in output
     assert "cleaned_video.mkv" in output
 
 
 @pytest.mark.parametrize(
-    ("args", "first_command_expected", "second_command_expected", "process_output"),
+    ("args", "command_expected", "substep_expected"),
     [
         pytest.param(
             ["--h265"],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
-            "-map 0 -c:v libx265 -b:v 0k -minrate 0k -maxrate 0k -bufsize 0k -c:a copy -c:s copy",
-            "✔ Process file",
+            [
+                "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
+                "-c:v:0 libx265",
+                "-b:v:0 0k -minrate:v:0 0k -maxrate:v:0 0k -bufsize:v:0 0k",
+                "-c:a:0 copy",
+                "-c:a:1 copy",
+                "-c:a:2 copy",
+            ],
+            "✔ Convert to H.265",
             id="Convert to h265",
         ),
         pytest.param(
             ["--vp9"],
-            "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
-            "-map 0 -c:v libvpx-vp9 -b:v 0 -crf 30 -c:a libvorbis -dn -map_chapters -1 -c:s copy",
-            "✔ Process file",
+            [
+                "-map 0:0 -map 0:1 -map 0:2 -map 0:4",
+                "-c:v:0 libvpx-vp9",
+                "-b:v:0 0 -crf:v:0 30",
+                "-c:a:0 libvorbis",
+                "-dn -map_chapters -1",
+            ],
+            "✔ Convert to vp9",
             id="Convert to vp9",
         ),
     ],
@@ -615,13 +610,12 @@ def test_convert_video(
     capsys,
     debug,
     args,
-    first_command_expected,
-    second_command_expected,
-    process_output,
+    command_expected,
+    substep_expected,
 ):
-    """Verify video stream conversion with different codecs."""
+    """Verify codec conversion happens in the same single ffmpeg pass as stream selection."""
+    # Given: reference.json probe data and a conversion flag
     args = ["clean", "-vv", *args, str(mock_video_path)]
-    # And: Mock external dependencies
     mocker.patch(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
@@ -639,91 +633,21 @@ def test_convert_video(
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
-    # debug(output, "output")
 
-    # THEN verify ffmpeg executes two passes
-    assert mock_ffmpeg.call_count == 2
+    # Then: ffmpeg runs exactly once with selection and conversion combined
+    mock_ffmpeg.assert_called_once()
+    call_args, _ = mock_ffmpeg.call_args
+    command = " ".join(call_args[0])
+    for fragment in command_expected:
+        assert fragment in command
 
-    # AND verify stream mapping command is correct
-    first_command = " ".join(mock_ffmpeg.mock_calls[0].args[0])
-    assert first_command_expected in first_command
-
-    # AND verify codec conversion command is correct
-    second_command = " ".join(mock_ffmpeg.mock_calls[2].args[0])
-    assert second_command_expected in second_command
-
-    # AND verify successful completion with expected output messages
-    assert exc_info.value.code == 0
-    assert "✔ No streams to reorder" in output
-    assert process_output in output
-
-    if "--vp9" in args:
-        assert "Converting to VP9, setting output to `test_video.webm`" in output
-        assert "✔ Convert to vp9" in output
-    else:
-        assert "✔ Convert to H.265" in output
-
-
-def test_save_each_step(
-    mocker,
-    mock_ffprobe_box,
-    mock_video_path,
-    mock_ffmpeg,
-    capsys,
-    tmp_path,
-    debug,
-):
-    """Verify video stream conversion with different codecs."""
-    # GIVEN a second video file used to mock the output of the first video file
-    mock_video_path_1 = Path(tmp_path / "test_video_1.mp4")
-    mock_video_path_1.touch()  # Create a dummy file
-
-    args = ["clean", "-vv", "--save-each", "--h265", "--downmix", str(mock_video_path)]
-    # And: Mock external dependencies
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
-    mocker.patch(
-        "vid_cleaner.cli.clean_video.copy_to_output",
-        side_effect=[
-            (mock_video_path_1, ["✔ Saved to intermediate"]),
-            (Path("cleaned_video.mkv"), ["✔ Saved to cleaned_video.mkv"]),
-        ],
-    )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
-    mocker.patch.object(TempFile, "new_tmp_path", return_value=(mock_video_path))
-    mocker.patch.object(TempFile, "latest_temp_path", return_value=(mock_video_path))
-
-    # When: Processing the video file
-    with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
-
-    output = capsys.readouterr().out
-    # debug(output, "output")
-
-    # THEN verify ffmpeg executes two passes
-    assert mock_ffmpeg.call_count == 2
-
-    # AND verify stream mapping command is correct
-    first_command = " ".join(mock_ffmpeg.mock_calls[0].args[0])
-    assert "-map 0:0 -map 0:1 -map 0:2 -map 0:4" in first_command
-
-    # AND verify codec conversion command is correct
-    second_command = " ".join(mock_ffmpeg.mock_calls[2].args[0])
-    assert (
-        "-map 0 -c:v libx265 -b:v 0k -minrate 0k -maxrate 0k -bufsize 0k -c:a copy -c:s copy"
-        in second_command
-    )
-
-    # AND verify successful completion with expected output messages
+    # And: the result tree itemizes the conversion
     assert exc_info.value.code == 0
     assert "✔ No streams to reorder" in output
     assert "✔ Process file" in output
-    assert "cleaned_video.mkv" in output
-    assert "✔ Process file (downmix to stereo)" in output
-    assert "✔ Convert to H.265" in output
-    assert "cleaned_video.mkv" in output
+    assert substep_expected in output
+    if "--vp9" in args:
+        assert "Converting to VP9, setting output to `test_video.webm`" in output
 
 
 def test_clean_multiple_files_use_distinct_output_paths(
@@ -803,31 +727,25 @@ def test_clean_multiple_files_overwrite_each_in_place(
 
 
 def test_clean_renders_completed_steps_on_error(
-    mocker,
-    mock_ffprobe_box,
-    mock_ffmpeg,
-    capsys,
-    mock_video_path,
+    mocker, mock_ffprobe_box, mock_ffmpeg, capsys, mock_video_path
 ) -> None:
-    """Verify steps completed before a failure are still displayed."""
-    # Given: mocked metadata and a conversion that fails partway through
+    """Verify the result tree is still rendered when the conversion raises."""
+    # Given: mocked metadata and a conversion that fails
     args = ["clean", "--h265", str(mock_video_path)]
     mocker.patch(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
     )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
-    mocker.patch.object(
-        VideoFile, "convert_to_h265", autospec=True, side_effect=RuntimeError("boom")
-    )
+    mocker.patch.object(VideoFile, "_run_ffmpeg", autospec=True, side_effect=RuntimeError("boom"))
 
-    # When: running clean and the H.265 conversion raises
+    # When: running clean and the ffmpeg pass raises
     with pytest.raises(RuntimeError):
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
-    # Then: the earlier completed steps are still rendered despite the failure
+    # Then: the per-file header was printed before the failure
     output = capsys.readouterr().out
-    assert "✔ No streams to reorder" in output
+    assert "⇨ test_video.mp4" in output
 
 
 def test_clean_video_downmix_skip_when_stereo_exists(
@@ -900,8 +818,9 @@ def test_clean_video_downmix_force_recreates_stereo(
     # Then: The old stereo (index 4) is dropped and a fresh downmix is built from the 5.1
     # (index 2). Two audio streams remain mapped, so the downmix is output audio index 2.
     assert exc_info.value.code == 0
-    assert "-map 0:0 -map 0:1 -map 0:2" in command
-    assert "-map 0:2 -c:a:2 aac -ac:a:2 2 -b:a:2 256k -filter:a:2" in command
+    assert "-map 0:0 -map 0:1 -map 0:2 -map 0:2" in command
+    assert "-c:a:2 aac" in command
+    assert "-ac:a:2 2 -b:a:2 256k -ar:a:2 48000" in command
     assert "-map 0:4" not in command
     # reference.json's English subtitle matches langs_to_keep and the original language,
     # so it is dropped rather than kept, and the title carries no subtitle flag
@@ -944,7 +863,9 @@ def test_clean_video_downmix_force_recreates_from_multiple_stereo(
     assert exc_info.value.code == 0
     assert "-map 0:2" not in command
     assert "-map 0:3" not in command
-    assert "-map 0:1 -c:a:1 aac -ac:a:1 2 -b:a:1 256k -filter:a:1" in command
+    assert "-map 0:1 -map 0:1" in command
+    assert "-c:a:1 aac" in command
+    assert "-ac:a:1 2 -b:a:1 256k" in command
     assert "✔ Process file (downmix to stereo)" in output
 
 
@@ -1013,7 +934,9 @@ def test_clean_video_downmix_force_noop_without_existing_stereo(
 
     # Then: The downmix is built from the 5.1 exactly as an un-forced --downmix would
     assert exc_info.value.code == 0
-    assert "-map 0:2 -c:a:2 aac -ac:a:2 2 -b:a:2 256k -filter:a:2" in command
+    assert "-c:a:2 aac" in command
+    assert "-ac:a:2 2 -b:a:2 256k" in command
+    assert "-filter:a:2" in command
     assert "✔ Process file (downmix to stereo)" in output
 
 
