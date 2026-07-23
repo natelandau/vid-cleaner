@@ -11,7 +11,7 @@
 // 9: cover.jpg
 {
     // Variant of reference.json where the Danish subtitle track is retagged "und" to
-    // exercise the "keep subtitles in an undetermined language" branch of _process_subtitles.
+    // exercise the "keep subtitles in an undetermined language" branch of _plan_subtitle_streams.
     "format": {
         "bit_rate": "26192239",
         "duration": "60.268000",

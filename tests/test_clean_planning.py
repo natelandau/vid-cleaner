@@ -149,6 +149,58 @@ def test_build_plan_1080p_and_h265_single_encode(make_video, tmp_path):
     assert video_stream.stream_filter == "scale=width=1920:height=-2"
 
 
+def test_build_plan_h265_bitrate_math(make_video):
+    """Verify the H.265 bitrate targets are computed from the on-disk file size."""
+    # Given: a 600 MB, 4K/600s source with only --h265 (no scale, kept video+audio)
+    settings.update({"h265": True})
+    video = make_video("uhd.json")
+    video.temp_file.path.write_bytes(b"0" * 600_000_000)
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: bitrates follow the Frame.io formula with no pixel-ratio scaling
+    video_stream = plan.streams[0]
+    assert video_stream.codec == "libx265"
+    assert video_stream.extra_args == [
+        "-b:v:{n}",
+        "3999k",
+        "-minrate:v:{n}",
+        "5599k",
+        "-maxrate:v:{n}",
+        "10398k",
+        "-bufsize:v:{n}",
+        "7999k",
+    ]
+
+
+def test_build_plan_h265_bitrate_math_scaled_for_1080p(make_video):
+    """Verify --1080p shrinks the H.265 bitrate targets by the pixel ratio."""
+    # Given: the same 600 MB, 4K/600s source, now also downscaling to 1080p
+    settings.update({"h265": True, "video_1080": True})
+    video = make_video("uhd.json")
+    video.temp_file.path.write_bytes(b"0" * 600_000_000)
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the bitrates are quartered (scale_factor = (1920/3840)**2 = 0.25) and the
+    # scale filter still lands on the same combined video stream
+    video_stream = plan.streams[0]
+    assert video_stream.codec == "libx265"
+    assert video_stream.stream_filter == "scale=width=1920:height=-2"
+    assert video_stream.extra_args == [
+        "-b:v:{n}",
+        "999k",
+        "-minrate:v:{n}",
+        "1399k",
+        "-maxrate:v:{n}",
+        "2598k",
+        "-bufsize:v:{n}",
+        "1999k",
+    ]
+
+
 def test_build_plan_vp9_converts_audio_and_text_subs(make_video):
     """Verify --vp9 encodes audio to libvorbis, converts text subs, and sets .webm."""
     # Given: a UHD source (subrip subtitle) with --vp9 and all subtitles kept
