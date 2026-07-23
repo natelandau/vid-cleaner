@@ -2,7 +2,7 @@
 """Test the ConversionPlan model."""
 
 from vid_cleaner.constants import CodecTypes
-from vid_cleaner.models import ConversionPlan, OutputStream
+from vid_cleaner.models import ConversionPlan, OutputStream, PlanAction
 
 
 def test_build_command_maps_streams_in_order():
@@ -175,3 +175,21 @@ def test_is_noop_false_when_any_stream_encodes():
     assert encoded.is_noop(stream_count=1) is False
     assert filtered.is_noop(stream_count=1) is False
     assert rewrapped.is_noop(stream_count=1) is False
+
+
+def test_plan_action_defaults():
+    """Verify PlanAction defaults reason to None."""
+    action = PlanAction(label="Downmix to stereo", applied=True)
+    assert action.label == "Downmix to stereo"
+    assert action.applied is True
+    assert action.reason is None
+
+
+def test_conversion_plan_actions_default_empty():
+    """Verify ConversionPlan actions default to empty list and can be mutated."""
+    plan = ConversionPlan()
+    assert plan.actions == []
+    plan.actions.append(
+        PlanAction(label="Reorder streams", applied=False, reason="streams already in order")
+    )
+    assert plan.actions[0].reason == "streams already in order"

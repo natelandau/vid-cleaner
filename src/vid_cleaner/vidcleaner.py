@@ -57,6 +57,7 @@ def config_subcommand(vidcleaner: VidCleaner) -> None:
         "out_path": getattr(vidcleaner.command, "out", None),
         "overwrite": getattr(vidcleaner.command, "overwrite", False),
         "subcommand": vidcleaner.command.__class__.__name__.lower(),
+        "verbosity": nllog_level,
         "video_1080": getattr(vidcleaner.command, "video_1080", False),
         "vp9": getattr(vidcleaner.command, "vp9", False),
     }

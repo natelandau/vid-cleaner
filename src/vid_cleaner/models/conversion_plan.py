@@ -39,6 +39,21 @@ class OutputStream:
 
 
 @dataclass
+class PlanAction:
+    """One cleaning operation the plan considered, for user-facing reporting.
+
+    Attributes:
+        label (str): Human-readable operation name (e.g. "Downmix to stereo").
+        applied (bool): Whether the operation actually runs in this pass.
+        reason (str | None): Why the operation was skipped, shown only in debug output.
+    """
+
+    label: str
+    applied: bool
+    reason: str | None = None
+
+
+@dataclass
 class ConversionPlan:
     """A composed single-pass ffmpeg conversion for one video file.
 
@@ -50,13 +65,13 @@ class ConversionPlan:
             subtitles). Mapping order performs any stream reordering for free.
         global_args (list[str]): Output-wide args appended after per-stream options.
         output_suffix (str | None): Container suffix override (e.g. ".webm").
-        substeps (list[str]): Result-tree messages describing the applied operations.
+        actions (list[PlanAction]): Cleaning operations the plan considered.
     """
 
     streams: list[OutputStream] = field(default_factory=list)
     global_args: list[str] = field(default_factory=list)
     output_suffix: str | None = None
-    substeps: list[str] = field(default_factory=list)
+    actions: list[PlanAction] = field(default_factory=list)
 
     def is_noop(self, stream_count: int) -> bool:
         """Check whether executing this plan would change nothing about the file.

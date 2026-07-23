@@ -17,6 +17,7 @@ from vid_cleaner import settings
 from vid_cleaner.constants import (
     COMMENTARY_STREAM_TITLE_REGEX,
     DOWNMIX_STEREO_FILTER,
+    DROP_SUBTITLES_LABEL,
     EXCLUDED_VIDEO_CODECS,
     FFMPEG_APPEND,
     FFMPEG_PREPEND,
@@ -31,7 +32,7 @@ from vid_cleaner.constants import (
     CodecTypes,
     VideoTrait,
 )
-from vid_cleaner.models.conversion_plan import ConversionPlan, OutputStream
+from vid_cleaner.models.conversion_plan import ConversionPlan, OutputStream, PlanAction
 from vid_cleaner.utils import (
     MediaId,
     find_media_ids,
@@ -40,6 +41,7 @@ from vid_cleaner.utils import (
     query_sonarr,
     query_tmdb,
     query_tmdb_by_id,
+    render_operations,
     run_ffprobe,
 )
 
@@ -236,7 +238,9 @@ class VideoFile:
         ]
 
     @staticmethod
-    def _plan_downmix(streams: list[Box]) -> tuple[list[OutputStream], list[Box]]:
+    def _plan_downmix(
+        streams: list[Box],
+    ) -> tuple[list[OutputStream], list[Box], PlanAction | None]:
         """Plan a downmix of the simplest surround bed to a dialogue-forward stereo track.
 
         Skip the work when a non-commentary stereo mix already exists, unless
@@ -248,8 +252,10 @@ class VideoFile:
             streams (list[Box]): Audio streams that would otherwise be kept.
 
         Returns:
-            tuple[list[OutputStream], list[Box]]: The planned downmix output streams and
-                the existing streams the caller must not map.
+            tuple[list[OutputStream], list[Box], PlanAction | None]: The planned downmix
+                output streams, the existing streams the caller must not map, and the
+                recorded action (always populated; callers only invoke this method when
+                `settings.downmix_stereo` is set).
         """
         downmix_streams: list[OutputStream] = []
         streams_to_drop: list[Box] = []
@@ -277,12 +283,20 @@ class VideoFile:
                 pp.info(
                     "Stereo track already exists; skipping downmix. Use --force to recreate it."
                 )
-                return downmix_streams, streams_to_drop
+                action = PlanAction(
+                    label="Downmix to stereo",
+                    applied=False,
+                    reason="stereo track already exists; use --force",
+                )
+                return downmix_streams, streams_to_drop, action
             if not surround_source:
                 pp.info(
                     "No surround source to recreate stereo from; keeping existing stereo track."
                 )
-                return downmix_streams, streams_to_drop
+                action = PlanAction(
+                    label="Downmix to stereo", applied=False, reason="no surround source to downmix"
+                )
+                return downmix_streams, streams_to_drop, action
             # Forced recreation: drop the existing stereo mix and rebuild it from the surround bed
             streams_to_drop = existing_stereo
 
@@ -297,10 +311,19 @@ class VideoFile:
             )
             for stream in surround_source
         ]
-        return downmix_streams, streams_to_drop
+        action = PlanAction(
+            label="Downmix to stereo",
+            applied=bool(downmix_streams),
+            reason=None if downmix_streams else "no surround source to downmix",
+        )
+        return downmix_streams, streams_to_drop, action
 
-    def _plan_audio_streams(self) -> list[OutputStream]:
+    def _plan_audio_streams(self, plan: ConversionPlan) -> list[OutputStream]:
         """Plan audio streams to keep, honoring language, commentary, and downmix settings.
+
+        Args:
+            plan (ConversionPlan): The plan whose actions record drop-audio and downmix
+                outcomes.
 
         Returns:
             list[OutputStream]: Copy-mapped kept audio followed by any planned downmix.
@@ -332,13 +355,31 @@ class VideoFile:
             pp.trace(f"PLAN AUDIO: Remove stream #{stream.index}")
 
         # If every stream would be removed, keep them all to prevent silent video
-        if not streams_to_keep:
+        fallback_triggered = not streams_to_keep
+        if fallback_triggered:
             streams_to_keep = list(self.audio_streams)
 
+        dropped = len(self.audio_streams) - len(streams_to_keep)
+        if fallback_triggered:
+            action = PlanAction(
+                label="Drop unwanted audio",
+                applied=False,
+                reason="kept all audio to avoid a silent file",
+            )
+        else:
+            action = PlanAction(
+                label="Drop unwanted audio",
+                applied=dropped > 0,
+                reason=None if dropped > 0 else "all audio matches keep languages",
+            )
+        plan.actions.append(action)
+
         # Plan the downmix; forced recreation can request dropping an existing stereo track
-        downmix_streams, streams_to_drop = (
-            self._plan_downmix(streams_to_keep) if settings.downmix_stereo else ([], [])
+        downmix_streams, streams_to_drop, downmix_action = (
+            self._plan_downmix(streams_to_keep) if settings.downmix_stereo else ([], [], None)
         )
+        if downmix_action is not None:
+            plan.actions.append(downmix_action)
 
         drop_indices = {stream.index for stream in streams_to_drop}
         kept = [
@@ -348,8 +389,49 @@ class VideoFile:
         ]
         return kept + downmix_streams
 
-    def _plan_subtitle_streams(self) -> list[OutputStream]:
+    @staticmethod
+    def _should_keep_subtitle(
+        stream: Box, langs: list[Lang], original_language: Lang | None
+    ) -> bool:
+        """Decide whether a single subtitle stream matches the user's keep preferences.
+
+        Args:
+            stream (Box): The subtitle stream under evaluation.
+            langs (list[Lang]): Languages the user wants to keep.
+            original_language (Lang | None): The file's original audio language, or
+                None when `settings.drop_local_subs` made it unnecessary to look up.
+
+        Returns:
+            bool: True when the stream should be mapped into the output.
+        """
+        if settings.keep_all_subtitles:
+            return True
+
+        if not stream.language:
+            return False
+
+        # Keep undefined language streams and streams matching user preferences
+        # This ensures we don't accidentally remove important subtitles
+        if settings.keep_local_subtitles and (
+            stream.language.lower() == "und" or Lang(stream.language) in langs
+        ):
+            return True
+
+        # Keep subtitles in user's languages when original audio differs
+        # This ensures subtitles are available when needed for translation
+        return bool(
+            not settings.drop_local_subs
+            and langs
+            and original_language not in langs
+            and (stream.language.lower() == "und" or Lang(stream.language) in langs)
+        )
+
+    def _plan_subtitle_streams(self, plan: ConversionPlan) -> list[OutputStream]:
         """Plan subtitle streams to keep based on language preferences.
+
+        Args:
+            plan (ConversionPlan): The plan whose actions record the drop-subtitles
+                outcome.
 
         Returns:
             list[OutputStream]: Copy-mapped kept subtitle streams.
@@ -360,53 +442,44 @@ class VideoFile:
 
         # Only look up original language if we're not explicitly dropping local subs
         # This avoids unnecessary API calls
-        if not settings.drop_local_subs:
-            original_language = self._find_original_language()
+        original_language = None if settings.drop_local_subs else self._find_original_language()
 
-        # Early return if no subtitle streams should be kept based on settings
-        if (
+        # Skip evaluating streams entirely when settings drop every local subtitle;
+        # a single return path below still records the drop-subtitles action.
+        drop_all_local = (
             not settings.keep_all_subtitles
             and not settings.keep_local_subtitles
             and settings.drop_local_subs
-        ):
-            return keep
+        )
 
-        for stream in self.subtitle_streams:
-            # Remove commentary/SDH/description tracks unless explicitly kept
-            # These are typically supplementary and take up extra space
-            if not settings.keep_commentary and self._is_commentary_stream(stream):
-                pp.trace(rf"PLAN SUBTITLES: Remove stream #{stream.index} [commentary]")
-                continue
+        if not drop_all_local:
+            for stream in self.subtitle_streams:
+                # Remove commentary/SDH/description tracks unless explicitly kept
+                # These are typically supplementary and take up extra space
+                if not settings.keep_commentary and self._is_commentary_stream(stream):
+                    pp.trace(rf"PLAN SUBTITLES: Remove stream #{stream.index} [commentary]")
+                    continue
 
-            if settings.keep_all_subtitles:
-                keep.append(OutputStream(source_index=stream.index, codec_type=CodecTypes.SUBTITLE))
-                continue
-
-            if stream.language:
-                # Keep undefined language streams and streams matching user preferences
-                # This ensures we don't accidentally remove important subtitles
-                if settings.keep_local_subtitles and (
-                    stream.language.lower() == "und" or Lang(stream.language) in langs
-                ):
+                if self._should_keep_subtitle(stream, langs, original_language):
                     keep.append(
                         OutputStream(source_index=stream.index, codec_type=CodecTypes.SUBTITLE)
                     )
                     continue
 
-                # Keep subtitles in user's languages when original audio differs
-                # This ensures subtitles are available when needed for translation
-                if (
-                    not settings.drop_local_subs
-                    and langs
-                    and original_language not in langs
-                    and (stream.language.lower() == "und" or Lang(stream.language) in langs)
-                ):
-                    keep.append(
-                        OutputStream(source_index=stream.index, codec_type=CodecTypes.SUBTITLE)
-                    )
-                    continue
+                pp.trace(f"PLAN SUBTITLES: Remove stream #{stream.index}")
 
-            pp.trace(f"PLAN SUBTITLES: Remove stream #{stream.index}")
+        dropped = len(self.subtitle_streams) - len(keep)
+        if dropped > 0:
+            reason: str | None = None
+        elif not self.subtitle_streams:
+            reason = "no subtitles to drop"
+        elif settings.keep_all_subtitles:
+            reason = "--keep-all-subtitles set"
+        else:
+            reason = "no unwanted subtitles"
+        plan.actions.append(
+            PlanAction(label=DROP_SUBTITLES_LABEL, applied=dropped > 0, reason=reason)
+        )
 
         return keep
 
@@ -455,12 +528,20 @@ class VideoFile:
         video_stream = self._first_video_stream()
         if not video_stream:
             pp.error("No video stream found")
+            plan.actions.append(
+                PlanAction(label="Convert to H.265", applied=False, reason="no video stream")
+            )
             return
 
         if not settings.force and video_stream.codec_name.lower() in H265_CODECS:
             pp.warning(
                 "H265 ENCODE: Video already H.265 or VP9.",
                 details=["Run with `--force` to re-encode.", "Skipping"],
+            )
+            plan.actions.append(
+                PlanAction(
+                    label="Convert to H.265", applied=False, reason="already H.265/VP9; use --force"
+                )
             )
             return
 
@@ -469,6 +550,11 @@ class VideoFile:
         stream_duration = float(self.probe_box.duration or 0) or float(video_stream.duration or 0)
         if not stream_duration:
             pp.error("Could not calculate video duration")
+            plan.actions.append(
+                PlanAction(
+                    label="Convert to H.265", applied=False, reason="could not determine duration"
+                )
+            )
             return
 
         # Convert duration to minutes for bitrate calculation
@@ -505,7 +591,7 @@ class VideoFile:
                 "-bufsize:v:{n}",
                 f"{current_bitrate}k",
             ]
-        plan.substeps.append(f"{SYMBOL_CHECK} Convert to H.265")
+        plan.actions.append(PlanAction(label="Convert to H.265", applied=True))
 
     def _plan_vp9(self, plan: ConversionPlan) -> None:
         """Plan a VP9/WebM conversion, adapting audio and subtitles to the container.
@@ -520,6 +606,9 @@ class VideoFile:
         video_stream = self._first_video_stream()
         if not video_stream:
             pp.error("No video stream found")
+            plan.actions.append(
+                PlanAction(label="Convert to VP9", applied=False, reason="no video stream")
+            )
             return
 
         # Skip re-encoding if already in modern codec unless forced
@@ -528,10 +617,15 @@ class VideoFile:
                 "VP9 ENCODE: Video already H.265 or VP9.",
                 details=["Run with `--force` to re-encode.", "Skipping"],
             )
+            plan.actions.append(
+                PlanAction(
+                    label="Convert to VP9", applied=False, reason="already H.265/VP9; use --force"
+                )
+            )
             return
 
         if Path(settings.out_path).suffix != ".webm":
-            plan.substeps.append(
+            pp.info(
                 f"Converting to VP9, setting output to `{settings.out_path.with_suffix('.webm').name}`"
             )
             settings.out_path = settings.out_path.with_suffix(".webm")
@@ -556,11 +650,27 @@ class VideoFile:
                     pp.info(
                         f"Dropping image-based subtitle stream 0:{stream.source_index}; WebM only supports WebVTT"
                     )
+                    self._mark_subtitles_dropped(plan)
                     continue
             kept_streams.append(stream)
 
         plan.streams = kept_streams
-        plan.substeps.append(f"{SYMBOL_CHECK} Convert to vp9")
+        plan.actions.append(PlanAction(label="Convert to VP9", applied=True))
+
+    @staticmethod
+    def _mark_subtitles_dropped(plan: ConversionPlan) -> None:
+        """Correct the "Drop unwanted subtitles" action once VP9 drops an image subtitle.
+
+        `_plan_subtitle_streams` runs before VP9 adaptation and may have recorded
+        applied=False; a VP9-only drop makes that earlier outcome untruthful.
+
+        Args:
+            plan (ConversionPlan): The plan whose recorded action is updated in place.
+        """
+        for action in plan.actions:
+            if action.label == DROP_SUBTITLES_LABEL:
+                action.applied = True
+                action.reason = None
 
     def _plan_scale_to_1080p(self, plan: ConversionPlan) -> None:
         """Plan downscaling the video stream to 1080p.
@@ -571,11 +681,16 @@ class VideoFile:
         video_stream = self._first_video_stream()
         if not video_stream:
             pp.error("No video stream found")
+            plan.actions.append(
+                PlanAction(label="Convert to 1080p", applied=False, reason="no video stream")
+            )
             return
 
         # Skip downscaling if video is already 1080p or smaller, unless forced
         if not settings.force and (getattr(video_stream, "width", 0) or 0) <= 1920:  # noqa: PLR2004
-            plan.substeps.append(f"{SYMBOL_CHECK} No convert to 1080p needed")
+            plan.actions.append(
+                PlanAction(label="Convert to 1080p", applied=False, reason="source already ≤1080p")
+            )
             return
 
         # Scale every kept video stream, matching the old `-filter:v scale=...` (no index),
@@ -586,7 +701,7 @@ class VideoFile:
             if video_output.codec == "copy":
                 # Scaling requires an encode; None lets ffmpeg pick the container default
                 video_output.codec = None
-        plan.substeps.append(f"{SYMBOL_CHECK} Convert to 1080p")
+        plan.actions.append(PlanAction(label="Convert to 1080p", applied=True))
 
     def _build_plan(self) -> ConversionPlan:
         """Compose every requested operation into a single-pass conversion plan.
@@ -595,9 +710,10 @@ class VideoFile:
             ConversionPlan: The composed plan, ready to build one ffmpeg command.
         """
         plan = ConversionPlan()
-        plan.streams = (
-            self._plan_video_streams() + self._plan_audio_streams() + self._plan_subtitle_streams()
-        )
+        video = self._plan_video_streams()
+        audio = self._plan_audio_streams(plan)
+        subtitles = self._plan_subtitle_streams(plan)
+        plan.streams = video + audio + subtitles
 
         # Codec planners run before the scale planner so scaling only falls back to the
         # container default encoder when no explicit codec was requested.
@@ -610,16 +726,17 @@ class VideoFile:
 
         return plan
 
-    def clean(self) -> list[str]:
+    def clean(self) -> list[PlanAction]:
         """Apply every requested cleaning operation in a single ffmpeg pass.
 
         Compose stream selection, reordering, downmix, scaling, and codec conversion
         into one command so the file is decoded and written exactly once. Skip ffmpeg
-        entirely when the plan would change nothing.
+        entirely when the plan would change nothing. Report the operations considered,
+        up front, before the ffmpeg progress bar starts.
 
         Returns:
-            list[str]: Substep messages describing the outcome, for the caller to
-                display. Empty on a dry run, since the command is previewed instead.
+            list[PlanAction]: The plan's operations, applied or skipped, for the
+                caller to inspect.
 
         Raises:
             cappa.Exit: If the file has no video or no audio streams.
@@ -634,38 +751,26 @@ class VideoFile:
         plan = self._build_plan()
 
         needs_reorder = self._need_stream_reorder()
-        substeps = [
-            f"{SYMBOL_CHECK} Reorder streams"
-            if needs_reorder
-            else f"{SYMBOL_CHECK} No streams to reorder"
-        ]
-
-        if plan.is_noop(stream_count=len(self.all_streams)) and not needs_reorder:
-            return [*substeps, f"{SYMBOL_CHECK} No streams to process"]
-
-        title_flags = []
-        title_flags.append("drop original audio") if settings.drop_original_audio else None
-        title_flags.append("keep commentary") if settings.keep_commentary else None
-        title_flags.append("downmix to stereo") if settings.downmix_stereo else None
-
-        if any(stream.codec_type == CodecTypes.SUBTITLE for stream in plan.streams):
-            title_flags.append(
-                "keep subtitles",
-            ) if settings.keep_all_subtitles else title_flags.append("drop unwanted subtitles")
-            title_flags.append("keep local subtitles") if settings.keep_local_subtitles else None
-            title_flags.append("drop local subtitles") if settings.drop_local_subs else None
-
-        title = f"Process file ({', '.join(title_flags)})" if title_flags else "Process file"
-
-        run_result = self._run_ffmpeg(
-            plan.build_command(), title=title, suffix=plan.output_suffix, step="clean"
+        plan.actions.insert(
+            0,
+            PlanAction(
+                label="Reorder streams",
+                applied=needs_reorder,
+                reason=None if needs_reorder else "streams already in order",
+            ),
         )
-        if not run_result:  # Dry run previews the command instead of executing it
-            return []
 
-        substeps.append(f"{SYMBOL_CHECK} {title}")
-        substeps.extend(plan.substeps)
-        return substeps
+        debug = int(settings.get("verbosity", 0) or 0) >= 1
+        render_operations(plan.actions, debug=debug)
+
+        # Nothing to encode: the up-front render already reported "No changes needed".
+        if plan.is_noop(stream_count=len(self.all_streams)) and not needs_reorder:
+            return plan.actions
+
+        self._run_ffmpeg(
+            plan.build_command(), title="Processing", suffix=plan.output_suffix, step="clean"
+        )
+        return plan.actions
 
     def _language_for(self, media_id: MediaId) -> Lang | None:
         """Resolve a single media ID to the content's original language.
