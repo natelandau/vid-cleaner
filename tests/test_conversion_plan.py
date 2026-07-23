@@ -123,6 +123,36 @@ def test_is_noop_false_when_stream_dropped():
     assert plan.is_noop(stream_count=3) is False
 
 
+def test_is_noop_false_when_streams_reordered():
+    """Verify a plan that copies every stream but reorders them is not a no-op."""
+    # Given: three copy streams whose source_index order is not the identity mapping
+    plan = ConversionPlan(
+        streams=[
+            OutputStream(source_index=2, codec_type=CodecTypes.VIDEO),
+            OutputStream(source_index=1, codec_type=CodecTypes.AUDIO),
+            OutputStream(source_index=0, codec_type=CodecTypes.SUBTITLE),
+        ]
+    )
+
+    # When/Then: the plan is not a no-op for a 3-stream input
+    assert plan.is_noop(stream_count=3) is False
+
+
+def test_is_noop_false_when_source_index_duplicated():
+    """Verify a plan that duplicates a source index while dropping another is not a no-op."""
+    # Given: three copy streams whose source_index list duplicates index 0 and skips index 1
+    plan = ConversionPlan(
+        streams=[
+            OutputStream(source_index=0, codec_type=CodecTypes.VIDEO),
+            OutputStream(source_index=0, codec_type=CodecTypes.AUDIO),
+            OutputStream(source_index=2, codec_type=CodecTypes.SUBTITLE),
+        ]
+    )
+
+    # When/Then: the plan is not a no-op for a 3-stream input
+    assert plan.is_noop(stream_count=3) is False
+
+
 def test_is_noop_false_when_any_stream_encodes():
     """Verify an encode, filter, suffix change, or global arg defeats the no-op check."""
     # Given: full passthrough except a video encode

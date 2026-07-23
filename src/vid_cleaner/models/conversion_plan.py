@@ -65,13 +65,14 @@ class ConversionPlan:
             stream_count (int): Number of processable streams in the input file.
 
         Returns:
-            bool: True when every input stream is kept as a plain copy with no filters,
-                metadata, global args, or container change.
+            bool: True when every input stream is kept, in original order (identity
+                mapping), as a plain copy with no filters, metadata, global args, or
+                container change.
         """
         return (
             not self.global_args
             and self.output_suffix is None
-            and len(self.streams) == stream_count
+            and [stream.source_index for stream in self.streams] == list(range(stream_count))
             and all(
                 stream.codec == "copy"
                 and not stream.stream_filter
