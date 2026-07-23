@@ -86,6 +86,7 @@ class SettingsManager:
                 cast=bool,
             ),
             Validator("out_path", default=None),
+            Validator("verbosity", default=0, cast=int),
             Validator(
                 "radarr_url",
                 default="",
