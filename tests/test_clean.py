@@ -656,6 +656,66 @@ def test_convert_video(
         assert "Converting to VP9, setting output to `test_video.webm`" in output
 
 
+def test_clean_video_h265_skip_shown_in_debug_mode(
+    mocker,
+    mock_ffprobe_box,
+    mock_video_path,
+    capsys,
+    mock_ffmpeg,
+):
+    """Verify -vv reports a skipped --h265 request with its reason when already H.265."""
+    # Given: reference.json rewritten so the video stream is already HEVC
+    args = ["clean", "-vv", "--h265", str(mock_video_path)]
+    box = mock_ffprobe_box("reference.json")
+    box.streams[0].codec_name = "hevc"
+    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", return_value=box)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+
+    # When: running clean in debug mode with --h265 requested
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: the skipped H.265 conversion is reported with its reason
+    output = capsys.readouterr().out
+    assert exc_info.value.code == 0
+    assert "✖ Convert to H.265  (already H.265/VP9; use --force)" in output
+
+
+def test_clean_video_h265_skip_hidden_in_normal_mode(
+    mocker,
+    mock_ffprobe_box,
+    mock_video_path,
+    capsys,
+    mock_ffmpeg,
+):
+    """Verify normal mode (no -vv) hides the skipped --h265 request and its reason."""
+    # Given: reference.json rewritten so the video stream is already HEVC, and no -vv flag
+    args = ["clean", "--h265", str(mock_video_path)]
+    box = mock_ffprobe_box("reference.json")
+    box.streams[0].codec_name = "hevc"
+    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", return_value=box)
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+
+    # When: running clean in normal mode with --h265 requested
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: normal mode is genuinely active and the skipped operation is not shown
+    output = capsys.readouterr().out
+    assert exc_info.value.code == 0
+    assert settings.verbosity == 0
+    assert "✖ Convert to H.265" not in output
+    assert "already H.265/VP9; use --force" not in output
+
+
 def test_clean_multiple_files_use_distinct_output_paths(
     mocker,
     mock_ffprobe_box,
