@@ -40,6 +40,7 @@ from vid_cleaner.utils import (
     query_sonarr,
     query_tmdb,
     query_tmdb_by_id,
+    render_operations,
     run_ffprobe,
 )
 
@@ -701,16 +702,17 @@ class VideoFile:
 
         return plan
 
-    def clean(self) -> list[str]:
+    def clean(self) -> list[PlanAction]:
         """Apply every requested cleaning operation in a single ffmpeg pass.
 
         Compose stream selection, reordering, downmix, scaling, and codec conversion
         into one command so the file is decoded and written exactly once. Skip ffmpeg
-        entirely when the plan would change nothing.
+        entirely when the plan would change nothing. Report the operations considered,
+        up front, before the ffmpeg progress bar starts.
 
         Returns:
-            list[str]: Substep messages describing the outcome, for the caller to
-                display. Empty on a dry run, since the command is previewed instead.
+            list[PlanAction]: The plan's operations, applied or skipped, for the
+                caller to inspect.
 
         Raises:
             cappa.Exit: If the file has no video or no audio streams.
@@ -725,38 +727,26 @@ class VideoFile:
         plan = self._build_plan()
 
         needs_reorder = self._need_stream_reorder()
-        substeps = [
-            f"{SYMBOL_CHECK} Reorder streams"
-            if needs_reorder
-            else f"{SYMBOL_CHECK} No streams to reorder"
-        ]
-
-        if plan.is_noop(stream_count=len(self.all_streams)) and not needs_reorder:
-            return [*substeps, f"{SYMBOL_CHECK} No streams to process"]
-
-        title_flags = []
-        title_flags.append("drop original audio") if settings.drop_original_audio else None
-        title_flags.append("keep commentary") if settings.keep_commentary else None
-        title_flags.append("downmix to stereo") if settings.downmix_stereo else None
-
-        if any(stream.codec_type == CodecTypes.SUBTITLE for stream in plan.streams):
-            title_flags.append(
-                "keep subtitles",
-            ) if settings.keep_all_subtitles else title_flags.append("drop unwanted subtitles")
-            title_flags.append("keep local subtitles") if settings.keep_local_subtitles else None
-            title_flags.append("drop local subtitles") if settings.drop_local_subs else None
-
-        title = f"Process file ({', '.join(title_flags)})" if title_flags else "Process file"
-
-        run_result = self._run_ffmpeg(
-            plan.build_command(), title=title, suffix=plan.output_suffix, step="clean"
+        plan.actions.insert(
+            0,
+            PlanAction(
+                label="Reorder streams",
+                applied=needs_reorder,
+                reason=None if needs_reorder else "streams already in order",
+            ),
         )
-        if not run_result:  # Dry run previews the command instead of executing it
-            return []
 
-        substeps.append(f"{SYMBOL_CHECK} {title}")
-        substeps.extend(plan.substeps)
-        return substeps
+        debug = int(settings.get("verbosity", 0) or 0) >= 1
+        render_operations(plan.actions, debug=debug)
+
+        # Nothing to encode: the up-front render already reported "No changes needed".
+        if plan.is_noop(stream_count=len(self.all_streams)) and not needs_reorder:
+            return plan.actions
+
+        self._run_ffmpeg(
+            plan.build_command(), title="Processing", suffix=plan.output_suffix, step="clean"
+        )
+        return plan.actions
 
     def _language_for(self, media_id: MediaId) -> Lang | None:
         """Resolve a single media ID to the content's original language.

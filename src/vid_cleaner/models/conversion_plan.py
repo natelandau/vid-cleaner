@@ -65,14 +65,12 @@ class ConversionPlan:
             subtitles). Mapping order performs any stream reordering for free.
         global_args (list[str]): Output-wide args appended after per-stream options.
         output_suffix (str | None): Container suffix override (e.g. ".webm").
-        substeps (list[str]): Result-tree messages describing the applied operations.
         actions (list[PlanAction]): Cleaning operations the plan considered.
     """
 
     streams: list[OutputStream] = field(default_factory=list)
     global_args: list[str] = field(default_factory=list)
     output_suffix: str | None = None
-    substeps: list[str] = field(default_factory=list)
     actions: list[PlanAction] = field(default_factory=list)
 
     def is_noop(self, stream_count: int) -> bool:

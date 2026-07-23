@@ -64,14 +64,14 @@ def main(clean_cmd: CleanCommand) -> None:
     for video_file in coerce_video_files(clean_cmd.files):
         settings.out_path = out_path_override or video_file.path
 
-        # Print the video name first so live progress bars render beneath it, then collect the
-        # run's outcome and render the result tree once the file is done. The render runs in
-        # `finally` so completed steps are still shown if the operation raises.
+        # Print the video name first so live progress bars and clean()'s up-front operation
+        # tree render beneath it. Only the write-output messages are collected here and
+        # rendered in `finally`, so they still show if `write_output()` raises.
         pp.info(f"⇨ {video_file.path.name}")
         substeps: list[str] = []
 
         try:
-            substeps.extend(video_file.clean())
+            video_file.clean()
             if not settings.dryrun:
                 substeps.extend(write_output(video_file))
         finally:

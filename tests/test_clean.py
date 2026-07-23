@@ -76,43 +76,43 @@ def test_clean_out_with_multiple_files_errors(debug, tmp_path, capsys) -> None:
         pytest.param(
             [],
             ["-map 0:0 -map 0:1 -map 0:2 -map 0:4"],
-            "✔ Process file",
+            ["✔ Drop unwanted audio", "✔ Drop unwanted subtitles"],
             id="Defaults (only keep local audio,no commentary)",
         ),
         pytest.param(
             ["--downmix"],
             ["-map 0:0 -map 0:1 -map 0:2 -map 0:4"],
-            "✔ Process file (downmix to stereo)",
+            ["✖ Downmix to stereo  (stereo track already exists; use --force)"],
             id="Don't convert audio to stereo when stereo exists",
         ),
         pytest.param(
             ["--keep-commentary"],
             ["-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:5"],
-            "✔ Process file (keep commentary)",
+            ["✔ Drop unwanted audio"],
             id="Keep commentary",
         ),
         pytest.param(
             ["--drop-original"],
             ["-map 0:0 -map 0:1 -map 0:2 -map 0:4"],
-            "✔ Process file (drop original audio)",
+            ["✔ Drop unwanted audio"],
             id="Keep local language from config even when dropped",
         ),
         pytest.param(
             ["--langs", "fr,es"],
             ["-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4 -map 0:8"],
-            "✔ Process file (drop unwanted subtitles)",
+            ["✔ Drop unwanted subtitles"],
             id="Keep specified languages",
         ),
         pytest.param(
             ["--keep-subs"],
             ["-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:6 -map 0:7 -map 0:8"],
-            "✔ Process file (keep subtitles)",
+            ["✖ Drop unwanted subtitles  (--keep-all-subtitles set)"],
             id="Keep all subtitles",
         ),
         pytest.param(
             ["--keep-local-subs"],
             ["-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:6"],
-            "✔ Process file (drop unwanted subtitles, keep local subtitles)",
+            ["✔ Drop unwanted subtitles"],
             id="Keep local subtitles",
         ),
     ],
@@ -157,10 +157,12 @@ def test_stream_processing(
     for fragment in command_expected:
         assert fragment in command
 
-    # And: Success messages are displayed
+    # And: Success messages are displayed. The fixture's video stream is already first, so
+    # under -vv the reorder action shows skipped rather than absent.
     assert exc_info.value.code == 0
-    assert "✔ No streams to reorder" in output
-    assert process_output in output
+    assert "✖ Reorder streams  (streams already in order)" in output
+    for fragment in process_output:
+        assert fragment in output
     assert "cleaned_video.mkv" in output
 
 
@@ -208,7 +210,7 @@ def test_clean_video_foreign_language_keeps_und_subtitle(
     assert "-map 0:6" in command
     assert "-map 0:7" in command
     assert "-map 0:8" not in command
-    assert "✔ No streams to reorder" in output
+    assert "✖ Reorder streams  (streams already in order)" in output
     assert "cleaned_video.mkv" in output
 
 
@@ -218,19 +220,19 @@ def test_clean_video_foreign_language_keeps_und_subtitle(
         pytest.param(
             [],
             ["-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4 -map 0:6"],
-            "✔ Process file (drop unwanted subtitles)",
+            ["✔ Drop unwanted subtitles"],
             id="Defaults keep local and original audio, local subs",
         ),
         pytest.param(
             ["--drop-original"],
             ["-map 0:0 -map 0:1 -map 0:2 -map 0:4 -map 0:6"],
-            "✔ Process file (drop original audio, drop unwanted subtitles)",
+            ["✔ Drop unwanted audio", "✔ Drop unwanted subtitles"],
             id="Drop original audio (keeps local audio)",
         ),
         pytest.param(
             ["--drop-local-subs"],
             ["-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4"],
-            "✔ Process file",
+            ["✔ Drop unwanted subtitles"],
             id="Drop local subs",
         ),
     ],
@@ -273,12 +275,14 @@ def test_clean_video_foreign_language(
     args, _ = mock_ffmpeg.call_args
     command = " ".join(args[0])
 
-    # AND verify the command output indicates successful processing
+    # AND verify the command output indicates successful processing. The fixture's video
+    # stream is already first, so under -vv the reorder action shows skipped rather than absent.
     assert exc_info.value.code == 0
     for fragment in command_expected:
         assert fragment in command
-    assert "✔ No streams to reorder" in output
-    assert process_output in output
+    assert "✖ Reorder streams  (streams already in order)" in output
+    for fragment in process_output:
+        assert fragment in output
     assert "cleaned_video.mkv" in output
 
 
@@ -288,7 +292,7 @@ def test_clean_video_foreign_language(
         pytest.param(
             [],
             ["-map 0:0 -map 0:1 -map 0:2"],
-            "✔ Process file",
+            "✔ Drop unwanted audio",
             id="Defaults, drops commentary",
         ),
         pytest.param(
@@ -301,7 +305,7 @@ def test_clean_video_foreign_language(
                 "-ac:a:2 2 -b:a:2 256k -ar:a:2 48000",
                 "-metadata:s:a:2 title=2.0",
             ],
-            "✔ Process file (downmix to stereo)",
+            "✔ Downmix to stereo",
             id="Defaults",
         ),
     ],
@@ -346,9 +350,10 @@ def test_clean_video_downmix(
     for fragment in command_expected:
         assert fragment in command
 
-    # And: Success messages are displayed
+    # And: Success messages are displayed. The fixture's video stream is already first, so
+    # under -vv the reorder action shows skipped rather than absent.
     assert exc_info.value.code == 0
-    assert "✔ No streams to reorder" in output
+    assert "✖ Reorder streams  (streams already in order)" in output
     assert process_output in output
     assert "cleaned_video.mkv" in output
 
@@ -392,7 +397,7 @@ def test_clean_video_downmix_stereo_commentary_kept(
     # And: The commentary track is kept and the file is processed
     assert exc_info.value.code == 0
     assert "-map 0:2" in command
-    assert "✔ Process file (downmix to stereo)" in output
+    assert "✔ Downmix to stereo" in output
 
 
 def test_clean_video_downmix_unmapped_channel_count(
@@ -420,10 +425,12 @@ def test_clean_video_downmix_unmapped_channel_count(
     with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
-    # Then: It completes successfully without raising an unexpected error
+    # Then: It completes successfully without raising an unexpected error. Under -vv every
+    # skipped operation is shown (none applied), not the normal-mode "No changes needed" line.
     assert exc_info.value.code == 0
     output = capsys.readouterr().out
-    assert "No streams to process" in output
+    assert "✖ Reorder streams  (streams already in order)" in output
+    assert "✖ Downmix to stereo  (no surround source to downmix)" in output
 
 
 def test_clean_video_downmix_dialogue_forward_filter(
@@ -497,7 +504,7 @@ def test_clean_video_downmix_atmos(
     assert "-ac:a:1 2" in command
     assert "pan=stereo|FL=0.8*FC" in command
     assert exc_info.value.code == 0
-    assert "✔ Process file (downmix to stereo)" in output
+    assert "✔ Downmix to stereo" in output
 
 
 def test_clean_video_downmix_does_not_clobber_kept_stream(
@@ -566,12 +573,11 @@ def test_clean_reorganize_streams(
     assert exc_info.value.code == 0
     assert "-map 0:2 -map 0:1 -map 0:3" in command
     assert "✔ Reorder streams" in output
-    assert "✔ Process file" in output
     assert "cleaned_video.mkv" in output
 
 
 @pytest.mark.parametrize(
-    ("args", "command_expected"),
+    ("args", "command_expected", "conversion_output"),
     [
         pytest.param(
             ["--h265"],
@@ -583,6 +589,7 @@ def test_clean_reorganize_streams(
                 "-c:a:1 copy",
                 "-c:a:2 copy",
             ],
+            "✔ Convert to H.265",
             id="Convert to h265",
         ),
         pytest.param(
@@ -594,6 +601,7 @@ def test_clean_reorganize_streams(
                 "-c:a:0 libvorbis",
                 "-dn -map_chapters -1",
             ],
+            "✔ Convert to VP9",
             id="Convert to vp9",
         ),
     ],
@@ -608,6 +616,7 @@ def test_convert_video(
     debug,
     args,
     command_expected,
+    conversion_output,
 ):
     """Verify codec conversion happens in the same single ffmpeg pass as stream selection."""
     # Given: reference.json probe data and a conversion flag
@@ -629,6 +638,7 @@ def test_convert_video(
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
+    # debug(output, "output")
 
     # Then: ffmpeg runs exactly once with selection and conversion combined
     mock_ffmpeg.assert_called_once()
@@ -637,12 +647,11 @@ def test_convert_video(
     for fragment in command_expected:
         assert fragment in command
 
-    # And: the result tree itemizes the conversion. Per-operation itemization (e.g.
-    # "Convert to H.265") now lives on plan.actions; rendering it in the CLI tree is
-    # wired up in a later task (render_operations is not yet called from clean()).
+    # And: the result tree itemizes the conversion, proving the codec change ran alongside
+    # stream selection in the same pass
     assert exc_info.value.code == 0
-    assert "✔ No streams to reorder" in output
-    assert "✔ Process file" in output
+    assert "✖ Reorder streams  (streams already in order)" in output
+    assert conversion_output in output
     if "--vp9" in args:
         assert "Converting to VP9, setting output to `test_video.webm`" in output
 
@@ -743,11 +752,13 @@ def test_clean_renders_completed_steps_on_error(
     with pytest.raises(RuntimeError):
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
-    # Then: the substeps produced by the successful clean() are still rendered, proving
-    # the `finally: render_substeps(substeps)` path in main() actually renders completed work
+    # Then: the operations render up front, before the failing write, proving the CLI
+    # reports what actually happened even when `write_output()` raises. reference.json's
+    # video stream is already first, so reorder is skipped and H.265 conversion is the
+    # operation that proves clean() ran to completion.
     output = capsys.readouterr().out
-    assert "✔ Process file" in output
-    assert "✔ No streams to reorder" in output
+    assert "✔ Convert to H.265" in output
+    assert "✖ Reorder streams  (streams already in order)" in output
 
 
 def test_clean_video_downmix_skip_when_stereo_exists(
@@ -827,7 +838,7 @@ def test_clean_video_downmix_force_recreates_stereo(
     # reference.json's English subtitle matches langs_to_keep and the original language,
     # so it is dropped rather than kept, and the title carries no subtitle flag
     assert "-map 0:6" not in command
-    assert "✔ Process file (downmix to stereo)" in output
+    assert "✔ Downmix to stereo" in output
 
 
 def test_clean_video_downmix_force_recreates_from_multiple_stereo(
@@ -868,7 +879,7 @@ def test_clean_video_downmix_force_recreates_from_multiple_stereo(
     assert "-map 0:1 -map 0:1" in command
     assert "-c:a:1 aac" in command
     assert "-ac:a:1 2 -b:a:1 256k" in command
-    assert "✔ Process file (downmix to stereo)" in output
+    assert "✔ Downmix to stereo" in output
 
 
 def test_clean_video_downmix_force_no_surround_keeps_stereo(
@@ -898,10 +909,12 @@ def test_clean_video_downmix_force_no_surround_keeps_stereo(
 
     output = capsys.readouterr().out
 
-    # Then: The stereo track is kept (all streams pass through) and the user is notified
+    # Then: The stereo track is kept (all streams pass through) and the user is notified.
+    # Under -vv every skipped operation is shown (none applied), including the downmix
+    # itself, rather than the normal-mode "No changes needed" line.
     assert exc_info.value.code == 0
     assert "No surround source to recreate stereo" in output
-    assert "No streams to process" in output
+    assert "✖ Downmix to stereo  (no surround source to downmix)" in output
 
 
 def test_clean_video_downmix_force_noop_without_existing_stereo(
@@ -939,7 +952,7 @@ def test_clean_video_downmix_force_noop_without_existing_stereo(
     assert "-c:a:2 aac" in command
     assert "-ac:a:2 2 -b:a:2 256k" in command
     assert "-filter:a:2" in command
-    assert "✔ Process file (downmix to stereo)" in output
+    assert "✔ Downmix to stereo" in output
 
 
 # ---------------------------------------------------------------------------

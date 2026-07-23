@@ -382,11 +382,11 @@ def test_clean_noop_skips_ffmpeg(make_video, mock_ffmpeg):
     video = make_video("unmapped_channels.json")
 
     # When: cleaning
-    substeps = video.clean()
+    result = video.clean()
 
-    # Then: ffmpeg never runs and the no-op substeps are returned
+    # Then: ffmpeg never runs and no action was applied
     mock_ffmpeg.assert_not_called()
-    assert any("No streams to process" in step for step in substeps)
+    assert all(not action.applied for action in result)
 
 
 def test_drop_audio_records_applied_when_streams_dropped(make_video):
