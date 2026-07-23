@@ -416,15 +416,8 @@ class VideoFile:
         Returns:
             Box | None: The first non-thumbnail video stream, or None when absent.
         """
-        return next(
-            (
-                stream
-                for stream in self.probe_box.streams
-                if stream.codec_type == CodecTypes.VIDEO
-                and stream.codec_name.lower() not in EXCLUDED_VIDEO_CODECS
-            ),
-            None,
-        )
+        # video_streams already applies the non-thumbnail filter and is memoized.
+        return self.video_streams[0] if self.video_streams else None
 
     def _estimate_cleaned_size_mb(self, mapped_indices: set[int], duration: float) -> float:
         """Estimate the input size in megabytes after dropped streams are removed.
@@ -498,18 +491,20 @@ class VideoFile:
         min_bitrate = int(current_bitrate * 0.7)
         max_bitrate = int(current_bitrate * 1.3)
 
-        video_output = next(s for s in plan.streams if s.codec_type == CodecTypes.VIDEO)
-        video_output.codec = "libx265"
-        video_output.extra_args = [
-            "-b:v:{n}",
-            f"{target_bitrate}k",
-            "-minrate:v:{n}",
-            f"{min_bitrate}k",
-            "-maxrate:v:{n}",
-            f"{max_bitrate}k",
-            "-bufsize:v:{n}",
-            f"{current_bitrate}k",
-        ]
+        # Encode every kept video stream, matching the old `-c:v libx265` (no index),
+        # which applied to all video streams, not just the first.
+        for video_output in [s for s in plan.streams if s.codec_type == CodecTypes.VIDEO]:
+            video_output.codec = "libx265"
+            video_output.extra_args = [
+                "-b:v:{n}",
+                f"{target_bitrate}k",
+                "-minrate:v:{n}",
+                f"{min_bitrate}k",
+                "-maxrate:v:{n}",
+                f"{max_bitrate}k",
+                "-bufsize:v:{n}",
+                f"{current_bitrate}k",
+            ]
         plan.substeps.append(f"{SYMBOL_CHECK} Convert to H.265")
 
     def _plan_vp9(self, plan: ConversionPlan) -> None:
@@ -583,12 +578,14 @@ class VideoFile:
             plan.substeps.append(f"{SYMBOL_CHECK} No convert to 1080p needed")
             return
 
-        video_output = next(s for s in plan.streams if s.codec_type == CodecTypes.VIDEO)
-        # Use -2 for height to maintain aspect ratio while ensuring even dimensions for compatibility
-        video_output.stream_filter = "scale=width=1920:height=-2"
-        if video_output.codec == "copy":
-            # Scaling requires an encode; None lets ffmpeg pick the container default
-            video_output.codec = None
+        # Scale every kept video stream, matching the old `-filter:v scale=...` (no index),
+        # which applied to all video streams, not just the first.
+        for video_output in [s for s in plan.streams if s.codec_type == CodecTypes.VIDEO]:
+            # Use -2 for height to maintain aspect ratio while ensuring even dimensions for compatibility
+            video_output.stream_filter = "scale=width=1920:height=-2"
+            if video_output.codec == "copy":
+                # Scaling requires an encode; None lets ffmpeg pick the container default
+                video_output.codec = None
         plan.substeps.append(f"{SYMBOL_CHECK} Convert to 1080p")
 
     def _build_plan(self) -> ConversionPlan:

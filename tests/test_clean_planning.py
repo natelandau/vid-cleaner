@@ -134,6 +134,39 @@ def test_build_plan_1080p_scales_and_forces_encode(make_video):
     assert "✔ Convert to 1080p" in plan.substeps
 
 
+def test_build_plan_h265_encodes_every_video_stream(make_video):
+    """Verify --h265 encodes all video streams, not just the first."""
+    # Given: a file with two real (non-thumbnail) video streams and --h265
+    settings.update({"h265": True})
+    video = make_video("multi_video.json")
+    video.temp_file.path.write_bytes(b"0" * 1_000_000)
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: both video streams are encoded to libx265 with bitrate args, none left as a copy
+    video_streams = [s for s in plan.streams if s.codec_type == CodecTypes.VIDEO]
+    assert len(video_streams) == 2
+    assert all(s.codec == "libx265" for s in video_streams)
+    assert all(s.extra_args and s.extra_args[0] == "-b:v:{n}" for s in video_streams)
+
+
+def test_build_plan_1080p_scales_every_video_stream(make_video):
+    """Verify --1080p scales all video streams, not just the first."""
+    # Given: a file with two 4K video streams and --1080p
+    settings.update({"video_1080": True})
+    video = make_video("multi_video.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: both video streams carry the scale filter and drop the copy codec
+    video_streams = [s for s in plan.streams if s.codec_type == CodecTypes.VIDEO]
+    assert len(video_streams) == 2
+    assert all(s.stream_filter == "scale=width=1920:height=-2" for s in video_streams)
+    assert all(s.codec is None for s in video_streams)
+
+
 def test_build_plan_1080p_and_h265_single_encode(make_video, tmp_path):
     """Verify --1080p --h265 yields one libx265 encode with the scale filter attached."""
     # Given: a UHD source with both conversion flags
