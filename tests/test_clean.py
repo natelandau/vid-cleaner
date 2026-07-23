@@ -30,7 +30,6 @@ def set_default_settings(tmp_path, mocker):
             "drop_local_subs": False,
             "keep_all_subtitles": False,
             "drop_original_audio": False,
-            "save_each_step": False,
         }
     )
 
