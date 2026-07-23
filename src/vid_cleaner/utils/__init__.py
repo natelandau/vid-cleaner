@@ -1,7 +1,7 @@
 """Shared utilities."""
 
 from .api_utils import query_radarr, query_sonarr, query_tmdb, query_tmdb_by_id
-from .console import render_substeps
+from .console import render_operations, render_substeps
 from .ffmpeg_utils import channels_to_layout, get_probe_as_box, run_ffprobe
 from .media_ids import MediaId, find_media_ids
 
@@ -26,6 +26,7 @@ __all__ = [
     "query_sonarr",
     "query_tmdb",
     "query_tmdb_by_id",
+    "render_operations",
     "render_substeps",
     "resolve_out_path_override",
     "run_ffprobe",

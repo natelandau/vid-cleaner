@@ -93,6 +93,7 @@ class Resolution:
 
 
 SYMBOL_CHECK = "✔"
+SYMBOL_CROSS = "✖"  # Marks a requested operation that was skipped, in debug output
 TREE_BRANCH = "├─"  # Connector for a non-final child line in faked step output
 TREE_LAST = "└─"  # Connector for the final child line in faked step output
 COMMENTARY_STREAM_TITLE_REGEX = r"commentary|sdh|description"
