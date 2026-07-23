@@ -7,9 +7,23 @@ import pytest
 from box import Box
 from rich.console import Console
 
+from vid_cleaner import settings
 from vid_cleaner.utils import get_probe_as_box
 
 console = Console()
+
+
+@pytest.fixture(autouse=True)
+def _reset_verbosity():
+    """Reset settings.verbosity to its default before and after every test.
+
+    `settings` is a process-wide singleton, so a test that persists a CLI
+    verbosity flag (e.g. via `config_subcommand`) would otherwise leak that
+    value into unrelated tests run later in the same session.
+    """
+    settings.update({"verbosity": 0})
+    yield
+    settings.update({"verbosity": 0})
 
 
 @pytest.fixture

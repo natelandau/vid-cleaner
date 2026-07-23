@@ -10,14 +10,6 @@ from vid_cleaner.utils import copy_to_output
 from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 
 
-@pytest.fixture
-def restore_verbosity():
-    """Restore settings.verbosity after the test to avoid leaking state onto the shared singleton."""
-    original_verbosity = settings.verbosity
-    yield
-    settings.update({"verbosity": original_verbosity})
-
-
 @pytest.mark.parametrize(
     ("subcommand"),
     [("inspect"), ("clip"), ("clean"), ("cache")],
@@ -43,7 +35,7 @@ def test_vidcleaner_cli_help(capsys, subcommand: str) -> None:
     [("-v", 1), ("-vv", 2)],
 )
 def test_config_subcommand_persists_verbosity(
-    capsys, restore_verbosity, verbosity_flag: str, expected_verbosity: int
+    capsys, verbosity_flag: str, expected_verbosity: int
 ) -> None:
     """Verify the CLI verbosity flag is persisted onto settings.verbosity."""
     # Given: CLI arguments requesting a verbosity level via the cache subcommand
