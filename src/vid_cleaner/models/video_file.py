@@ -31,7 +31,7 @@ from vid_cleaner.constants import (
     CodecTypes,
     VideoTrait,
 )
-from vid_cleaner.models.conversion_plan import ConversionPlan, OutputStream
+from vid_cleaner.models.conversion_plan import ConversionPlan, OutputStream, PlanAction
 from vid_cleaner.utils import (
     MediaId,
     find_media_ids,
@@ -455,12 +455,20 @@ class VideoFile:
         video_stream = self._first_video_stream()
         if not video_stream:
             pp.error("No video stream found")
+            plan.actions.append(
+                PlanAction(label="Convert to H.265", applied=False, reason="no video stream")
+            )
             return
 
         if not settings.force and video_stream.codec_name.lower() in H265_CODECS:
             pp.warning(
                 "H265 ENCODE: Video already H.265 or VP9.",
                 details=["Run with `--force` to re-encode.", "Skipping"],
+            )
+            plan.actions.append(
+                PlanAction(
+                    label="Convert to H.265", applied=False, reason="already H.265/VP9; use --force"
+                )
             )
             return
 
@@ -469,6 +477,11 @@ class VideoFile:
         stream_duration = float(self.probe_box.duration or 0) or float(video_stream.duration or 0)
         if not stream_duration:
             pp.error("Could not calculate video duration")
+            plan.actions.append(
+                PlanAction(
+                    label="Convert to H.265", applied=False, reason="could not determine duration"
+                )
+            )
             return
 
         # Convert duration to minutes for bitrate calculation
@@ -505,7 +518,7 @@ class VideoFile:
                 "-bufsize:v:{n}",
                 f"{current_bitrate}k",
             ]
-        plan.substeps.append(f"{SYMBOL_CHECK} Convert to H.265")
+        plan.actions.append(PlanAction(label="Convert to H.265", applied=True))
 
     def _plan_vp9(self, plan: ConversionPlan) -> None:
         """Plan a VP9/WebM conversion, adapting audio and subtitles to the container.
@@ -520,6 +533,9 @@ class VideoFile:
         video_stream = self._first_video_stream()
         if not video_stream:
             pp.error("No video stream found")
+            plan.actions.append(
+                PlanAction(label="Convert to VP9", applied=False, reason="no video stream")
+            )
             return
 
         # Skip re-encoding if already in modern codec unless forced
@@ -528,10 +544,15 @@ class VideoFile:
                 "VP9 ENCODE: Video already H.265 or VP9.",
                 details=["Run with `--force` to re-encode.", "Skipping"],
             )
+            plan.actions.append(
+                PlanAction(
+                    label="Convert to VP9", applied=False, reason="already H.265/VP9; use --force"
+                )
+            )
             return
 
         if Path(settings.out_path).suffix != ".webm":
-            plan.substeps.append(
+            pp.info(
                 f"Converting to VP9, setting output to `{settings.out_path.with_suffix('.webm').name}`"
             )
             settings.out_path = settings.out_path.with_suffix(".webm")
@@ -560,7 +581,7 @@ class VideoFile:
             kept_streams.append(stream)
 
         plan.streams = kept_streams
-        plan.substeps.append(f"{SYMBOL_CHECK} Convert to vp9")
+        plan.actions.append(PlanAction(label="Convert to VP9", applied=True))
 
     def _plan_scale_to_1080p(self, plan: ConversionPlan) -> None:
         """Plan downscaling the video stream to 1080p.
@@ -571,11 +592,16 @@ class VideoFile:
         video_stream = self._first_video_stream()
         if not video_stream:
             pp.error("No video stream found")
+            plan.actions.append(
+                PlanAction(label="Convert to 1080p", applied=False, reason="no video stream")
+            )
             return
 
         # Skip downscaling if video is already 1080p or smaller, unless forced
         if not settings.force and (getattr(video_stream, "width", 0) or 0) <= 1920:  # noqa: PLR2004
-            plan.substeps.append(f"{SYMBOL_CHECK} No convert to 1080p needed")
+            plan.actions.append(
+                PlanAction(label="Convert to 1080p", applied=False, reason="source already ≤1080p")
+            )
             return
 
         # Scale every kept video stream, matching the old `-filter:v scale=...` (no index),
@@ -586,7 +612,7 @@ class VideoFile:
             if video_output.codec == "copy":
                 # Scaling requires an encode; None lets ffmpeg pick the container default
                 video_output.codec = None
-        plan.substeps.append(f"{SYMBOL_CHECK} Convert to 1080p")
+        plan.actions.append(PlanAction(label="Convert to 1080p", applied=True))
 
     def _build_plan(self) -> ConversionPlan:
         """Compose every requested operation into a single-pass conversion plan.

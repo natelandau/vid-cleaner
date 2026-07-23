@@ -100,7 +100,23 @@ def test_build_plan_h265_sets_video_codec_and_bitrates(make_video, tmp_path):
     video_stream = plan.streams[0]
     assert video_stream.codec == "libx265"
     assert video_stream.extra_args[0] == "-b:v:{n}"
-    assert "✔ Convert to H.265" in plan.substeps
+    h265_action = next(a for a in plan.actions if a.label == "Convert to H.265")
+    assert h265_action.applied is True
+
+
+def test_h265_records_applied_action(make_video):
+    """Verify --h265 records an applied action when the encode runs."""
+    # Given: reference.json (h264 video) with --h265 and a 1 MB input file
+    settings.update({"h265": True})
+    video = make_video("reference.json")
+    video.temp_file.path.write_bytes(b"0" * 1_000_000)
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the recorded action is applied
+    h265_action = next(a for a in plan.actions if a.label == "Convert to H.265")
+    assert h265_action.applied is True
 
 
 def test_build_plan_h265_skips_when_already_h265(make_video):
@@ -113,9 +129,26 @@ def test_build_plan_h265_skips_when_already_h265(make_video):
     # When: building the plan
     plan = video._build_plan()  # noqa: SLF001
 
-    # Then: the video stream stays a copy and no H.265 substep is recorded
+    # Then: the video stream stays a copy and no applied H.265 action is recorded
     assert plan.streams[0].codec == "copy"
-    assert "✔ Convert to H.265" not in plan.substeps
+    assert not any(a.label == "Convert to H.265" and a.applied for a in plan.actions)
+
+
+def test_h265_records_skip_reason_when_already_h265(make_video):
+    """Verify --h265 without --force records a skip reason pointing to --force."""
+    # Given: reference.json rewritten so the video codec is hevc
+    settings.update({"h265": True})
+    video = make_video("reference.json")
+    video.probe_box.streams[0].codec_name = "hevc"
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the recorded action is skipped with a reason pointing to --force
+    h265_action = next(a for a in plan.actions if a.label == "Convert to H.265")
+    assert h265_action.applied is False
+    assert h265_action.reason is not None
+    assert "use --force" in h265_action.reason
 
 
 def test_build_plan_1080p_scales_and_forces_encode(make_video):
@@ -131,7 +164,24 @@ def test_build_plan_1080p_scales_and_forces_encode(make_video):
     video_stream = plan.streams[0]
     assert video_stream.stream_filter == "scale=width=1920:height=-2"
     assert video_stream.codec is None
-    assert "✔ Convert to 1080p" in plan.substeps
+    scale_action = next(a for a in plan.actions if a.label == "Convert to 1080p")
+    assert scale_action.applied is True
+
+
+def test_scale_records_skip_reason_when_already_1080p(make_video):
+    """Verify --1080p on an already-1080p source records a skip reason."""
+    # Given: reference.json (1080p H264 video) and --1080p
+    settings.update({"video_1080": True})
+    video = make_video("reference.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the recorded action is skipped with a reason naming 1080p
+    scale_action = next(a for a in plan.actions if a.label == "Convert to 1080p")
+    assert scale_action.applied is False
+    assert scale_action.reason is not None
+    assert "1080" in scale_action.reason
 
 
 def test_build_plan_h265_encodes_every_video_stream(make_video):
