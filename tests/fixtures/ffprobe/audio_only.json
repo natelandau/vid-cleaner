@@ -1,0 +1,28 @@
+// English stereo audio with no video streams
+{
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "aac",
+            "codec_type": "audio",
+            "channels": 2,
+            "bit_rate": "192000",
+            "duration": "600.000000",
+            "tags": {
+                "language": "eng",
+                "BPS": "192000"
+            }
+        }
+    ],
+    "format": {
+        "filename": "audio_only.mka",
+        "nb_streams": 1,
+        "format_name": "matroska,webm",
+        "duration": "600.000000",
+        "size": "14400000",
+        "bit_rate": "192000",
+        "tags": {
+            "title": "Audio Only Test"
+        }
+    }
+}

@@ -623,7 +623,17 @@ class VideoFile:
         Returns:
             list[str]: Substep messages describing the outcome, for the caller to
                 display. Empty on a dry run, since the command is previewed instead.
+
+        Raises:
+            cappa.Exit: If the file has no video or no audio streams.
         """
+        if not self.video_streams:
+            pp.error("No video streams found")
+            raise cappa.Exit(code=1)
+        if not self.audio_streams:
+            pp.error("No audio streams found")
+            raise cappa.Exit(code=1)
+
         plan = self._build_plan()
 
         needs_reorder = self._need_stream_reorder()

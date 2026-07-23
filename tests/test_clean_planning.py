@@ -3,6 +3,7 @@
 
 from pathlib import Path
 
+import cappa
 import pytest
 from iso639 import Lang
 
@@ -265,6 +266,30 @@ def test_estimate_cleaned_size_subtracts_dropped_streams(make_video):
 
     # Then: 640000/8 * 60 = 4.8 MB is subtracted from the 10 MB file
     assert size_mb == pytest.approx(5.2, rel=0.01)
+
+
+def test_clean_no_video_streams_raises(make_video):
+    """Verify clean() rejects a file with no video streams before doing any work."""
+    # Given: audio_only.json (one audio stream, zero video streams)
+    video = make_video("audio_only.json")
+
+    # When: cleaning
+    # Then: cappa.Exit is raised with code 1
+    with pytest.raises(cappa.Exit) as exc_info:
+        video.clean()
+    assert exc_info.value.code == 1
+
+
+def test_clean_no_audio_streams_raises(make_video):
+    """Verify clean() rejects a file with no audio streams before doing any work."""
+    # Given: video_only.json (one video stream, zero audio streams)
+    video = make_video("video_only.json")
+
+    # When: cleaning
+    # Then: cappa.Exit is raised with code 1
+    with pytest.raises(cappa.Exit) as exc_info:
+        video.clean()
+    assert exc_info.value.code == 1
 
 
 def test_clean_noop_skips_ffmpeg(make_video, mock_ffmpeg):
