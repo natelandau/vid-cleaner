@@ -729,23 +729,28 @@ def test_clean_multiple_files_overwrite_each_in_place(
 def test_clean_renders_completed_steps_on_error(
     mocker, mock_ffprobe_box, mock_ffmpeg, capsys, mock_video_path
 ) -> None:
-    """Verify the result tree is still rendered when the conversion raises."""
-    # Given: mocked metadata and a conversion that fails
-    args = ["clean", "--h265", str(mock_video_path)]
+    """Verify steps completed by a successful clean() are still rendered when the write fails."""
+    # Given: a clean() that succeeds and produces substeps, but the final write raises
+    args = ["clean", "-vv", "--h265", str(mock_video_path)]
     mocker.patch(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
     )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
-    mocker.patch.object(VideoFile, "_run_ffmpeg", autospec=True, side_effect=RuntimeError("boom"))
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=RuntimeError("boom"),
+    )
 
-    # When: running clean and the ffmpeg pass raises
+    # When: running clean and the output write raises after processing completes
     with pytest.raises(RuntimeError):
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
-    # Then: the per-file header was printed before the failure
+    # Then: the substeps produced by the successful clean() are still rendered, proving
+    # the `finally: render_substeps(substeps)` path in main() actually renders completed work
     output = capsys.readouterr().out
-    assert "⇨ test_video.mp4" in output
+    assert "✔ Process file" in output
+    assert "✔ No streams to reorder" in output
 
 
 def test_clean_video_downmix_skip_when_stereo_exists(
