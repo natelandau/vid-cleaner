@@ -5,6 +5,7 @@ from pathlib import Path
 import cappa
 import pytest
 
+from vid_cleaner import settings
 from vid_cleaner.utils import copy_to_output
 from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 
@@ -27,6 +28,26 @@ def test_vidcleaner_cli_help(capsys, subcommand: str) -> None:
     assert "Usage: vidcleaner" in output
     assert "--help" in output
     assert " [-v]" in output
+
+
+@pytest.mark.parametrize(
+    ("verbosity_flag", "expected_verbosity"),
+    [("-v", 1), ("-vv", 2)],
+)
+def test_config_subcommand_persists_verbosity(
+    capsys, verbosity_flag: str, expected_verbosity: int
+) -> None:
+    """Verify the CLI verbosity flag is persisted onto settings.verbosity."""
+    # Given: CLI arguments requesting a verbosity level via the cache subcommand
+    args = ["cache", verbosity_flag]
+
+    # When: invoking the CLI with config_subcommand as a dependency
+    with pytest.raises(cappa.Exit):
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: the computed verbosity from the CLI flag is persisted onto settings
+    capsys.readouterr()
+    assert settings.verbosity == expected_verbosity
 
 
 def test_copy_to_output_backs_up_existing(tmp_path: Path) -> None:
