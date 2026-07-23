@@ -1,0 +1,51 @@
+// UHD (3840x2160) h264 video with one English 5.1 track and one English subtitle
+{
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "h264",
+            "codec_type": "video",
+            "width": 3840,
+            "height": 2160,
+            "coded_width": 3840,
+            "coded_height": 2160,
+            "duration": "600.000000",
+            "tags": {
+                "language": "eng",
+                "BPS": "40000000"
+            }
+        },
+        {
+            "index": 1,
+            "codec_name": "ac3",
+            "codec_type": "audio",
+            "channels": 6,
+            "bit_rate": "640000",
+            "duration": "600.000000",
+            "tags": {
+                "language": "eng",
+                "BPS": "640000"
+            }
+        },
+        {
+            "index": 2,
+            "codec_name": "subrip",
+            "codec_type": "subtitle",
+            "duration": "600.000000",
+            "tags": {
+                "language": "eng"
+            }
+        }
+    ],
+    "format": {
+        "filename": "uhd_video.mkv",
+        "nb_streams": 3,
+        "format_name": "matroska,webm",
+        "duration": "600.000000",
+        "size": "3000000000",
+        "bit_rate": "40000000",
+        "tags": {
+            "title": "UHD Test"
+        }
+    }
+}
