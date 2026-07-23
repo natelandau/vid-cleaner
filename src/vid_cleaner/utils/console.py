@@ -1,9 +1,16 @@
 """Console output helpers."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from nclutils import pp
 from rich.text import Text
 
 from vid_cleaner.constants import SYMBOL_CHECK, SYMBOL_CROSS, TREE_BRANCH, TREE_LAST
+
+if TYPE_CHECKING:
+    from vid_cleaner.models.conversion_plan import PlanAction
 
 
 def render_substeps(messages: list[str]) -> None:
@@ -23,12 +30,13 @@ def render_substeps(messages: list[str]) -> None:
         pp.info(line)
 
 
-def render_operations(actions: list, *, debug: bool) -> None:
+def render_operations(actions: list[PlanAction], *, debug: bool) -> None:
     """Render the cleaning operations for a file as a tree beneath its name.
 
     Print the truthful operation list up front, before the ffmpeg progress bar. In
     normal mode only operations that actually run are shown; in debug mode every
     requested operation is shown, with skipped ones marked and annotated with a reason.
+    When no operations are visible, render a single "No changes needed" line.
 
     Args:
         actions: The plan's operations, in display order.
