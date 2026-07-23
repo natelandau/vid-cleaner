@@ -25,11 +25,13 @@ from vid_cleaner.constants import (
     HDTV_RESOLUTION,
     SDTV_RESOLUTION,
     SYMBOL_CHECK,
+    TEXT_SUBTITLE_CODECS,
     UHDTV_RESOLUTION,
     AudioLayout,
     CodecTypes,
     VideoTrait,
 )
+from vid_cleaner.models.conversion_plan import ConversionPlan, OutputStream
 from vid_cleaner.utils import (
     MediaId,
     find_media_ids,
@@ -222,22 +224,34 @@ class VideoFile:
             stream.title and re.search(COMMENTARY_STREAM_TITLE_REGEX, stream.title, re.IGNORECASE)
         )
 
-    @staticmethod
-    def _downmix_to_stereo(streams: list[Box]) -> tuple[list[str], list[Box]]:
-        """Plan an ffmpeg downmix of the simplest surround bed to a dialogue-forward stereo track.
+    def _plan_video_streams(self) -> list[OutputStream]:
+        """Plan the video streams to keep as passthrough copies.
 
-        Skip the work when a non-commentary stereo mix already exists, unless `settings.force`
-        is set, in which case the existing stereo track(s) are dropped and rebuilt from the
-        surround bed. Notify the user when downmix is skipped or cannot be recreated. Return the
-        downmix command plus the list of existing audio streams the caller must not map.
+        Returns:
+            list[OutputStream]: One copy-mapped output per kept video stream.
+        """
+        return [
+            OutputStream(source_index=stream.index, codec_type=CodecTypes.VIDEO)
+            for stream in self.video_streams
+        ]
+
+    @staticmethod
+    def _plan_downmix(streams: list[Box]) -> tuple[list[OutputStream], list[Box]]:
+        """Plan a downmix of the simplest surround bed to a dialogue-forward stereo track.
+
+        Skip the work when a non-commentary stereo mix already exists, unless
+        `settings.force` is set, in which case the existing stereo track(s) are dropped
+        and rebuilt from the surround bed. Notify the user when downmix is skipped or
+        cannot be recreated.
 
         Args:
             streams (list[Box]): Audio streams that would otherwise be kept.
 
         Returns:
-            tuple[list[str], list[Box]]: The downmix ffmpeg fragment and streams to drop.
+            tuple[list[OutputStream], list[Box]]: The planned downmix output streams and
+                the existing streams the caller must not map.
         """
-        downmix_command: list[str] = []
+        downmix_streams: list[OutputStream] = []
         streams_to_drop: list[Box] = []
 
         # Commentary tracks are often stereo but are not a stereo mix of the main audio,
@@ -263,43 +277,395 @@ class VideoFile:
                 pp.info(
                     "Stereo track already exists; skipping downmix. Use --force to recreate it."
                 )
-                pp.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
-                return downmix_command, streams_to_drop
+                return downmix_streams, streams_to_drop
             if not surround_source:
                 pp.info(
                     "No surround source to recreate stereo from; keeping existing stereo track."
                 )
-                pp.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
-                return downmix_command, streams_to_drop
+                return downmix_streams, streams_to_drop
             # Forced recreation: drop the existing stereo mix and rebuild it from the surround bed
             streams_to_drop = existing_stereo
 
-        # The downmix output audio index starts after every mapped audio stream. Excluding
-        # dropped streams keeps the per-track options bound to the new downmix, not a kept track.
-        base_index = len(streams) - len(streams_to_drop)
-        for offset, stream in enumerate(surround_source):
-            new_index = base_index + offset
-            downmix_command.extend(
-                [
-                    "-map",
-                    f"0:{stream.index}",
-                    f"-c:a:{new_index}",
-                    "aac",
-                    f"-ac:a:{new_index}",
-                    "2",
-                    f"-b:a:{new_index}",
-                    "256k",
-                    f"-filter:a:{new_index}",
-                    DOWNMIX_STEREO_FILTER,
-                    f"-ar:a:{new_index}",
-                    "48000",
-                    f"-metadata:s:a:{new_index}",
-                    "title=2.0",
-                ],
+        downmix_streams = [
+            OutputStream(
+                source_index=stream.index,
+                codec_type=CodecTypes.AUDIO,
+                codec="aac",
+                stream_filter=DOWNMIX_STEREO_FILTER,
+                extra_args=["-ac:a:{n}", "2", "-b:a:{n}", "256k", "-ar:a:{n}", "48000"],
+                metadata={"title": "2.0"},
             )
+            for stream in surround_source
+        ]
+        return downmix_streams, streams_to_drop
 
-        pp.trace(f"PROCESS AUDIO: Downmix command: {downmix_command}")
-        return downmix_command, streams_to_drop
+    def _plan_audio_streams(self) -> list[OutputStream]:
+        """Plan audio streams to keep, honoring language, commentary, and downmix settings.
+
+        Returns:
+            list[OutputStream]: Copy-mapped kept audio followed by any planned downmix.
+        """
+        langs = [Lang(lang) for lang in settings.langs_to_keep]
+
+        # Add original language to list of languages to keep if not explicitly dropping it
+        if not settings.drop_original_audio:
+            original_language = self._find_original_language()
+            if original_language and original_language not in langs:
+                langs.append(original_language)
+
+        streams_to_keep: list[Box] = []
+        for stream in self.audio_streams:
+            # Unknown language streams are kept to avoid removing potentially important audio
+            if not stream.language:
+                streams_to_keep.append(stream)
+                continue
+
+            # Commentary tracks are often unwanted and take up space
+            if not settings.keep_commentary and self._is_commentary_stream(stream):
+                pp.trace(rf"PLAN AUDIO: Remove stream #{stream.index} [commentary]")
+                continue
+
+            if stream.language == "und" or Lang(stream.language) in langs:
+                streams_to_keep.append(stream)
+                continue
+
+            pp.trace(f"PLAN AUDIO: Remove stream #{stream.index}")
+
+        # If every stream would be removed, keep them all to prevent silent video
+        if not streams_to_keep:
+            streams_to_keep = list(self.audio_streams)
+
+        # Plan the downmix; forced recreation can request dropping an existing stereo track
+        downmix_streams, streams_to_drop = (
+            self._plan_downmix(streams_to_keep) if settings.downmix_stereo else ([], [])
+        )
+
+        drop_indices = {stream.index for stream in streams_to_drop}
+        kept = [
+            OutputStream(source_index=stream.index, codec_type=CodecTypes.AUDIO)
+            for stream in streams_to_keep
+            if stream.index not in drop_indices
+        ]
+        return kept + downmix_streams
+
+    def _plan_subtitle_streams(self) -> list[OutputStream]:
+        """Plan subtitle streams to keep based on language preferences.
+
+        Returns:
+            list[OutputStream]: Copy-mapped kept subtitle streams.
+        """
+        keep: list[OutputStream] = []
+
+        langs = [Lang(lang) for lang in settings.langs_to_keep]
+
+        # Only look up original language if we're not explicitly dropping local subs
+        # This avoids unnecessary API calls
+        if not settings.drop_local_subs:
+            original_language = self._find_original_language()
+
+        # Early return if no subtitle streams should be kept based on settings
+        if (
+            not settings.keep_all_subtitles
+            and not settings.keep_local_subtitles
+            and settings.drop_local_subs
+        ):
+            return keep
+
+        for stream in self.subtitle_streams:
+            # Remove commentary/SDH/description tracks unless explicitly kept
+            # These are typically supplementary and take up extra space
+            if not settings.keep_commentary and self._is_commentary_stream(stream):
+                pp.trace(rf"PLAN SUBTITLES: Remove stream #{stream.index} [commentary]")
+                continue
+
+            if settings.keep_all_subtitles:
+                keep.append(OutputStream(source_index=stream.index, codec_type=CodecTypes.SUBTITLE))
+                continue
+
+            if stream.language:
+                # Keep undefined language streams and streams matching user preferences
+                # This ensures we don't accidentally remove important subtitles
+                if settings.keep_local_subtitles and (
+                    stream.language.lower() == "und" or Lang(stream.language) in langs
+                ):
+                    keep.append(
+                        OutputStream(source_index=stream.index, codec_type=CodecTypes.SUBTITLE)
+                    )
+                    continue
+
+                # Keep subtitles in user's languages when original audio differs
+                # This ensures subtitles are available when needed for translation
+                if (
+                    not settings.drop_local_subs
+                    and langs
+                    and original_language not in langs
+                    and (stream.language.lower() == "und" or Lang(stream.language) in langs)
+                ):
+                    keep.append(
+                        OutputStream(source_index=stream.index, codec_type=CodecTypes.SUBTITLE)
+                    )
+                    continue
+
+            pp.trace(f"PLAN SUBTITLES: Remove stream #{stream.index}")
+
+        return keep
+
+    def _first_video_stream(self) -> Box | None:
+        """Find the first processable video stream in the probe data.
+
+        Returns:
+            Box | None: The first non-thumbnail video stream, or None when absent.
+        """
+        # video_streams already applies the non-thumbnail filter and is memoized.
+        return self.video_streams[0] if self.video_streams else None
+
+    def _estimate_cleaned_size_mb(self, mapped_indices: set[int], duration: float) -> float:
+        """Estimate the input size in megabytes after dropped streams are removed.
+
+        The single-pass encode has no cleaned intermediate file to measure, so subtract
+        each dropped stream's bitrate-derived size from the original file. Streams with
+        no discoverable bitrate contribute zero, erring toward a higher target.
+
+        Args:
+            mapped_indices (set[int]): Input stream indices kept in the output.
+            duration (float): Stream duration in seconds.
+
+        Returns:
+            float: Estimated cleaned size in MB, floored at 10% of the original file so
+                bogus metadata can never produce a non-positive size.
+        """
+        file_size = self.temp_file.latest_temp_path().stat().st_size
+
+        dropped_bytes = 0.0
+        for stream in self.probe_box.streams:
+            if stream.index in mapped_indices:
+                continue
+            bit_rate = stream.bit_rate or stream.bps
+            if bit_rate:
+                dropped_bytes += int(bit_rate) / 8 * duration
+
+        return max(file_size - dropped_bytes, file_size * 0.1) / 1_000_000
+
+    def _plan_h265(self, plan: ConversionPlan) -> None:
+        """Plan an H.265 encode of the video stream with size-derived bitrate targets.
+
+        Args:
+            plan (ConversionPlan): The plan whose video stream is annotated in place.
+        """
+        video_stream = self._first_video_stream()
+        if not video_stream:
+            pp.error("No video stream found")
+            return
+
+        if not settings.force and video_stream.codec_name.lower() in H265_CODECS:
+            pp.warning(
+                "H265 ENCODE: Video already H.265 or VP9.",
+                details=["Run with `--force` to re-encode.", "Skipping"],
+            )
+            return
+
+        # Calculate target bitrate using Frame.io's formula: https://blog.frame.io/2017/03/06/calculate-video-bitrates/
+        # This formula provides good quality while maintaining reasonable file sizes
+        stream_duration = float(self.probe_box.duration or 0) or float(video_stream.duration or 0)
+        if not stream_duration:
+            pp.error("Could not calculate video duration")
+            return
+
+        # Convert duration to minutes for bitrate calculation
+        duration = stream_duration * 0.0166667
+
+        mapped_indices = {stream.source_index for stream in plan.streams}
+        file_size_megabytes = self._estimate_cleaned_size_mb(
+            mapped_indices=mapped_indices, duration=stream_duration
+        )
+
+        # When the same pass also downscales, the encode sees fewer pixels than the
+        # source, so shrink the size-derived targets by the pixel ratio.
+        width = getattr(video_stream, "width", 0) or 0
+        scale_factor = (1920 / width) ** 2 if settings.video_1080 and width > 1920 else 1.0  # noqa: PLR2004
+
+        # Calculate bitrates with a target of 50% of original size while maintaining quality
+        current_bitrate = int(file_size_megabytes / (duration * 0.0075) * scale_factor)
+        target_bitrate = int(current_bitrate / 2)
+        # Allow 30% variance from target bitrate to handle complex scenes
+        min_bitrate = int(current_bitrate * 0.7)
+        max_bitrate = int(current_bitrate * 1.3)
+
+        # Encode every kept video stream, matching the old `-c:v libx265` (no index),
+        # which applied to all video streams, not just the first.
+        for video_output in [s for s in plan.streams if s.codec_type == CodecTypes.VIDEO]:
+            video_output.codec = "libx265"
+            video_output.extra_args = [
+                "-b:v:{n}",
+                f"{target_bitrate}k",
+                "-minrate:v:{n}",
+                f"{min_bitrate}k",
+                "-maxrate:v:{n}",
+                f"{max_bitrate}k",
+                "-bufsize:v:{n}",
+                f"{current_bitrate}k",
+            ]
+        plan.substeps.append(f"{SYMBOL_CHECK} Convert to H.265")
+
+    def _plan_vp9(self, plan: ConversionPlan) -> None:
+        """Plan a VP9/WebM conversion, adapting audio and subtitles to the container.
+
+        WebM only carries Vorbis/Opus audio and WebVTT subtitles, so every kept audio
+        stream (including a planned downmix) targets libvorbis, text subtitles convert
+        to WebVTT, and image-based subtitles are dropped with a notice.
+
+        Args:
+            plan (ConversionPlan): The plan mutated in place.
+        """
+        video_stream = self._first_video_stream()
+        if not video_stream:
+            pp.error("No video stream found")
+            return
+
+        # Skip re-encoding if already in modern codec unless forced
+        if not settings.force and video_stream.codec_name.lower() in H265_CODECS:
+            pp.warning(
+                "VP9 ENCODE: Video already H.265 or VP9.",
+                details=["Run with `--force` to re-encode.", "Skipping"],
+            )
+            return
+
+        if Path(settings.out_path).suffix != ".webm":
+            plan.substeps.append(
+                f"Converting to VP9, setting output to `{settings.out_path.with_suffix('.webm').name}`"
+            )
+            settings.out_path = settings.out_path.with_suffix(".webm")
+
+        plan.output_suffix = ".webm"
+        # Data streams and chapters may corrupt WebM output
+        plan.global_args.extend(["-dn", "-map_chapters", "-1"])
+
+        codec_names = {stream.index: stream.codec_name.lower() for stream in self.probe_box.streams}
+        kept_streams: list[OutputStream] = []
+        for stream in plan.streams:
+            if stream.codec_type == CodecTypes.VIDEO:
+                stream.codec = "libvpx-vp9"
+                # Constant quality encoding (CRF) instead of bitrate for better quality control
+                stream.extra_args = ["-b:v:{n}", "0", "-crf:v:{n}", "30"]
+            elif stream.codec_type == CodecTypes.AUDIO:
+                stream.codec = "libvorbis"
+            elif stream.codec_type == CodecTypes.SUBTITLE:
+                if codec_names.get(stream.source_index) in TEXT_SUBTITLE_CODECS:
+                    stream.codec = "webvtt"
+                else:
+                    pp.info(
+                        f"Dropping image-based subtitle stream 0:{stream.source_index}; WebM only supports WebVTT"
+                    )
+                    continue
+            kept_streams.append(stream)
+
+        plan.streams = kept_streams
+        plan.substeps.append(f"{SYMBOL_CHECK} Convert to vp9")
+
+    def _plan_scale_to_1080p(self, plan: ConversionPlan) -> None:
+        """Plan downscaling the video stream to 1080p.
+
+        Args:
+            plan (ConversionPlan): The plan whose video stream is annotated in place.
+        """
+        video_stream = self._first_video_stream()
+        if not video_stream:
+            pp.error("No video stream found")
+            return
+
+        # Skip downscaling if video is already 1080p or smaller, unless forced
+        if not settings.force and (getattr(video_stream, "width", 0) or 0) <= 1920:  # noqa: PLR2004
+            plan.substeps.append(f"{SYMBOL_CHECK} No convert to 1080p needed")
+            return
+
+        # Scale every kept video stream, matching the old `-filter:v scale=...` (no index),
+        # which applied to all video streams, not just the first.
+        for video_output in [s for s in plan.streams if s.codec_type == CodecTypes.VIDEO]:
+            # Use -2 for height to maintain aspect ratio while ensuring even dimensions for compatibility
+            video_output.stream_filter = "scale=width=1920:height=-2"
+            if video_output.codec == "copy":
+                # Scaling requires an encode; None lets ffmpeg pick the container default
+                video_output.codec = None
+        plan.substeps.append(f"{SYMBOL_CHECK} Convert to 1080p")
+
+    def _build_plan(self) -> ConversionPlan:
+        """Compose every requested operation into a single-pass conversion plan.
+
+        Returns:
+            ConversionPlan: The composed plan, ready to build one ffmpeg command.
+        """
+        plan = ConversionPlan()
+        plan.streams = (
+            self._plan_video_streams() + self._plan_audio_streams() + self._plan_subtitle_streams()
+        )
+
+        # Codec planners run before the scale planner so scaling only falls back to the
+        # container default encoder when no explicit codec was requested.
+        if settings.h265:
+            self._plan_h265(plan)
+        if settings.vp9:
+            self._plan_vp9(plan)
+        if settings.video_1080:
+            self._plan_scale_to_1080p(plan)
+
+        return plan
+
+    def clean(self) -> list[str]:
+        """Apply every requested cleaning operation in a single ffmpeg pass.
+
+        Compose stream selection, reordering, downmix, scaling, and codec conversion
+        into one command so the file is decoded and written exactly once. Skip ffmpeg
+        entirely when the plan would change nothing.
+
+        Returns:
+            list[str]: Substep messages describing the outcome, for the caller to
+                display. Empty on a dry run, since the command is previewed instead.
+
+        Raises:
+            cappa.Exit: If the file has no video or no audio streams.
+        """
+        if not self.video_streams:
+            pp.error("No video streams found")
+            raise cappa.Exit(code=1)
+        if not self.audio_streams:
+            pp.error("No audio streams found")
+            raise cappa.Exit(code=1)
+
+        plan = self._build_plan()
+
+        needs_reorder = self._need_stream_reorder()
+        substeps = [
+            f"{SYMBOL_CHECK} Reorder streams"
+            if needs_reorder
+            else f"{SYMBOL_CHECK} No streams to reorder"
+        ]
+
+        if plan.is_noop(stream_count=len(self.all_streams)) and not needs_reorder:
+            return [*substeps, f"{SYMBOL_CHECK} No streams to process"]
+
+        title_flags = []
+        title_flags.append("drop original audio") if settings.drop_original_audio else None
+        title_flags.append("keep commentary") if settings.keep_commentary else None
+        title_flags.append("downmix to stereo") if settings.downmix_stereo else None
+
+        if any(stream.codec_type == CodecTypes.SUBTITLE for stream in plan.streams):
+            title_flags.append(
+                "keep subtitles",
+            ) if settings.keep_all_subtitles else title_flags.append("drop unwanted subtitles")
+            title_flags.append("keep local subtitles") if settings.keep_local_subtitles else None
+            title_flags.append("drop local subtitles") if settings.drop_local_subs else None
+
+        title = f"Process file ({', '.join(title_flags)})" if title_flags else "Process file"
+
+        run_result = self._run_ffmpeg(
+            plan.build_command(), title=title, suffix=plan.output_suffix, step="clean"
+        )
+        if not run_result:  # Dry run previews the command instead of executing it
+            return []
+
+        substeps.append(f"{SYMBOL_CHECK} {title}")
+        substeps.extend(plan.substeps)
+        return substeps
 
     def _language_for(self, media_id: MediaId) -> Lang | None:
         """Resolve a single media ID to the content's original language.
@@ -383,141 +749,6 @@ class VideoFile:
                 self.video_streams + self.audio_streams + self.subtitle_streams
             )
         )
-
-    def _process_audio(self) -> tuple[list[str], list[str]]:
-        """Construct commands for processing audio streams.
-
-        Analyze and process audio streams based on language, commentary, and downmixing criteria. Generate ffmpeg commands for keeping or altering audio streams as required.
-
-        Returns:
-            tuple[list[str], list[str]]: A tuple containing two lists of strings forming part of an ffmpeg command for audio processing.
-        """
-        command: list[str] = []
-
-        langs = [Lang(lang) for lang in settings.langs_to_keep]
-
-        # Add original language to list of languages to keep if not explicitly dropping it
-        if not settings.drop_original_audio:
-            original_language = self._find_original_language()
-            if original_language and original_language not in langs:
-                langs.append(original_language)
-
-        streams_to_keep: list[Box] = []
-        for stream in self.audio_streams:
-            # Unknown language streams are kept to avoid removing potentially important audio
-            if not stream.language:
-                streams_to_keep.append(stream)
-                continue
-
-            # Commentary tracks are often unwanted and take up space
-            if not settings.keep_commentary and self._is_commentary_stream(stream):
-                pp.trace(rf"PROCESS AUDIO: Remove stream #{stream.index} [commentary]")
-                continue
-
-            if stream.language == "und" or Lang(stream.language) in langs:
-                streams_to_keep.append(stream)
-                continue
-
-            pp.trace(f"PROCESS AUDIO: Remove stream #{stream.index}")
-
-        # If every stream would be removed, keep them all to prevent silent video
-        if not streams_to_keep:
-            streams_to_keep = list(self.audio_streams)
-
-        # Plan the downmix; forced recreation can request dropping an existing stereo track
-        downmix_command, streams_to_drop = (
-            self._downmix_to_stereo(streams_to_keep) if settings.downmix_stereo else ([], [])
-        )
-
-        drop_indices = {stream.index for stream in streams_to_drop}
-        for stream in streams_to_keep:
-            if stream.index in drop_indices:
-                continue
-            command.extend(["-map", f"0:{stream.index}"])
-
-        pp.trace(f"PROCESS AUDIO: {command}")
-        return command, downmix_command
-
-    def _process_subtitles(self) -> list[str]:
-        """Construct a command list for processing subtitle streams.
-
-        Analyze and filter subtitle streams based on language preferences, commentary options, and other criteria. Build an ffmpeg command list accordingly.
-
-        Returns:
-            list[str]: A list of strings forming part of an ffmpeg command for subtitle processing.
-        """
-        command: list[str] = []
-
-        langs = [Lang(lang) for lang in settings.langs_to_keep]
-
-        # Only look up original language if we're not explicitly dropping local subs
-        # This avoids unnecessary API calls
-        if not settings.drop_local_subs:
-            original_language = self._find_original_language()
-
-        # Early return if no subtitle streams should be kept based on settings
-        if (
-            not settings.keep_all_subtitles
-            and not settings.keep_local_subtitles
-            and settings.drop_local_subs
-        ):
-            return command
-
-        for stream in self.subtitle_streams:
-            # Remove commentary/SDH/description tracks unless explicitly kept
-            # These are typically supplementary and take up extra space
-            if not settings.keep_commentary and self._is_commentary_stream(stream):
-                pp.trace(rf"PROCESS SUBTITLES: Remove stream #{stream.index} [commentary]")
-                continue
-
-            if settings.keep_all_subtitles:
-                command.extend(["-map", f"0:{stream.index}"])
-                continue
-
-            if stream.language:
-                # Keep undefined language streams and streams matching user preferences
-                # This ensures we don't accidentally remove important subtitles
-                if settings.keep_local_subtitles and (
-                    stream.language.lower() == "und" or Lang(stream.language) in langs
-                ):
-                    pp.trace(f"PROCESS SUBTITLES: Keep stream #{stream.index} (local language)")
-                    command.extend(["-map", f"0:{stream.index}"])
-                    continue
-
-                # Keep subtitles in user's languages when original audio differs
-                # This ensures subtitles are available when needed for translation
-                if (
-                    not settings.drop_local_subs
-                    and langs
-                    and original_language not in langs
-                    and (stream.language.lower() == "und" or Lang(stream.language) in langs)
-                ):
-                    pp.trace(f"PROCESS SUBTITLES: Keep stream #{stream.index} (original language)")
-                    command.extend(["-map", f"0:{stream.index}"])
-                    continue
-
-            pp.trace(f"PROCESS SUBTITLES: Remove stream #{stream.index}")
-
-        pp.trace(f"PROCESS SUBTITLES: {command}")
-        return command
-
-    def _process_video(self) -> list[str]:
-        """Create a command list for processing video streams.
-
-        Iterate through the provided video streams and construct a list of ffmpeg commands to process them, excluding any streams with codecs in the exclusion list.
-
-        Returns:
-            list[str]: A list of strings forming part of an ffmpeg command for video processing.
-        """
-        command: list[str] = []
-        for stream in self.video_streams:
-            if stream.codec_name.lower() in EXCLUDED_VIDEO_CODECS:
-                continue
-
-            command.extend(["-map", f"0:{stream.index}"])
-
-        pp.trace(f"PROCESS VIDEO: {command}")
-        return command
 
     def _query_arr_apps_for_imdb_id(self) -> str | None:
         """Query Radarr and Sonarr APIs to find the IMDb ID of the video.
@@ -612,251 +843,6 @@ class VideoFile:
         ffmpeg_command: list[str] = ["-ss", start, "-t", duration, "-map", "0", "-c", "copy"]
 
         return self._run_ffmpeg(ffmpeg_command, title="Clip video", step="clip")
-
-    def convert_to_h265(self) -> list[str]:
-        """Convert the video to H.265 codec format.
-
-        Check if conversion is necessary and perform it if so. This involves calculating the bitrate, building the ffmpeg command, and running it.
-
-        Returns:
-            list[str]: Substep messages describing the outcome, for the caller to display. Empty when conversion is skipped or cannot proceed.
-        """
-        input_path = self.temp_file.latest_temp_path()
-
-        video_stream = next(
-            stream
-            for stream in self.probe_box.streams
-            if stream.codec_type == CodecTypes.VIDEO
-            and stream.codec_name.lower() not in EXCLUDED_VIDEO_CODECS
-        )
-
-        if not video_stream:
-            pp.error("No video stream found")
-            return []
-
-        if not settings.force and video_stream.codec_name.lower() in H265_CODECS:
-            pp.warning(
-                "H265 ENCODE: Video already H.265 or VP9.",
-                details=["Run with `--force` to re-encode.", "Skipping"],
-            )
-            return []
-
-        # Calculate target bitrate using Frame.io's formula: https://blog.frame.io/2017/03/06/calculate-video-bitrates/
-        # This formula provides good quality while maintaining reasonable file sizes
-        stream_duration = float(self.probe_box.duration) or float(video_stream.duration)
-        if not stream_duration:
-            pp.error("Could not calculate video duration")
-            return []
-
-        # Convert duration to minutes for bitrate calculation
-        duration = stream_duration * 0.0166667
-
-        stat = input_path.stat()
-        pp.trace(f"File size: {stat}")
-        file_size_megabytes = stat.st_size / 1000000
-
-        # Calculate bitrates with a target of 50% of original size while maintaining quality
-        current_bitrate = int(file_size_megabytes / (duration * 0.0075))
-        target_bitrate = int(file_size_megabytes / (duration * 0.0075) / 2)
-        # Allow 30% variance from target bitrate to handle complex scenes
-        min_bitrate = int(current_bitrate * 0.7)
-        max_bitrate = int(current_bitrate * 1.3)
-
-        command: list[str] = ["-map", "0", "-c:v", "libx265"]
-        command.extend(
-            [
-                "-b:v",
-                f"{target_bitrate}k",
-                "-minrate",
-                f"{min_bitrate}k",
-                "-maxrate",
-                f"{max_bitrate}k",
-                "-bufsize",
-                f"{current_bitrate}k",
-            ],
-        )
-
-        # Preserve original audio and subtitle streams to maintain quality
-        command.extend(["-c:a", "copy", "-c:s", "copy"])
-
-        return self._run_ffmpeg(command, title="Convert to H.265", step="h265")
-
-    def convert_to_vp9(self) -> list[str]:
-        """Convert the video to the VP9 codec format.
-
-        Verify if conversion is required and proceed with it using ffmpeg. This method specifically targets the VP9 video codec.
-
-        Returns:
-            list[str]: Substep messages describing the outcome, for the caller to display. Empty when conversion is skipped or cannot proceed.
-        """
-        video_stream = next(
-            stream
-            for stream in self.probe_box.streams
-            if stream.codec_type == CodecTypes.VIDEO
-            and stream.codec_name.lower() not in EXCLUDED_VIDEO_CODECS
-        )
-
-        if not video_stream:
-            pp.error("No video stream found")
-            return []
-
-        # Skip re-encoding if already in modern codec unless forced
-        if not settings.force and video_stream.codec_name.lower() in H265_CODECS:
-            pp.warning(
-                "VP9 ENCODE: Video already H.265 or VP9.",
-                details=["Run with `--force` to re-encode.", "Skipping"],
-            )
-            return []
-
-        substeps: list[str] = []
-        if Path(settings.out_path).suffix != ".webm":
-            substeps.append(
-                f"Converting to VP9, setting output to `{settings.out_path.with_suffix('.webm').name}`"
-            )
-            settings.out_path = settings.out_path.with_suffix(".webm")
-
-        # Use constant quality encoding (CRF) instead of bitrate for better quality control
-        command: list[str] = [
-            "-map",
-            "0",
-            "-c:v",
-            "libvpx-vp9",
-            "-b:v",
-            "0",  # Disable fixed bitrate mode
-            "-crf",
-            "30",  # Higher CRF = lower quality but smaller file size
-            "-c:a",
-            "libvorbis",  # VP9 typically uses Vorbis audio codec
-            "-dn",  # Disable data streams
-            "-map_chapters",
-            "-1",  # Remove chapters as they may cause issues in WebM
-        ]
-
-        command.extend(["-c:s", "copy"])
-
-        substeps.extend(
-            self._run_ffmpeg(command, title="Convert to vp9", suffix=".webm", step="vp9")
-        )
-        return substeps
-
-    def process_streams(self) -> list[str]:
-        """Process the video file according to specified audio and subtitle preferences.
-
-        Execute the necessary steps to process the video file, including managing audio and subtitle streams.  Keep or discard audio streams based on specified languages, commentary preferences, and downmix settings. Similarly, filter subtitle streams based on language preferences and criteria such as keeping commentary or local subtitles.
-
-        Returns:
-            list[str]: Substep messages describing the outcome, for the caller to display.
-        """
-        video_map_command = self._process_video()
-        audio_map_command, downmix_command = self._process_audio()
-        subtitle_map_command = self._process_subtitles()
-
-        title_flags = []
-
-        if audio_map_command:
-            title_flags.append("drop original audio") if settings.drop_original_audio else None
-            title_flags.append("keep commentary") if settings.keep_commentary else None
-            title_flags.append("downmix to stereo") if settings.downmix_stereo else None
-
-        if subtitle_map_command:
-            title_flags.append(
-                "keep subtitles",
-            ) if settings.keep_all_subtitles else title_flags.append("drop unwanted subtitles")
-            title_flags.append("keep local subtitles") if settings.keep_local_subtitles else None
-            title_flags.append("drop local subtitles") if settings.drop_local_subs else None
-
-        title = f"Process file ({', '.join(title_flags)})" if title_flags else "Process file"
-
-        all_commands = [
-            x
-            for x in video_map_command + audio_map_command + subtitle_map_command + downmix_command
-            if x != "-map"
-        ]
-
-        comparison_list = [f"0:{x}" for x in range(len(self.all_streams))]
-        if len(comparison_list) == len(all_commands):
-            return [f"{SYMBOL_CHECK} No streams to process"]
-
-        return self._run_ffmpeg(
-            video_map_command
-            + audio_map_command
-            + subtitle_map_command
-            + ["-c", "copy"]
-            + downmix_command,
-            title=title,
-            step="process",
-        )
-
-    def reorder_streams(self) -> list[str]:
-        """Reorder the media streams within the video file.
-
-        Arrange the streams in the video file so that video streams appear first, followed by audio streams, and then subtitle streams. Exclude certain types of video streams like 'mjpeg' and 'png'.
-
-        Returns:
-            list[str]: Substep messages describing the outcome, for the caller to display.
-
-        Raises:
-            cappa.Exit: If no video or audio streams are found in the video file.
-        """
-        if not self.video_streams:
-            pp.error("No video streams found")
-            raise cappa.Exit(code=1)
-        if not self.audio_streams:
-            pp.error("No audio streams found")
-            raise cappa.Exit(code=1)
-
-        # Skip reordering if streams are already in the desired order (video->audio->subtitles)
-        if not self._need_stream_reorder():
-            return [f"{SYMBOL_CHECK} No streams to reorder"]
-
-        # Use -c copy to avoid re-encoding when reordering streams
-        initial_command = ["-c", "copy"]
-
-        # Flatten stream lists into ffmpeg mapping commands while preserving desired order
-        command = initial_command + [
-            item
-            for stream_list in [self.video_streams, self.audio_streams, self.subtitle_streams]
-            for stream in stream_list
-            for item in ["-map", f"0:{stream.index}"]
-        ]
-
-        return self._run_ffmpeg(command, title="Reorder streams", step="reorder")
-
-    def video_to_1080p(self) -> list[str]:
-        """Convert video resolution to 1080p.
-
-        Scale video dimensions to 1920x1080 while maintaining aspect ratio. Only converts videos larger than 1080p unless forced.
-
-        Returns:
-            list[str]: Substep messages describing the outcome, for the caller to display. Empty when conversion cannot proceed.
-        """
-        # Find first valid video stream, excluding thumbnail/image streams
-        video_stream = next(
-            stream
-            for stream in self.probe_box.streams
-            if stream.codec_type == CodecTypes.VIDEO
-            and stream.codec_type.value not in EXCLUDED_VIDEO_CODECS
-        )
-
-        if not video_stream:
-            pp.error("No video stream found")
-            return []
-
-        # Skip downscaling if video is already 1080p or smaller, unless forced
-        if not settings.force and getattr(video_stream, "width", 0) <= 1920:  # noqa: PLR2004
-            return [f"{SYMBOL_CHECK} No convert to 1080p needed"]
-
-        # Use -2 for height to maintain aspect ratio while ensuring even dimensions for compatibility
-        command: list[str] = [
-            "-filter:v",
-            "scale=width=1920:height=-2",
-            "-c:a",
-            "copy",
-            "-c:s",
-            "copy",
-        ]
-
-        return self._run_ffmpeg(command, title="Convert to 1080p", step="1080p")
 
     def ffprobe_json(self) -> dict:
         """Run ffprobe on the video file and return the JSON response.

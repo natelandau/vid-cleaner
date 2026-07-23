@@ -56,7 +56,6 @@ def config_subcommand(vidcleaner: VidCleaner) -> None:
         "langs_to_keep": langs_to_keep,
         "out_path": getattr(vidcleaner.command, "out", None),
         "overwrite": getattr(vidcleaner.command, "overwrite", False),
-        "save_each_step": getattr(vidcleaner.command, "save_each_step", False),
         "subcommand": vidcleaner.command.__class__.__name__.lower(),
         "video_1080": getattr(vidcleaner.command, "video_1080", False),
         "vp9": getattr(vidcleaner.command, "vp9", False),
@@ -212,15 +211,6 @@ class CleanCommand:
             group="Configuration",
         ),
     ] = settings.keep_all_subtitles
-    save_each_step: Annotated[
-        bool,
-        cappa.Arg(
-            help="By default, the new video is saved after all steps are completed. Use this option to save the video after each step.",
-            long="--save-each",
-            show_default=True,
-            group="Configuration",
-        ),
-    ] = settings.save_each_step
     keep_commentary: Annotated[
         bool,
         cappa.Arg(
