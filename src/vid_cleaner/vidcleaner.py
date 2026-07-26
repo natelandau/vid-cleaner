@@ -12,6 +12,7 @@ from rich.traceback import install
 from vid_cleaner import settings
 from vid_cleaner.config import SettingsManager
 from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel, VideoTrait
+from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.utils import create_default_config, parse_trait_filters
 
 
@@ -386,6 +387,8 @@ This command allows you to search for video files under a directory and display 
 
 By using filters, you can search for video files that match specific criteria. For example, you can search for video files that are in the H264 codec and have a resolution of 1080p.
 
+Files that can not be read as video, such as corrupt files or non-video files carrying a video extension, are counted and skipped rather than ending the search. Run with `-v` to list them.
+
 **Usage Examples:**
 ```shell
 # Search for video files that are in the H264 codec and have a resolution of 1080p up to 2 levels deep:
@@ -428,6 +431,11 @@ def main() -> None:  # pragma: no cover
         )
     except KeyboardInterrupt as e:
         pp.info("\nExiting...")
+        raise cappa.Exit(code=1) from e
+    except VideoProbeError as e:
+        # Commands given explicit files abort on an unreadable one; `search` handles its own
+        # skipping before the error can reach here.
+        pp.error(str(e))
         raise cappa.Exit(code=1) from e
 
 
