@@ -387,6 +387,8 @@ This command allows you to search for video files under a directory and display 
 
 By using filters, you can search for video files that match specific criteria. For example, you can search for video files that are in the H264 codec and have a resolution of 1080p.
 
+Files that can not be read as video, such as corrupt files or non-video files carrying a video extension, are counted and skipped rather than ending the search. Run with `-v` to list them.
+
 **Usage Examples:**
 ```shell
 # Search for video files that are in the H264 codec and have a resolution of 1080p up to 2 levels deep:
