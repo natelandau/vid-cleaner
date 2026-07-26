@@ -7,6 +7,7 @@ import cappa
 import pytest
 
 from vid_cleaner import settings
+from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 
 
@@ -109,3 +110,48 @@ def test_search_with_no_results(
     assert "Found 1 video files in 1/1 directories" in output
     assert "No video files found matching 'reorder'" in error
     assert "Matching filters" not in output
+
+
+@pytest.mark.parametrize(
+    ("verbosity", "lists_skipped_files"),
+    [(None, False), ("-v", True)],
+)
+def test_search_skips_unreadable_files(
+    capsys,
+    mocker,
+    mock_video_path,
+    debug,
+    mock_ffprobe_box,
+    mock_ffprobe,
+    verbosity,
+    lists_skipped_files,
+):
+    """Verify search reports and skips files it cannot probe while still listing readable ones."""
+    # Given: A directory holding one readable video and one file that ffprobe rejects
+    unreadable = mock_video_path.parent / "not_really_a_video.mkv"
+    unreadable.touch()
+    good_box = mock_ffprobe_box("reference.json")
+
+    def probe(path):
+        if path.name == unreadable.name:
+            raise VideoProbeError(path=path, reason="Invalid data found when processing input")
+        return good_box
+
+    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", side_effect=probe)
+
+    args = ["search", str(mock_video_path.parent), "--filters", "h264"]
+    if verbosity:
+        args.insert(0, verbosity)
+
+    # When: Running the search command
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output, error = capsys.readouterr()
+    debug(output + error, "output")
+
+    # Then: The readable file is still reported and the unreadable one is only counted
+    assert exc_info.value.code == 0
+    assert "1 │ test_video.mp4 │ h264" in output
+    assert "Skipped 1 file(s) that could not be read as video" in error
+    assert ("Unreadable files" in output + error) is lists_skipped_files

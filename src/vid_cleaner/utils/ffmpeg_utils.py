@@ -2,12 +2,11 @@
 
 from pathlib import Path
 
-import cappa
 import ffmpeg as python_ffmpeg
 from box import Box
-from nclutils import pp
 
 from vid_cleaner.constants import AudioLayout, CodecTypes
+from vid_cleaner.exceptions import VideoProbeError
 
 
 def channels_to_layout(channels: int) -> AudioLayout | None:
@@ -53,15 +52,12 @@ def run_ffprobe(path: Path) -> dict:  # pragma: no cover
         dict: A dictionary containing information about the video file.
 
     Raises:
-        cappa.Exit: If an error occurs while probing the video file.
+        VideoProbeError: If the file is corrupt or is not actually a video despite its extension.
     """
     try:
-        probe = python_ffmpeg.probe(path)
+        return python_ffmpeg.probe(path)
     except python_ffmpeg.Error as e:
-        pp.error(e.stderr)
-        raise cappa.Exit(code=1) from e
-
-    return probe
+        raise VideoProbeError.from_ffprobe_stderr(path=path, stderr=e.stderr) from e
 
 
 def get_probe_as_box(input_path: Path) -> Box:
@@ -74,6 +70,9 @@ def get_probe_as_box(input_path: Path) -> Box:
 
     Returns:
         Box: Box object containing normalized probe data with fields for format metadata and stream properties
+
+    Raises:
+        VideoProbeError: If the file cannot be probed or its streams cannot be normalized.
     """
     probe_box = Box(
         run_ffprobe(input_path),
@@ -91,14 +90,22 @@ def get_probe_as_box(input_path: Path) -> Box:
     probe_box.bit_rate = probe_box.format.bit_rate or None
 
     # Set stream codecs to enum
-    for stream in probe_box.streams:
-        stream.codec_type = CodecTypes(stream.codec_type.lower())
-        stream.bps = stream.tags.BPS or None
-        stream.title = stream.tags.title or None
-        # Preserve the raw count before it is bucketed into an enum; the downmix logic needs
-        # it to detect >7.1 (Atmos) layouts, which have no AudioLayout member.
-        stream.channel_count = stream.channels if isinstance(stream.channels, int) else None
-        stream.channels = channels_to_layout(stream.channels)
-        stream.language = stream.language or stream.tags.language or None
+    try:
+        for stream in probe_box.streams:
+            stream.codec_type = CodecTypes(str(stream.codec_type).lower())
+            # ffprobe omits `codec_name` for streams it cannot identify; the rest of the codebase
+            # calls `.lower()` on it unconditionally.
+            stream.codec_name = stream.codec_name if isinstance(stream.codec_name, str) else ""
+            stream.bps = stream.tags.BPS or None
+            stream.title = stream.tags.title or None
+            # Preserve the raw count before it is bucketed into an enum; the downmix logic needs
+            # it to detect >7.1 (Atmos) layouts, which have no AudioLayout member.
+            stream.channel_count = stream.channels if isinstance(stream.channels, int) else None
+            stream.channels = channels_to_layout(stream.channels)
+            stream.language = stream.language or stream.tags.language or None
+    except (AttributeError, TypeError, ValueError) as e:
+        # ffprobe can succeed on a non-video file and still report streams this model cannot
+        # describe; treat that as unreadable rather than crashing the caller.
+        raise VideoProbeError(path=input_path, reason=str(e)) from e
 
     return probe_box

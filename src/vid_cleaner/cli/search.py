@@ -9,6 +9,7 @@ from rich.table import Table
 
 from vid_cleaner.config import settings
 from vid_cleaner.constants import VideoContainerTypes
+from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.utils import coerce_video_files
 from vid_cleaner.vidcleaner import SearchCommand
 
@@ -64,12 +65,19 @@ def main(search_cmd: SearchCommand) -> None:
     table.add_column("Video info")
 
     i = 0
+    unreadable: list[VideoProbeError] = []
     for video_file in track(
         video_files,
         description=f"Filtering {len(video_files)} files for {human_readable_filters}...",
         transient=True,
     ):
-        video_traits = video_file.get_traits()
+        # A video extension is no guarantee of video content; corrupt files and stubs like
+        # AppleDouble `._` sidecars must not abort the whole search.
+        try:
+            video_traits = video_file.get_traits()
+        except VideoProbeError as e:
+            unreadable.append(e)
+            continue
 
         matches = [trait for trait in video_traits if trait in settings.filters]
         if settings.filters and not matches:
@@ -78,8 +86,18 @@ def main(search_cmd: SearchCommand) -> None:
         i += 1
         table.add_row(str(i), video_file.name, ", ".join(matches), ", ".join(video_traits))
 
+    if unreadable:
+        pp.warning(f"Skipped {len(unreadable)} file(s) that could not be read as video")
+        pp.debug(
+            "Unreadable files", details=[f"{e.path}: {e.reason}" for e in unreadable], markup=False
+        )
+
     if i == 0:
-        pp.error(f"No video files found matching {human_readable_filters}")
+        pp.error(
+            f"No video files found matching {human_readable_filters}"
+            if human_readable_filters
+            else "No video files could be read"
+        )
         raise cappa.Exit(code=1)
 
     pp.console().print(table)

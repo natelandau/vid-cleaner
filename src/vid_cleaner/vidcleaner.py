@@ -12,6 +12,7 @@ from rich.traceback import install
 from vid_cleaner import settings
 from vid_cleaner.config import SettingsManager
 from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel, VideoTrait
+from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.utils import create_default_config, parse_trait_filters
 
 
@@ -428,6 +429,11 @@ def main() -> None:  # pragma: no cover
         )
     except KeyboardInterrupt as e:
         pp.info("\nExiting...")
+        raise cappa.Exit(code=1) from e
+    except VideoProbeError as e:
+        # Commands given explicit files abort on an unreadable one; `search` handles its own
+        # skipping before the error can reach here.
+        pp.error(str(e))
         raise cappa.Exit(code=1) from e
 
 
