@@ -1,6 +1,7 @@
 # type: ignore
 """Test the search command."""
 
+import copy
 from pathlib import Path
 
 import cappa
@@ -28,6 +29,42 @@ def set_default_settings(tmp_path, mocker, mock_ffprobe_box):
             "drop_original_audio": False,
         }
     )
+
+
+@pytest.fixture
+def search_dir(tmp_path, mocker, mock_ffprobe_box):
+    """Build a directory of video files with per-file size and bitrate.
+
+    Names may include a nested path, e.g. "aaa/mike.mkv", to exercise recursive
+    searches; the parent directory is created automatically.
+
+    Returns:
+        Callable[[list[tuple[str, int, int]]], Path]: Call with `(filename, size_bytes,
+            bitrate_bps)` triples to create the files and patch ffprobe to report the
+            matching bitrate for each one.
+    """
+
+    def _inner(files: list[tuple[str, int, int]]) -> Path:
+        reference = mock_ffprobe_box("reference.json")
+        directory = tmp_path / "library"
+        directory.mkdir(exist_ok=True)
+
+        boxes = {}
+        for name, size, bitrate in files:
+            path = directory / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"\0" * size)
+            file_box = copy.deepcopy(reference)
+            file_box.bit_rate = str(bitrate) if bitrate else None
+            boxes[name] = file_box
+
+        mocker.patch(
+            "vid_cleaner.models.video_file.get_probe_as_box",
+            side_effect=lambda path: boxes[path.relative_to(directory).as_posix()],
+        )
+        return directory
+
+    return _inner
 
 
 def test_search_no_video_files(tmp_path, capsys, mocker, debug):
@@ -77,7 +114,8 @@ def test_search_with_results(
 
     assert exc_info.value.code == 0
     assert "Found 1 video files in 1/1 directories" in output
-    assert "1 │ test_video.mp4 │ h264" in output
+    assert "test_video.mp4" in output
+    assert "h264" in output
 
 
 def test_search_with_no_results(
@@ -109,7 +147,36 @@ def test_search_with_no_results(
     assert exc_info.value.code == 1
     assert "Found 1 video files in 1/1 directories" in output
     assert "No video files found matching 'reorder'" in error
-    assert "Matching filters" not in output
+    assert "Bitrate" not in output
+
+
+def test_search_no_results_reports_skipped_count(capsys, mock_video_path, mocker, mock_ffprobe_box):
+    """Verify the no-results error still surfaces how many files were skipped as unreadable."""
+    # Given: One file that fails to probe and one that probes but matches no active filter
+    unreadable = mock_video_path.parent / "not_really_a_video.mkv"
+    unreadable.touch()
+    good_box = mock_ffprobe_box("reference.json")
+
+    def probe(path):
+        if path.name == unreadable.name:
+            raise VideoProbeError(path=path, reason="Invalid data found when processing input")
+        return good_box
+
+    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", side_effect=probe)
+
+    # When: Filtering for a trait no readable file has, so results is empty and the
+    # success-path table caption (the usual home for the skipped count) never renders
+    args = ["search", str(mock_video_path.parent), "--filters", "reorder"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    _, error = capsys.readouterr()
+
+    # Then: The error reports both the mismatch and the skipped file
+    assert exc_info.value.code == 1
+    assert "No video files found matching 'reorder'" in error
+    assert "1" in error
+    assert "skipped" in error
 
 
 @pytest.mark.parametrize(
@@ -152,6 +219,299 @@ def test_search_skips_unreadable_files(
 
     # Then: The readable file is still reported and the unreadable one is only counted
     assert exc_info.value.code == 0
-    assert "1 │ test_video.mp4 │ h264" in output
-    assert "Skipped 1 file(s) that could not be read as video" in error
+    assert "test_video.mp4" in output
+    assert "h264" in output
+    assert "1 skipped" in output
     assert ("Unreadable files" in output + error) is lists_skipped_files
+
+
+def test_search_skips_files_that_vanish_before_stat(
+    capsys, mocker, mock_video_path, mock_ffprobe_box
+):
+    """Verify a file that disappears between probing and stat() is skipped, not fatal."""
+    # Given: A second file that probes fine but vanishes before its size can be read,
+    # e.g. deleted mid-scan by another process
+    vanished = mock_video_path.parent / "vanished.mkv"
+    vanished.touch()
+    vanished_resolved = vanished.resolve()
+    good_box = mock_ffprobe_box("reference.json")
+    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", return_value=good_box)
+
+    # find_files' own is_file() check stats every candidate during discovery, before the
+    # search loop reaches this file at all; only the later call (reading its size for the
+    # results table) should observe the file as gone.
+    original_stat = Path.stat
+    stat_calls = 0
+
+    def flaky_stat(self, *args: object, **kwargs: object) -> object:
+        nonlocal stat_calls
+        if self == vanished_resolved:
+            stat_calls += 1
+            if stat_calls > 2:
+                message = "No such file or directory"
+                raise OSError(message)
+        return original_stat(self, *args, **kwargs)
+
+    mocker.patch.object(Path, "stat", flaky_stat)
+
+    # When: Running the search command
+    args = ["search", str(mock_video_path.parent), "--filters", "h264"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: The scan completes, reporting the readable file and counting the vanished
+    # one as skipped rather than aborting the whole search
+    assert exc_info.value.code == 0
+    assert "test_video.mp4" in output
+    assert "1 skipped" in output
+
+
+@pytest.mark.parametrize(
+    ("sort_args", "expected_order"),
+    [
+        ([], ["apple", "banana", "cherry"]),
+        (["--sort", "alpha"], ["apple", "banana", "cherry"]),
+        (["--sort", "alpha", "--reverse"], ["cherry", "banana", "apple"]),
+        (["--sort", "size"], ["banana", "cherry", "apple"]),
+        (["--sort", "size", "--reverse"], ["apple", "cherry", "banana"]),
+        (["--sort", "bitrate"], ["cherry", "apple", "banana"]),
+        (["--sort", "bitrate", "--reverse"], ["banana", "apple", "cherry"]),
+    ],
+)
+def test_search_sort_orders_results(capsys, search_dir, sort_args, expected_order):
+    """Verify each sort key and --reverse order the results as documented."""
+    # Given: Three files whose alphabetical, size, and bitrate orders all differ
+    directory = search_dir(
+        [
+            ("apple.mkv", 100, 2_000_000),
+            ("banana.mkv", 300, 1_000_000),
+            ("cherry.mkv", 200, 3_000_000),
+        ]
+    )
+
+    # When: Running the search command with the given sort arguments
+    args = ["search", str(directory), "--filters", "h264", *sort_args]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: The rows appear in the expected order
+    assert exc_info.value.code == 0
+    positions = [output.index(name) for name in expected_order]
+    assert positions == sorted(positions)
+
+
+def test_search_sort_alpha_uses_full_path(capsys, search_dir):
+    """Verify alphabetical sorting groups results by directory, not by bare filename."""
+    # Given: Files whose directory order and filename order disagree
+    directory = search_dir([("zulu.mkv", 100, 1_000_000), ("aaa/mike.mkv", 100, 1_000_000)])
+
+    # When: Running a recursive search with the default sort
+    args = ["search", str(directory), "--depth", "1", "--filters", "h264"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: The nested `aaa/mike.mkv` sorts before the top-level `zulu.mkv`
+    assert exc_info.value.code == 0
+    assert output.index("mike") < output.index("zulu")
+
+
+def test_search_table_shows_relative_directory_when_recursive(capsys, search_dir):
+    """Verify a recursive search renders each result's directory as a dim path segment."""
+    # Given: A file nested one directory below the search root
+    directory = search_dir([("zulu.mkv", 100, 1_000_000), ("aaa/mike.mkv", 100, 1_000_000)])
+
+    # When: Running a recursive search
+    args = ["search", str(directory), "--depth", "1", "--filters", "h264"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: The nested result's row shows its directory ahead of the filename
+    assert exc_info.value.code == 0
+    assert "aaa/mike.mkv" in output
+
+
+def test_search_table_omits_directory_when_not_recursive(capsys, search_dir):
+    """Verify a depth-0 search renders the bare filename with no directory prefix."""
+    # Given: A file at the top level of the search directory
+    directory = search_dir([("mike.mkv", 100, 1_000_000)])
+
+    # When: Running a non-recursive search (the default depth)
+    args = ["search", str(directory), "--filters", "h264"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: Only the bare filename appears, with no directory segment
+    assert exc_info.value.code == 0
+    assert "mike.mkv" in output
+    assert str(directory) not in output
+
+
+def test_search_sort_bitrate_handles_missing_bitrate(capsys, search_dir):
+    """Verify a file whose probe omits bit_rate sorts last instead of raising."""
+    # Given: One file with a bitrate and one without
+    directory = search_dir([("apple.mkv", 100, 0), ("banana.mkv", 100, 5_000_000)])
+
+    # When: Sorting by bitrate
+    args = ["search", str(directory), "--filters", "h264", "--sort", "bitrate"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: The file with a bitrate sorts ahead of the one without
+    assert exc_info.value.code == 0
+    assert output.index("banana") < output.index("apple")
+
+
+def test_search_sort_ties_are_deterministic(capsys, search_dir, mocker):
+    """Verify equal-size files render in a stable order regardless of scan order."""
+    # Given: Three files with an identical size, so `--sort=size` cannot break the tie
+    directory = search_dir([("alpha.mkv", 100, 0), ("bravo.mkv", 100, 0), ("charlie.mkv", 100, 0)])
+    # find_files' scan order is arbitrary; scramble it here to prove the table's row
+    # order does not simply mirror whatever order the filesystem happened to return.
+    scrambled = [directory / "bravo.mkv", directory / "charlie.mkv", directory / "alpha.mkv"]
+    mocker.patch("vid_cleaner.cli.search.find_files", return_value=scrambled)
+
+    # When: Sorting by size
+    args = ["search", str(directory), "--filters", "h264", "--sort", "size"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: Ties fall back to alphabetical-by-path order, not scan order
+    assert exc_info.value.code == 0
+    assert output.index("alpha") < output.index("bravo") < output.index("charlie")
+
+
+def test_search_rejects_unknown_sort_key(capsys):
+    """Verify an unsupported --sort value is refused by the CLI."""
+    # Given: An invalid sort key
+    args = ["search", ".", "--sort", "duration"]
+
+    # When: Running the search command
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The command exits with an error
+    assert exc_info.value.code != 0
+
+
+def test_search_table_shows_size_and_bitrate(capsys, search_dir):
+    """Verify the results table reports each file's size and bitrate."""
+    # Given: A single file with a known size and bitrate
+    directory = search_dir([("apple.mkv", 1500, 2_000_000)])
+
+    # When: Running the search command
+    args = ["search", str(directory), "--filters", "h264"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: Both columns and both values are present
+    assert exc_info.value.code == 0
+    assert "Size" in output
+    assert "Bitrate" in output
+    assert "1.5 kB" in output
+    assert "2.0 Mb/s" in output
+
+
+def test_search_table_marks_the_active_sort_column(capsys, search_dir):
+    """Verify the sorted column header carries a direction arrow that --reverse flips."""
+    # Given: A directory with one matching file
+    directory = search_dir([("apple.mkv", 100, 2_000_000)])
+
+    # When: Sorting by size
+    args = ["search", str(directory), "--filters", "h264", "--sort", "size"]
+    with pytest.raises(cappa.Exit):
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+    forward = capsys.readouterr().out
+
+    # When: Sorting by size in reverse
+    with pytest.raises(cappa.Exit):
+        cappa.invoke(obj=VidCleaner, argv=[*args, "--reverse"], deps=[config_subcommand])
+    reversed_output = capsys.readouterr().out
+
+    # Then: The arrow marks the size column and flips with --reverse
+    assert "Size ↓" in forward
+    assert "Size ↑" in reversed_output
+
+
+def test_search_table_arrow_reports_the_direction_rows_run(capsys, search_dir):
+    """Verify the arrow follows the rendered order, not the --reverse flag."""
+    # Given: Two files whose alphabetical order is visible in the table
+    directory = search_dir([("apple.mkv", 100, 2_000_000), ("banana.mkv", 100, 1_000_000)])
+
+    # When: Sorting alphabetically, which ascends by default
+    args = ["search", str(directory), "--filters", "h264"]
+    with pytest.raises(cappa.Exit):
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+    forward = capsys.readouterr().out
+
+    # When: Reversing that order
+    with pytest.raises(cappa.Exit):
+        cappa.invoke(obj=VidCleaner, argv=[*args, "--reverse"], deps=[config_subcommand])
+    reversed_output = capsys.readouterr().out
+
+    # Then: A→Z rows carry the up arrow and Z→A rows the down arrow, matching the
+    # meaning the size and bitrate columns give the same symbols
+    assert "File ↑" in forward
+    assert forward.index("apple") < forward.index("banana")
+    assert "File ↓" in reversed_output
+    assert reversed_output.index("banana") < reversed_output.index("apple")
+
+
+def test_search_table_caption_reports_counts(capsys, search_dir):
+    """Verify the caption reports how many files matched out of those scanned."""
+    # Given: Two files where only one matches the active filter
+    directory = search_dir([("apple.mkv", 100, 2_000_000), ("banana.mkv", 100, 1_000_000)])
+
+    # When: Running a search whose filter matches both
+    args = ["search", str(directory), "--filters", "h264"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: The caption states the matched and scanned counts
+    assert exc_info.value.code == 0
+    assert "2 of 2 files matched" in output
+
+
+def test_search_table_caption_reports_skipped_files(
+    capsys, mock_video_path, mocker, mock_ffprobe_box
+):
+    """Verify the caption counts files that could not be read as video."""
+    # Given: One readable video and one file ffprobe rejects
+    unreadable = mock_video_path.parent / "not_really_a_video.mkv"
+    unreadable.touch()
+    good_box = mock_ffprobe_box("reference.json")
+
+    def probe(path):
+        if path.name == unreadable.name:
+            raise VideoProbeError(path=path, reason="Invalid data found when processing input")
+        return good_box
+
+    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", side_effect=probe)
+
+    # When: Running the search command
+    args = ["search", str(mock_video_path.parent), "--filters", "h264"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: The caption reports the skipped file
+    assert exc_info.value.code == 0
+    assert "1 skipped" in output
