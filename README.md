@@ -67,6 +67,8 @@ vidcleaner clean --from /media --filters=4k --sort=size --limit=5 --h265
 
 `clean` and `clip` replace the file they were given. The original is not deleted: it is renamed alongside the result as a timestamped `.bak` copy. Pass `--overwrite` to skip the backup and rewrite the file in place with no way back, or `--out PATH` (single input file only) to write somewhere else and leave the input untouched.
 
+`--vp9` is the exception, because VP9 has to go in a WebM container. `vidcleaner clean --vp9 movie.mkv` writes `movie.webm` next to the input. Without `--overwrite` the original `movie.mkv` is left where it is; with `--overwrite` it is removed, so the container change does not leave two copies of the same film on disk.
+
 When cleaning several files, a failure on one file does not stop the run. Every remaining file is still processed, failures are listed at the end, and the command exits with a non-zero status.
 
 ### Configuration

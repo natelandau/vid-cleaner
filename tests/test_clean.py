@@ -1748,3 +1748,76 @@ def test_clean_renders_one_tree_per_file(
     per_file = output.rsplit("\u21e8", 1)[-1]
     assert per_file.count(TREE_LAST) == 1
     assert TREE_LAST in per_file.splitlines()[-1]
+
+
+@pytest.fixture
+def fake_transcode(mocker):
+    """Replace the ffmpeg pass with one that writes a real temporary file.
+
+    Lets a test exercise the genuine `copy_to_output` write, and so the output path and
+    the fate of the original, rather than stubbing the write out.
+
+    Returns:
+        Callable[[], None]: Call to install the replacement.
+    """
+
+    def _inner() -> None:
+        def run_ffmpeg(self, command, title, suffix=None, step=None):
+            output_path = self.temp_file.new_tmp_path(suffix=suffix or "", step_name=step or "")
+            output_path.write_bytes(b"transcoded")
+            self.temp_file.created_temp_file(output_path)
+            return [f"✔ {title}"]
+
+        mocker.patch.object(VideoFile, "_run_ffmpeg", run_ffmpeg)
+
+    return _inner
+
+
+def test_clean_vp9_writes_a_webm_file(mocker, mock_ffprobe_box, capsys, tmp_path, fake_transcode):
+    """Verify --vp9 names the output for the container it actually produced."""
+    # Given: An .mkv input converted to VP9
+    video = tmp_path / "movie.mkv"
+    video.touch()
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+    fake_transcode()
+
+    # When: Cleaning it to VP9 without --overwrite
+    args = ["clean", "--vp9", str(video)]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: WebM data lands in a .webm file, the original is untouched, and no pointless
+    # backup of a file that was never overwritten is left behind
+    assert exc_info.value.code == 0
+    assert (tmp_path / "movie.webm").read_bytes() == b"transcoded"
+    assert video.exists()
+    assert not list(tmp_path.glob("*.bak"))
+
+
+def test_clean_vp9_overwrite_removes_the_original_container(
+    mocker, mock_ffprobe_box, capsys, tmp_path, fake_transcode
+):
+    """Verify --overwrite removes the source .mkv once the result lands in a .webm."""
+    # Given: An .mkv input converted to VP9 with --overwrite
+    video = tmp_path / "movie.mkv"
+    video.touch()
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+    fake_transcode()
+
+    # When: Cleaning it to VP9 in place
+    args = ["clean", "--vp9", "--overwrite", str(video)]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: Only the .webm remains, so the container change does not leave two copies
+    assert exc_info.value.code == 0
+    assert (tmp_path / "movie.webm").read_bytes() == b"transcoded"
+    assert not video.exists()
