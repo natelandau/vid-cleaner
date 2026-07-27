@@ -1482,3 +1482,67 @@ def test_clean_from_empty_directory_still_exits_zero(capsys, tmp_path):
     # Then: The command reports the empty directory and exits successfully
     assert exc_info.value.code == 0
     assert "No video files found" in capsys.readouterr().err
+
+
+def test_clean_removes_the_original_even_when_temp_cleanup_fails(
+    mocker, mock_ffprobe_box, mock_ffmpeg, capsys, tmp_path
+):
+    """Verify a failed temp cleanup does not skip removing the original under --overwrite."""
+    # Given: --overwrite writing to a new path, and temp housekeeping that raises
+    source = tmp_path / "movie.mkv"
+    source.touch()
+    destination = tmp_path / "out.mkv"
+    args = ["clean", "-vv", "--overwrite", "--out", str(destination), str(source)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
+    )
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+    mocker.patch.object(TempFile, "clean_up", side_effect=OSError("temp dir busy"))
+
+    # When: Running clean
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: The original is gone and the cleanup failure is reported as its own warning
+    assert exc_info.value.code == 0
+    assert not source.exists()
+    assert "temp dir busy" in output
+
+
+def test_clean_reports_a_failed_original_removal_accurately(
+    mocker, mock_ffprobe_box, mock_ffmpeg, capsys, tmp_path
+):
+    """Verify a failed removal of the original is not reported as a temp-file cleanup error."""
+    # Given: --overwrite writing to a new path, where removing the original raises
+    source = tmp_path / "movie.mkv"
+    source.touch()
+    destination = tmp_path / "out.mkv"
+    args = ["clean", "-vv", "--overwrite", "--out", str(destination), str(source)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
+    )
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+    mocker.patch.object(Path, "unlink", side_effect=OSError("read-only file system"))
+
+    # When: Running clean
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: The warning names the original file, not the temporary files
+    assert exc_info.value.code == 0
+    assert "could not remove the original" in output
+    assert "could not clean up temporary files" not in output

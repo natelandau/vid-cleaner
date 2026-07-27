@@ -6,6 +6,7 @@ import cappa
 import pytest
 
 from vid_cleaner import settings
+from vid_cleaner.controllers import TempFile
 from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 
 
@@ -132,3 +133,36 @@ def test_clipping_video_dryrun(
     assert exc_info.value.code == 0
     assert "dry run" in output
     assert "clipped_video.mkv" not in output
+
+
+def test_clip_cleanup_failure_still_reports_the_save(
+    mocker, mock_ffprobe_box, mock_video_path, capsys, mock_ffmpeg, tmp_path
+):
+    """Verify a cleanup error after a successful clip is a warning, not a crash.
+
+    The clip is already copied to its destination by the time `TempFile.clean_up()` runs,
+    so a failure there must not discard the "Saved to" message or propagate out of main().
+    """
+    # Given: a clip that writes successfully but whose temp-directory housekeeping raises
+    args = ["clip", str(mock_video_path)]
+    settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
+    )
+    mocker.patch(
+        "vid_cleaner.cli.clip_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to clipped_video.mkv"]),
+    )
+    mocker.patch.object(TempFile, "clean_up", side_effect=OSError("temp dir busy"))
+
+    # When: Running clip
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: The save survives, the cleanup failure is a warning, and the run still succeeds
+    assert exc_info.value.code == 0
+    assert "clipped_video.mkv" in output
+    assert "temp dir busy" in output

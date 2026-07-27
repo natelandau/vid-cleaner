@@ -40,15 +40,23 @@ def write_output(video_file: VideoFile) -> list[str]:
     )
 
     # The write above already landed and swapped the result into place, so a failure past
-    # this point is temp-directory housekeeping, not a failed write: warn instead of
-    # discarding the "Saved to" message and counting a successful file as failed.
+    # this point is housekeeping, not a failed write: warn instead of discarding the
+    # "Saved to" message and counting a successful file as failed. Each step is guarded
+    # separately so a failed temp cleanup cannot skip the removal below, and so neither
+    # failure is ever reported under the other one's description.
     try:
         video_file.temp_file.clean_up()
-        if settings.overwrite and out_file != video_file.path:
-            pp.debug(f"Delete: {video_file.path}")
-            video_file.path.unlink()
     except OSError as e:
         messages.append(f"{SYMBOL_CROSS} Warning: could not clean up temporary files: {e}")
+
+    if settings.overwrite and out_file != video_file.path:
+        pp.debug(f"Delete: {video_file.path}")
+        try:
+            video_file.path.unlink()
+        except OSError as e:
+            messages.append(
+                f"{SYMBOL_CROSS} Warning: could not remove the original {video_file.path}: {e}"
+            )
 
     return messages
 
