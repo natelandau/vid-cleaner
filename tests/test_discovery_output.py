@@ -124,10 +124,11 @@ def interactive_console(mocker):
     `pp.error` a mock and silently break stderr capture in these same tests.
 
     Returns:
-        Callable[[bool], None]: Call with True or False to set interactivity.
+        Callable[..., None]: Call with `is_terminal=True` or `is_terminal=False` to set
+            interactivity.
     """
 
-    def _inner(is_terminal: bool) -> None:  # noqa: FBT001
+    def _inner(*, is_terminal: bool) -> None:
         mocker.patch(
             "rich.console.Console.is_terminal",
             new_callable=mocker.PropertyMock,
@@ -141,7 +142,7 @@ def test_confirm_errors_on_non_tty_without_yes(mocker, capsys, interactive_conso
     """Verify a non-interactive terminal without --yes errors instead of hanging on stdin."""
     # Given: A non-interactive console
     report = make_report(results=[make_result(mocker, "a.mkv", 100)], total=1)
-    interactive_console(False)  # noqa: FBT003
+    interactive_console(is_terminal=False)
 
     # When: Confirming without assume_yes
     with pytest.raises(cappa.Exit) as exc_info:
@@ -156,7 +157,7 @@ def test_confirm_exits_zero_when_declined(mocker, interactive_console):
     """Verify declining is a successful no-op, not a failure."""
     # Given: An interactive console where the user answers no
     report = make_report(results=[make_result(mocker, "a.mkv", 100)], total=1)
-    interactive_console(True)  # noqa: FBT003
+    interactive_console(is_terminal=True)
     mocker.patch("vid_cleaner.cli.discovery_output.Confirm.ask", return_value=False)
 
     # When: Confirming
@@ -171,7 +172,7 @@ def test_confirm_returns_when_accepted(mocker, interactive_console):
     """Verify accepting prompts once and lets the caller proceed."""
     # Given: An interactive console where the user answers yes
     report = make_report(results=[make_result(mocker, "a.mkv", 100)], total=1)
-    interactive_console(True)  # noqa: FBT003
+    interactive_console(is_terminal=True)
     ask = mocker.patch("vid_cleaner.cli.discovery_output.Confirm.ask", return_value=True)
 
     # When: Confirming
@@ -188,7 +189,7 @@ def test_confirm_prompt_reports_count_and_total_size(mocker, interactive_console
         results=[make_result(mocker, "a.mkv", 100), make_result(mocker, "b.mkv", 200)],
         total=2,
     )
-    interactive_console(True)  # noqa: FBT003
+    interactive_console(is_terminal=True)
     ask = mocker.patch("vid_cleaner.cli.discovery_output.Confirm.ask", return_value=True)
 
     # When: Confirming
