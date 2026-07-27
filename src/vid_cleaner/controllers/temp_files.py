@@ -18,7 +18,12 @@ def cleanup_on_exit(temp_file: "TempFile") -> None:  # pragma: no cover
     Args:
         temp_file (TempFile): The instance whose temporary files should be removed.
     """
-    temp_file.clean_up()
+    try:
+        temp_file.clean_up()
+    except OSError as e:
+        # An exit hook that raises turns an already-reported, already-exited command into
+        # an `atexit._run_exitfuncs` traceback on stderr. Leftover temp files are cheaper.
+        pp.debug(f"Could not clean up {temp_file.tmp_dir}: {e}")
 
 
 class TempFile:

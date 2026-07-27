@@ -70,6 +70,16 @@ def present_discovery(report: DiscoveryReport, *, root: Path) -> None:
     )
 
 
+def _no_prompt_available() -> cappa.Exit:
+    """Report that the run cannot be confirmed and build the exit to raise.
+
+    Returns:
+        cappa.Exit: The failure to raise at the call site.
+    """
+    pp.error("Refusing to run without a confirmation prompt. Pass `--yes` to proceed.")
+    return cappa.Exit(code=1)
+
+
 def confirm_selection(report: DiscoveryReport, *, assume_yes: bool) -> None:
     """Ask the user to approve a discovered selection before acting on it.
 
@@ -88,8 +98,7 @@ def confirm_selection(report: DiscoveryReport, *, assume_yes: bool) -> None:
         return
 
     if not pp.console().is_terminal:
-        pp.error("Refusing to run without a confirmation prompt. Pass `--yes` to proceed.")
-        raise cappa.Exit(code=1)
+        raise _no_prompt_available()
 
     total_size = decimal(sum(result.size for result in report.results))
     # This prompt is the only gate on a whole library, and `--overwrite` leaves no backup
@@ -100,6 +109,13 @@ def confirm_selection(report: DiscoveryReport, *, assume_yes: bool) -> None:
         else "keeping a timestamped backup of each original"
     )
     prompt = f"Clean these {len(report.results)} files ({total_size}) {recovery}?"
-    if not Confirm.ask(prompt, default=False):
+    try:
+        approved = Confirm.ask(prompt, default=False, console=pp.console())
+    # `is_terminal` describes the output stream, so a run with a terminal on stdout but a
+    # closed or redirected stdin reaches the prompt and gets EOF instead of an answer.
+    except EOFError as e:
+        raise _no_prompt_available() from e
+
+    if not approved:
         pp.info("Nothing to do")
         raise cappa.Exit(code=0)
