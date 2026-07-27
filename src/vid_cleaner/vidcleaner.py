@@ -216,6 +216,9 @@ vidcleaner clean --h265 --langs=eng <video_file>
 
 # Downmix audio to stereo and keep all subtitles:
 vidcleaner clean --downmix --keep-subs <video_file>
+
+# Convert the five largest 4k files under a directory to H265:
+vidcleaner clean --from /media --filters=4k --sort=size --limit=5 --h265
 ```
     """,
 )
@@ -224,8 +227,17 @@ class CleanCommand:
 
     files: Annotated[
         list[Path],
-        cappa.Arg(help="Video file path(s)"),
-    ]
+        cappa.Arg(help="Video file path(s)", show_default=False),
+    ] = field(default_factory=list)
+    from_: Annotated[
+        Path | None,
+        cappa.Arg(
+            help="Directory to discover files in instead of naming them explicitly",
+            long="--from",
+            show_default=False,
+            group="Discovery",
+        ),
+    ] = None
     out: Annotated[
         Path | None,
         cappa.Arg(
@@ -332,6 +344,16 @@ class CleanCommand:
             show_default=True,
         ),
     ] = False
+    yes: Annotated[
+        bool,
+        cappa.Arg(
+            help="Skip the confirmation prompt when using `--from`",
+            long=True,
+            short="-y",
+            show_default=True,
+        ),
+    ] = False
+    discovery: cappa.Destructured[DiscoveryOptions] = field(default_factory=DiscoveryOptions)
 
 
 @cappa.command(

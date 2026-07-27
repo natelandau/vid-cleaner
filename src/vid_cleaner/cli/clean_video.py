@@ -6,6 +6,9 @@ import cappa
 from nclutils import pp
 
 from vid_cleaner import settings
+from vid_cleaner.cli.discovery_output import confirm_selection, present_discovery
+from vid_cleaner.constants import SortOrder
+from vid_cleaner.controllers.discovery import discover_video_files
 from vid_cleaner.utils import (
     coerce_video_files,
     copy_to_output,
@@ -43,6 +46,73 @@ def write_output(video_file: VideoFile) -> list[str]:
     return messages
 
 
+def select_video_files(clean_cmd: CleanCommand) -> list[VideoFile]:
+    """Resolve the files to clean from either explicit paths or a `--from` discovery run.
+
+    Keep the two modes strictly separate so a query and a path list can never disagree
+    about what the command is about to rewrite.
+
+    Args:
+        clean_cmd (CleanCommand): The parsed clean command.
+
+    Returns:
+        list[VideoFile]: The files to process, in the order they should be processed.
+
+    Raises:
+        cappa.Exit: If the two modes are mixed, if discovery flags appear without
+            `--from`, or if neither a file nor `--from` was given.
+    """
+    discovery = clean_cmd.discovery
+    # Compare against defaults rather than asking cappa what the user typed; an explicit
+    # `--sort=alpha` would have been a no-op anyway, so treating it as unset is harmless.
+    uses_discovery_flags = bool(
+        discovery.filters
+        or discovery.limit is not None
+        or discovery.depth
+        or discovery.reverse
+        or discovery.sort != SortOrder.ALPHA
+    )
+
+    if clean_cmd.from_ is not None and clean_cmd.files:
+        pp.error("`--from` cannot be combined with explicit file paths")
+        raise cappa.Exit(code=1)
+
+    if clean_cmd.from_ is None and uses_discovery_flags:
+        pp.error("`--filters`, `--sort`, `--reverse`, `--depth`, and `--limit` require `--from`")
+        raise cappa.Exit(code=1)
+
+    if clean_cmd.from_ is None:
+        if not clean_cmd.files:
+            pp.error("Provide file path(s) or `--from` to discover them")
+            raise cappa.Exit(code=1)
+        return coerce_video_files(clean_cmd.files)
+
+    filters = set(settings.filters)
+    report = discover_video_files(
+        clean_cmd.from_,
+        depth=discovery.depth,
+        filters=filters,
+        sort=discovery.sort,
+        reverse=discovery.reverse,
+        limit=discovery.limit,
+    )
+
+    present_discovery(
+        report,
+        root=clean_cmd.from_,
+        filters=filters,
+        recursive=discovery.depth > 0,
+    )
+
+    # A dry run previews rather than acts, so there is nothing to approve.
+    if not settings.dryrun:
+        confirm_selection(report, assume_yes=clean_cmd.yes)
+
+    # Discovery already probed every file and `VideoFile` caches its probe, so reusing
+    # these instances skips a second ffprobe per file.
+    return [result.video_file for result in report.results]
+
+
 def main(clean_cmd: CleanCommand) -> None:
     """Process video files according to specified cleaning options.
 
@@ -59,9 +129,12 @@ def main(clean_cmd: CleanCommand) -> None:
         pp.error("Cannot convert to both H265 and VP9")
         raise cappa.Exit(code=1)
 
-    out_path_override = resolve_out_path_override(clean_cmd.files)
+    # Check the `--out`/`--from` conflict before discovery runs, so an empty `--from`
+    # directory can't short-circuit the command with "no files found" ahead of this error.
+    out_path_override = resolve_out_path_override(clean_cmd.files, from_directory=clean_cmd.from_)
+    video_files = select_video_files(clean_cmd)
 
-    for video_file in coerce_video_files(clean_cmd.files):
+    for video_file in video_files:
         settings.out_path = out_path_override or video_file.path
 
         # Print the video name first so live progress bars and clean()'s up-front operation

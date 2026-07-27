@@ -1160,3 +1160,127 @@ def test_query_arr_apps_for_imdb_id_radarr(mocker, tmp_path, radarr_response, ex
 
     # Then: the IMDb ID is returned when present, otherwise None
     assert result == expected
+
+
+def test_clean_rejects_from_with_positional_files(capsys, tmp_path):
+    """Verify --from and explicit files are refused together as conflicting sources."""
+    # Given: Both a discovery root and an explicit file
+    video = tmp_path / "movie.mkv"
+    video.touch()
+    args = ["clean", "--from", str(tmp_path), str(video)]
+
+    # When: Running clean
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The command errors explaining the conflict
+    assert exc_info.value.code == 1
+    assert "`--from` cannot be combined with explicit file paths" in capsys.readouterr().err
+
+
+def test_clean_rejects_from_with_out(capsys, tmp_path):
+    """Verify --out is refused with --from, since one path cannot name a multi-file selection."""
+    # Given: A discovery root and an explicit output path
+    args = ["clean", "--from", str(tmp_path), "--out", str(tmp_path / "out.mkv")]
+
+    # When: Running clean
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The command errors
+    assert exc_info.value.code == 1
+    assert "`--out` cannot be used with `--from`" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "discovery_arg",
+    [["--filters", "h264"], ["--limit", "2"], ["--depth", "1"], ["--reverse"], ["--sort", "size"]],
+)
+def test_clean_rejects_discovery_flags_without_from(capsys, tmp_path, discovery_arg):
+    """Verify a discovery flag without --from errors rather than silently doing nothing."""
+    # Given: A discovery flag on an explicit-file run
+    video = tmp_path / "movie.mkv"
+    video.touch()
+    args = ["clean", str(video), *discovery_arg]
+
+    # When: Running clean
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The command errors naming --from
+    assert exc_info.value.code == 1
+    assert "require `--from`" in capsys.readouterr().err
+
+
+def test_clean_rejects_no_files_and_no_from(capsys):
+    """Verify clean with neither a file nor --from is a usage error."""
+    # Given: No files and no discovery root
+    args = ["clean"]
+
+    # When: Running clean
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The command errors
+    assert exc_info.value.code == 1
+    assert "Provide file path(s) or `--from`" in capsys.readouterr().err
+
+
+def test_clean_from_previews_and_requires_confirmation(capsys, video_library):
+    """Verify discovery mode renders the selection table and refuses to run non-interactively."""
+    # Given: Two discoverable files
+    directory = video_library([("apple.mkv", 100, 1_000_000), ("banana.mkv", 200, 1_000_000)])
+    args = ["clean", "--from", str(directory), "--filters", "h264"]
+
+    # When: Running clean with no TTY and no --yes
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output, error = capsys.readouterr()
+
+    # Then: The table rendered before the refusal, so the user still sees the selection
+    assert exc_info.value.code == 1
+    assert "apple.mkv" in output
+    assert "--yes" in error
+
+
+def test_clean_from_dryrun_skips_the_prompt(capsys, video_library, mock_ffmpeg):
+    """Verify --dryrun previews without prompting, since a preview is not an action."""
+    # Given: Two discoverable files
+    directory = video_library([("apple.mkv", 100, 1_000_000), ("banana.mkv", 200, 1_000_000)])
+    args = ["-n", "clean", "--from", str(directory), "--filters", "h264"]
+
+    # When: Running a dry run with no TTY and no --yes
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output, error = capsys.readouterr()
+
+    # Then: It completes successfully without demanding --yes
+    assert exc_info.value.code == 0
+    assert "apple.mkv" in output
+    assert "--yes" not in error
+
+
+def test_clean_from_limit_selects_top_results(capsys, video_library, mock_ffmpeg):
+    """Verify --limit narrows what discovery mode acts on."""
+    # Given: Three discoverable files
+    directory = video_library(
+        [
+            ("apple.mkv", 100, 1_000_000),
+            ("banana.mkv", 300, 1_000_000),
+            ("cherry.mkv", 200, 1_000_000),
+        ]
+    )
+    args = ["-n", "clean", "--from", str(directory), "--sort", "size", "--limit", "1"]
+
+    # When: Previewing the single largest file
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: Only the largest file is selected
+    assert exc_info.value.code == 0
+    assert "banana.mkv" in output
+    assert "apple.mkv" not in output
