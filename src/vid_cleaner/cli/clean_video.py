@@ -21,11 +21,12 @@ from vid_cleaner.vidcleaner import CleanCommand
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
-def write_output(video_file: VideoFile) -> list[str]:
+def write_output(video_file: VideoFile, *, out_override: Path | None = None) -> list[str]:
     """Copy the processed result to the output path and return the closing substep messages.
 
     Args:
         video_file (VideoFile): The processed video file to write out.
+        out_override (Path | None): The user's explicit `--out` destination, when given.
 
     Returns:
         list[str]: Substep messages describing the backup and save, or a single note when nothing changed.
@@ -49,7 +50,11 @@ def write_output(video_file: VideoFile) -> list[str]:
     except OSError as e:
         messages.append(f"{SYMBOL_CROSS} Warning: could not clean up temporary files: {e}")
 
-    if settings.overwrite and out_file != video_file.path:
+    # This removal exists for a container change that renamed the result (e.g. `.mkv` to
+    # `.webm`), where `--overwrite` means "do not leave two copies of the same film".
+    # `--out` writes to a destination the user chose, so the input is not a leftover copy
+    # of the output and must survive.
+    if settings.overwrite and out_override is None and out_file != video_file.path:
         pp.debug(f"Delete: {video_file.path}")
         try:
             video_file.path.unlink()
@@ -168,7 +173,7 @@ def main(clean_cmd: CleanCommand) -> None:
         try:
             video_file.clean()
             if not settings.dryrun:
-                substeps.extend(write_output(video_file))
+                substeps.extend(write_output(video_file, out_override=out_path_override))
         # One unusable or failing file must not discard the files queued behind it.
         # `cappa.Exit` is deliberately not caught: it carries KeyboardInterrupt, which
         # means stop the whole run.

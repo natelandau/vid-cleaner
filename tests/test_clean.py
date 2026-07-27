@@ -1490,11 +1490,11 @@ def test_clean_removes_the_original_even_when_temp_cleanup_fails(
     mocker, mock_ffprobe_box, mock_ffmpeg, capsys, tmp_path
 ):
     """Verify a failed temp cleanup does not skip removing the original under --overwrite."""
-    # Given: --overwrite writing to a new path, and temp housekeeping that raises
+    # Given: --overwrite renaming the result to a new container, and temp housekeeping
+    # that raises
     source = tmp_path / "movie.mkv"
     source.touch()
-    destination = tmp_path / "out.mkv"
-    args = ["clean", "-vv", "--overwrite", "--out", str(destination), str(source)]
+    args = ["clean", "-vv", "--overwrite", "--vp9", str(source)]
     mocker.patch(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
@@ -1522,11 +1522,11 @@ def test_clean_reports_a_failed_original_removal_accurately(
     mocker, mock_ffprobe_box, mock_ffmpeg, capsys, tmp_path
 ):
     """Verify a failed removal of the original is not reported as a temp-file cleanup error."""
-    # Given: --overwrite writing to a new path, where removing the original raises
+    # Given: --overwrite renaming the result to a new container, where removing the
+    # original raises
     source = tmp_path / "movie.mkv"
     source.touch()
-    destination = tmp_path / "out.mkv"
-    args = ["clean", "-vv", "--overwrite", "--out", str(destination), str(source)]
+    args = ["clean", "-vv", "--overwrite", "--vp9", str(source)]
     mocker.patch(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
@@ -1548,6 +1548,39 @@ def test_clean_reports_a_failed_original_removal_accurately(
     assert exc_info.value.code == 0
     assert "could not remove the original" in output
     assert "could not clean up temporary files" not in output
+
+
+def test_clean_out_with_overwrite_leaves_the_input_alone(
+    mocker, mock_ffprobe_box, mock_ffmpeg, tmp_path
+):
+    """Verify `--out` never deletes the input, even when `--overwrite` is also passed.
+
+    `--overwrite` only says "do not keep a backup of what I am replacing". With `--out`
+    the input is not being replaced, so removing it would destroy a file the user asked
+    to read from, not write to.
+    """
+    # Given: --overwrite writing the result to a destination the user chose
+    source = tmp_path / "movie.mkv"
+    source.touch()
+    destination = tmp_path / "out.mkv"
+    args = ["clean", "--overwrite", "--out", str(destination), str(source)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
+    )
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+
+    # When: Running clean
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The input file is still there
+    assert exc_info.value.code == 0
+    assert source.exists()
 
 
 def _normalize(text: str) -> str:
