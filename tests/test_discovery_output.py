@@ -6,6 +6,7 @@ from pathlib import Path
 import cappa
 import pytest
 
+from vid_cleaner import settings
 from vid_cleaner.cli.discovery_output import confirm_selection, present_discovery
 from vid_cleaner.constants import SortOrder, VideoTrait
 from vid_cleaner.controllers.discovery import DiscoveryReport
@@ -199,3 +200,56 @@ def test_confirm_prompt_reports_count_and_total_size(mocker, interactive_console
     prompt = ask.call_args.args[0]
     assert "2 files" in prompt
     assert "300" in prompt
+
+
+@pytest.fixture
+def overwrite_setting():
+    """Set `settings.overwrite` for one test and restore it afterwards.
+
+    Returns:
+        Callable[..., None]: Call with `overwrite=True` or `overwrite=False`.
+    """
+    original = settings.overwrite
+
+    def _inner(*, overwrite: bool) -> None:
+        settings.update({"overwrite": overwrite})
+
+    yield _inner
+    settings.update({"overwrite": original})
+
+
+def test_confirm_prompt_promises_a_backup_by_default(
+    mocker, interactive_console, overwrite_setting
+):
+    """Verify the default prompt says each original is backed up before it is rewritten."""
+    # Given: A selection cleaned without --overwrite
+    report = make_report(results=[make_result(mocker, "a.mkv", 100)], total=1)
+    overwrite_setting(overwrite=False)
+    interactive_console(is_terminal=True)
+    ask = mocker.patch("vid_cleaner.cli.discovery_output.Confirm.ask", return_value=True)
+
+    # When: Confirming
+    confirm_selection(report, assume_yes=False)
+
+    # Then: The prompt promises a backup
+    prompt = ask.call_args.args[0]
+    assert "backup" in prompt
+    assert "no backup" not in prompt
+
+
+def test_confirm_prompt_warns_when_overwriting_without_backup(
+    mocker, interactive_console, overwrite_setting
+):
+    """Verify --overwrite is disclosed, since it leaves nothing to restore the library from."""
+    # Given: A selection cleaned with --overwrite
+    report = make_report(results=[make_result(mocker, "a.mkv", 100)], total=1)
+    overwrite_setting(overwrite=True)
+    interactive_console(is_terminal=True)
+    ask = mocker.patch("vid_cleaner.cli.discovery_output.Confirm.ask", return_value=True)
+
+    # When: Confirming
+    confirm_selection(report, assume_yes=False)
+
+    # Then: The prompt says the originals are rewritten with no backup
+    prompt = ask.call_args.args[0]
+    assert "in place with no backup" in prompt

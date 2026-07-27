@@ -155,6 +155,29 @@ def create_default_config() -> None:
         pp.info(f"Default configuration file created: `{USER_CONFIG_PATH}`")
 
 
+def parse_limit(raw: str) -> int:
+    """Parse `--limit` as a count of results to keep, rejecting anything below one.
+
+    Reject the bad value at parse time because the limit reaches a list slice unchecked:
+    zero selects nothing and a negative value quietly trims from the end, so either one
+    acts on a selection the user never described.
+
+    Args:
+        raw (str): The raw command line value.
+
+    Returns:
+        int: The validated limit.
+
+    Raises:
+        ValueError: If the value is not a whole number of 1 or greater.
+    """
+    value = int(raw)
+    if value < 1:
+        msg = f"must be 1 or greater, got {value}"
+        raise ValueError(msg)
+    return value
+
+
 def parse_trait_filters(facets: str) -> set[VideoTrait]:
     """Parse a comma-separated list of facets into a list of VideoTrait enums.
 

@@ -13,6 +13,7 @@ from nclutils import pp
 from rich.filesize import decimal
 from rich.prompt import Confirm
 
+from vid_cleaner import settings
 from vid_cleaner.views import search_table
 
 if TYPE_CHECKING:
@@ -97,6 +98,14 @@ def confirm_selection(report: DiscoveryReport, *, assume_yes: bool) -> None:
         raise cappa.Exit(code=1)
 
     total_size = decimal(sum(result.size for result in report.results))
-    if not Confirm.ask(f"Clean these {len(report.results)} files ({total_size})?", default=False):
+    # This prompt is the only gate on a whole library, and `--overwrite` leaves no backup
+    # to restore from, so it has to say which of the two it is about to do.
+    recovery = (
+        "in place with no backup"
+        if settings.overwrite
+        else "keeping a timestamped backup of each original"
+    )
+    prompt = f"Clean these {len(report.results)} files ({total_size}) {recovery}?"
+    if not Confirm.ask(prompt, default=False):
         pp.info("Nothing to do")
         raise cappa.Exit(code=0)

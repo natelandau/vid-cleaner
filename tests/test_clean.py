@@ -1405,3 +1405,80 @@ def test_clean_write_output_cleanup_failure_still_reports_the_save(
     assert "cleaned_video.mkv" in output
     assert "temp dir busy" in output
     assert "failed" not in output
+
+
+def test_clean_rejects_yes_without_from(capsys, tmp_path):
+    """Verify --yes without --from errors rather than being accepted as a no-op."""
+    # Given: --yes on an explicit-file run, where no prompt would ever be shown
+    video = tmp_path / "movie.mkv"
+    video.touch()
+    args = ["clean", "--yes", str(video)]
+
+    # When: Running clean
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The command errors naming --from
+    assert exc_info.value.code == 1
+    assert "require `--from`" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("limit", ["0", "-1"])
+def test_clean_rejects_limit_below_one(capsys, tmp_path, limit):
+    """Verify a limit below one is refused instead of silently selecting the wrong files."""
+    # Given: A discovery run asking for a zero or negative limit
+    args = ["clean", "--from", str(tmp_path), "--limit", limit]
+
+    # When: Running clean
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The command fails with a message naming the acceptable range
+    assert exc_info.value.code != 0
+    assert "must be 1 or greater" in str(exc_info.value.message)
+
+
+def test_clean_rejects_from_that_does_not_exist(capsys, tmp_path):
+    """Verify a missing --from directory fails instead of reporting a successful no-op."""
+    # Given: A --from path that does not exist
+    args = ["clean", "--from", str(tmp_path / "does-not-exist")]
+
+    # When: Running clean
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The command errors rather than exiting 0
+    assert exc_info.value.code == 1
+    assert "`--from` must be an existing directory" in capsys.readouterr().err
+
+
+def test_clean_rejects_from_that_is_a_file(capsys, tmp_path):
+    """Verify a --from pointing at a file fails, since clean otherwise takes file paths."""
+    # Given: A --from path naming a file rather than a directory
+    video = tmp_path / "movie.mkv"
+    video.touch()
+    args = ["clean", "--from", str(video)]
+
+    # When: Running clean
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The command errors rather than exiting 0
+    assert exc_info.value.code == 1
+    assert "`--from` must be an existing directory" in capsys.readouterr().err
+
+
+def test_clean_from_empty_directory_still_exits_zero(capsys, tmp_path):
+    """Verify a real but empty directory remains a successful no-op, not a failure."""
+    # Given: An existing directory holding no video files
+    directory = tmp_path / "library"
+    directory.mkdir()
+    args = ["clean", "--from", str(directory)]
+
+    # When: Running clean
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The command reports the empty directory and exits successfully
+    assert exc_info.value.code == 0
+    assert "No video files found" in capsys.readouterr().err

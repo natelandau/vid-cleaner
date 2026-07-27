@@ -59,9 +59,9 @@ vidcleaner search /media --filters=4k --sort=size --limit=5
 vidcleaner clean --from /media --filters=4k --sort=size --limit=5 --h265
 ```
 
-`clean` renders the same table `search` does, then asks for confirmation before transcoding anything. Pass `--yes` to skip the prompt in scripts and cron jobs, or `--dryrun` to preview without being asked. Running without a terminal and without `--yes` is an error rather than a hang.
+`clean` renders the same table `search` does, then asks for confirmation before transcoding anything. The prompt states whether each original will be backed up or overwritten in place. Pass `--yes` to skip the prompt in scripts and cron jobs, or `--dryrun` to preview without being asked. Running without a terminal and without `--yes` is an error rather than a hang.
 
-`--from` cannot be combined with explicit file paths or with `--out`.
+`--from` cannot be combined with explicit file paths or with `--out`, and must name an existing directory. `--yes` and the query flags (`--filters`, `--sort`, `--reverse`, `--depth`, `--limit`) are only meaningful with `--from` and are refused without it. `--limit` must be 1 or greater.
 
 When cleaning several files, a failure on one file does not stop the run. Every remaining file is still processed, failures are listed at the end, and the command exits with a non-zero status.
 

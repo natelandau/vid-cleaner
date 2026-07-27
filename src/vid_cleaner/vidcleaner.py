@@ -14,7 +14,7 @@ from vid_cleaner import settings
 from vid_cleaner.config import SettingsManager
 from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel, SortOrder, VideoTrait
 from vid_cleaner.exceptions import VideoProbeError
-from vid_cleaner.utils import create_default_config, parse_trait_filters
+from vid_cleaner.utils import create_default_config, parse_limit, parse_trait_filters
 
 
 def config_subcommand(vidcleaner: VidCleaner) -> None:
@@ -121,6 +121,7 @@ class DiscoveryOptions:
             long=True,
             show_default=False,
             group="Discovery",
+            parse=parse_limit,
         ),
     ] = None
 
@@ -347,7 +348,7 @@ class CleanCommand:
     yes: Annotated[
         bool,
         cappa.Arg(
-            help="Skip the confirmation prompt when using `--from`",
+            help="Skip the confirmation prompt. Requires `--from`",
             long=True,
             short="-y",
             show_default=True,
