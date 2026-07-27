@@ -1,5 +1,5 @@
 """Views for the VidCleaner application."""
 
-from .tables import stream_table
+from .tables import search_table, stream_table
 
-__all__ = ["stream_table"]
+__all__ = ["search_table", "stream_table"]
