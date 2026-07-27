@@ -233,26 +233,17 @@ def test_search_skips_files_that_vanish_before_stat(
     # e.g. deleted mid-scan by another process
     vanished = mock_video_path.parent / "vanished.mkv"
     vanished.touch()
-    vanished_resolved = vanished.resolve()
     good_box = mock_ffprobe_box("reference.json")
-    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", return_value=good_box)
 
-    # find_files' own is_file() check stats every candidate during discovery, before the
-    # search loop reaches this file at all; only the later call (reading its size for the
-    # results table) should observe the file as gone.
-    original_stat = Path.stat
-    stat_calls = 0
+    # Discovery finishes before any file is probed, so deleting the file here leaves it
+    # present for the scan that found it and genuinely gone by the time its size is read.
+    # `missing_ok` because each probed file is re-probed on every stream-property access.
+    def probe(path: Path) -> object:
+        if path.name == vanished.name:
+            vanished.unlink(missing_ok=True)
+        return good_box
 
-    def flaky_stat(self, *args: object, **kwargs: object) -> object:
-        nonlocal stat_calls
-        if self == vanished_resolved:
-            stat_calls += 1
-            if stat_calls > 2:
-                message = "No such file or directory"
-                raise OSError(message)
-        return original_stat(self, *args, **kwargs)
-
-    mocker.patch.object(Path, "stat", flaky_stat)
+    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", side_effect=probe)
 
     # When: Running the search command
     args = ["search", str(mock_video_path.parent), "--filters", "h264"]
