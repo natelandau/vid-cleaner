@@ -1,5 +1,6 @@
 """Manage temporary files."""
 
+import atexit
 import uuid
 from pathlib import Path
 
@@ -8,10 +9,24 @@ from nclutils import pp
 from vid_cleaner import settings
 
 
+def cleanup_on_exit(temp_file: "TempFile") -> None:  # pragma: no cover
+    """Remove a temp directory when the interpreter exits.
+
+    Resolve `clean_up` at exit rather than binding it at registration so the hook always
+    calls the method the instance carries at the time it runs.
+
+    Args:
+        temp_file (TempFile): The instance whose temporary files should be removed.
+    """
+    temp_file.clean_up()
+
+
 class TempFile:
     """Manage temporary files created during video processing.
 
     This class handles the creation, tracking, and cleanup of temporary files generated during video processing operations. It maintains a unique temporary directory for each instance and manages file naming and cleanup.
+
+    Once the instance creates its first temporary file it also registers an exit hook, so a full-size intermediate is removed even when the process dies partway through.
 
     Args:
         path (Path): The path to the original video file.
@@ -35,6 +50,7 @@ class TempFile:
         self.tmp_dir = settings.CACHE_DIR / uuid.uuid4().hex
         self.created_tmp_files: list[Path] = []
         self.tmp_file_number = 1
+        self._cleanup_registered = False
 
     def latest_temp_path(self) -> Path:
         """Get the path to the most recently created temporary file.
@@ -52,6 +68,7 @@ class TempFile:
 
         Creates a new unique path for a temporary file in the temp directory. The path
         will include an incrementing number and optional step name in the filename.
+        Registers the exit-time cleanup of this instance's temp directory on first use.
 
         Args:
             suffix (str | None, optional): File extension to use. Defaults to original file's suffix.
@@ -63,6 +80,13 @@ class TempFile:
         # Get the output file name
         suffix = suffix or self.suffix
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
+
+        # Register only once there is something to clean up. A discovery run builds a
+        # TempFile for every candidate it probes, and an interpreter-lifetime hook on each
+        # one would pin thousands of files in memory to act on a handful.
+        if not self._cleanup_registered:
+            atexit.register(cleanup_on_exit, self)
+            self._cleanup_registered = True
 
         if not step_name:
             step_name = "no_step"

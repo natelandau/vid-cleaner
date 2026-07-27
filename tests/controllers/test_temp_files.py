@@ -4,7 +4,8 @@ from pathlib import Path
 
 from vid_cleaner import settings
 
-from vid_cleaner.controllers import TempFile  # isort: skip
+from vid_cleaner.controllers.temp_files import TempFile, cleanup_on_exit  # isort: skip
+from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
 def test_temp_file_latest_temp_path(mock_video_path: Path, tmp_path: Path) -> None:
@@ -109,3 +110,44 @@ def test_temp_file_clean_up(mock_video_path: Path, tmp_path: Path) -> None:
     assert not output_path_2.exists()
     assert not output_path_3.exists()
     assert not output_path_3.parent.exists()
+
+
+def test_video_file_without_temps_registers_no_exit_hook(mocker, mock_video_path, tmp_path) -> None:
+    """Verify a probed-but-unprocessed file pins nothing for the life of the process.
+
+    A discovery run builds a VideoFile for every candidate it probes, so registering an
+    exit hook per instance would retain thousands of probe boxes to act on a handful.
+    """
+    # Given: A cache directory and a patched exit registry
+    settings.update({"cache_dir": Path(tmp_path)})
+    register = mocker.patch("vid_cleaner.controllers.temp_files.atexit.register")
+
+    # When: Building a VideoFile without ever creating a temporary file
+    VideoFile(mock_video_path)
+
+    # Then: Nothing was registered
+    register.assert_not_called()
+
+
+def test_temp_file_registers_exit_cleanup_once_a_temp_exists(
+    mocker, mock_video_path, tmp_path
+) -> None:
+    """Verify a file that creates a temp is still cleaned up when the interpreter exits."""
+    # Given: A cache directory and a patched exit registry
+    settings.update({"cache_dir": Path(tmp_path)})
+    register = mocker.patch("vid_cleaner.controllers.temp_files.atexit.register")
+    video_file = VideoFile(mock_video_path)
+
+    # When: Creating two temporary files
+    first = video_file.temp_file.new_tmp_path(step_name="clean")
+    first.touch()
+    video_file.temp_file.created_temp_file(first)
+    second = video_file.temp_file.new_tmp_path(step_name="clip")
+    second.touch()
+
+    # Then: A single hook was registered, and running it clears the temp directory
+    register.assert_called_once_with(cleanup_on_exit, video_file.temp_file)
+    cleanup_on_exit(video_file.temp_file)
+    assert not first.exists()
+    assert not second.exists()
+    assert not video_file.temp_file.tmp_dir.exists()

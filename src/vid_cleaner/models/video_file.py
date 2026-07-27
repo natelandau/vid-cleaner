@@ -1,6 +1,5 @@
 """VideoFile model."""
 
-import atexit
 import re
 from pathlib import Path
 
@@ -49,15 +48,6 @@ from vid_cleaner.utils import (
 from vid_cleaner.controllers import TempFile  # isort: skip
 
 
-def cleanup_on_exit(video_file: "VideoFile") -> None:  # pragma: no cover
-    """Cleanup temporary files on exit.
-
-    Args:
-        video_file (VideoFile): The VideoFile object to perform cleanup on.
-    """
-    video_file.temp_file.clean_up()
-
-
 class VideoFile:
     """VideoFile model."""
 
@@ -80,8 +70,6 @@ class VideoFile:
         self._video_streams: list[Box] = []
         self._audio_streams: list[Box] = []
         self._subtitle_streams: list[Box] = []
-
-        atexit.register(cleanup_on_exit, self)
 
     @property
     def probe_box(self) -> Box:
