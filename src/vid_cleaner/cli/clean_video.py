@@ -38,11 +38,17 @@ def write_output(video_file: VideoFile) -> list[str]:
         Path(settings.out_path),
         overwrite=settings.overwrite,
     )
-    video_file.temp_file.clean_up()
 
-    if settings.overwrite and out_file != video_file.path:
-        pp.debug(f"Delete: {video_file.path}")
-        video_file.path.unlink()
+    # The write above already landed and swapped the result into place, so a failure past
+    # this point is temp-directory housekeeping, not a failed write: warn instead of
+    # discarding the "Saved to" message and counting a successful file as failed.
+    try:
+        video_file.temp_file.clean_up()
+        if settings.overwrite and out_file != video_file.path:
+            pp.debug(f"Delete: {video_file.path}")
+            video_file.path.unlink()
+    except OSError as e:
+        messages.append(f"{SYMBOL_CROSS} Warning: could not clean up temporary files: {e}")
 
     return messages
 
@@ -124,7 +130,8 @@ def main(clean_cmd: CleanCommand) -> None:
         clean_cmd (CleanCommand): Clean-specific command options
 
     Raises:
-        cappa.Exit: If incompatible options are specified (e.g., both H265 and VP9)
+        cappa.Exit: If incompatible options are specified (e.g., both H265 and VP9), or
+            if one or more files failed to process.
     """
     if settings.h265 and settings.vp9:
         pp.error("Cannot convert to both H265 and VP9")
@@ -154,8 +161,20 @@ def main(clean_cmd: CleanCommand) -> None:
         # `cappa.Exit` is deliberately not caught: it carries KeyboardInterrupt, which
         # means stop the whole run.
         except (VideoCleanError, VideoProbeError, RuntimeError, OSError) as e:
-            failures.append(f"{video_file.path.name}: {e}")
-            substeps.append(f"{SYMBOL_CROSS} Failed: {e}")
+            # VideoCleanError/VideoProbeError's str() already embeds the path, so use the
+            # short reason instead to avoid naming the file twice in one line.
+            detail = e.reason if isinstance(e, (VideoCleanError, VideoProbeError)) else str(e)
+            failures.append(f"{video_file.path.name}: {detail}")
+            substeps.append(f"{SYMBOL_CROSS} Failed: {detail}")
+            # A failed file still leaves its full-size temp transcode on disk; clear it now
+            # rather than letting a batch that fails on every file pile up N of them until
+            # atexit finally clears them.
+            try:
+                video_file.temp_file.clean_up()
+            except OSError as cleanup_error:
+                pp.debug(
+                    f"Could not clean up temporary files for {video_file.path}: {cleanup_error}"
+                )
         finally:
             render_substeps(substeps)
 

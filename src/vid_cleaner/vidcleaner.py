@@ -507,8 +507,8 @@ def main() -> None:  # pragma: no cover
         pp.info("\nExiting...")
         raise cappa.Exit(code=1) from e
     except VideoProbeError as e:
-        # Commands given explicit files abort on an unreadable one; `search` handles its own
-        # skipping before the error can reach here.
+        # Only `inspect` and `clip` reach this: `search` skips unreadable files itself, and
+        # `clean` catches this per file in its batch loop rather than letting it propagate.
         pp.error(str(e))
         raise cappa.Exit(code=1) from e
 

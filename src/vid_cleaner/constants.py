@@ -101,7 +101,7 @@ class Resolution:
 
 
 SYMBOL_CHECK = "✔"
-SYMBOL_CROSS = "✖"  # Marks a requested operation that was skipped, in debug output
+SYMBOL_CROSS = "✖"  # Marks a skipped operation in debug output, or a file that failed to process
 # Shared so the VP9 planner can correct the subtitle action recorded under this exact label
 DROP_SUBTITLES_LABEL = "Drop unwanted subtitles"
 TREE_BRANCH = "├─"  # Connector for a non-final child line in faked step output

@@ -1365,3 +1365,43 @@ def test_clean_keyboard_interrupt_aborts_the_whole_batch(capsys, tmp_path, mocke
     # Then: The run aborts before reaching the second file
     assert exc_info.value.code == 1
     assert "second.mkv" not in capsys.readouterr().out
+
+
+def test_clean_write_output_cleanup_failure_still_reports_the_save(
+    mocker,
+    mock_ffprobe_box,
+    mock_video_path,
+    capsys,
+    mock_ffmpeg,
+):
+    """Verify a cleanup error after a successful write is a warning, not a per-file failure.
+
+    The file is already copied to its destination by the time `TempFile.clean_up()` runs,
+    so a failure there must not discard the "Saved to" message or count the file as failed.
+    """
+    # Given: a file that cleans and writes successfully, but whose temp-directory
+    # housekeeping raises after the output is already safely in place
+    args = ["clean", "-vv", str(mock_video_path)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
+    mocker.patch.object(TempFile, "clean_up", side_effect=OSError("temp dir busy"))
+
+    # When: running clean
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: the run still exits successfully, the save is still reported, and the
+    # cleanup failure is surfaced as a warning rather than a batch failure
+    assert exc_info.value.code == 0
+    assert "cleaned_video.mkv" in output
+    assert "temp dir busy" in output
+    assert "failed" not in output
