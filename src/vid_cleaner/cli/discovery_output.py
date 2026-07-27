@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 
 import cappa
 from nclutils import pp
+from rich.filesize import decimal
+from rich.prompt import Confirm
 
 from vid_cleaner.views import search_table
 
@@ -71,3 +73,30 @@ def present_discovery(
     pp.console().print(
         search_table(report, root=root.expanduser().resolve() if recursive else None)
     )
+
+
+def confirm_selection(report: DiscoveryReport, *, assume_yes: bool) -> None:
+    """Ask the user to approve a discovered selection before acting on it.
+
+    Guard the expensive, file-rewriting half of a discovery run, and refuse to act on a
+    non-interactive terminal rather than blocking forever on a prompt nobody can answer.
+
+    Args:
+        report (DiscoveryReport): The selection awaiting approval.
+        assume_yes (bool): Skip the prompt and proceed.
+
+    Raises:
+        cappa.Exit: With code 1 when the terminal is not interactive and `assume_yes`
+            is False, or code 0 when the user declines.
+    """
+    if assume_yes:
+        return
+
+    if not pp.console().is_terminal:
+        pp.error("Refusing to run without a confirmation prompt. Pass `--yes` to proceed.")
+        raise cappa.Exit(code=1)
+
+    total_size = decimal(sum(result.size for result in report.results))
+    if not Confirm.ask(f"Clean these {len(report.results)} files ({total_size})?", default=False):
+        pp.info("Nothing to do")
+        raise cappa.Exit(code=0)

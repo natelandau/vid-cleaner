@@ -1,10 +1,12 @@
 # type: ignore
 """Test the shared discovery presenter."""
 
+from pathlib import Path
+
 import cappa
 import pytest
 
-from vid_cleaner.cli.discovery_output import present_discovery
+from vid_cleaner.cli.discovery_output import confirm_selection, present_discovery
 from vid_cleaner.constants import SortOrder, VideoTrait
 from vid_cleaner.controllers.discovery import DiscoveryReport
 from vid_cleaner.exceptions import VideoProbeError
@@ -87,3 +89,112 @@ def test_present_unfiltered_empty_match_says_unreadable(capsys, tmp_path):
     # Then: The error explains that nothing could be read
     assert exc_info.value.code == 1
     assert "No video files could be read" in capsys.readouterr().err
+
+
+def make_result(mocker, name: str, size: int):
+    """Build a stand-in SearchResult carrying only what the prompt reads.
+
+    Returns:
+        MagicMock: An object exposing `.size` and `.video_file.path`.
+    """
+    result = mocker.MagicMock()
+    result.size = size
+    result.video_file.path = Path(f"/media/{name}")
+    return result
+
+
+def test_confirm_returns_when_assume_yes(mocker, capsys):
+    """Verify --yes proceeds without prompting, so unattended runs never block."""
+    # Given: A selection and a stubbed prompt that would fail the test if called
+    report = make_report(results=[make_result(mocker, "a.mkv", 100)], total=1)
+    ask = mocker.patch("vid_cleaner.cli.discovery_output.Confirm.ask")
+
+    # When: Confirming with assume_yes
+    confirm_selection(report, assume_yes=True)
+
+    # Then: No prompt was shown
+    ask.assert_not_called()
+
+
+@pytest.fixture
+def interactive_console(mocker):
+    """Force `Console.is_terminal` so the prompt path can be exercised under pytest.
+
+    Patch the property on the class rather than replacing `pp.console`, which would hand
+    `pp.error` a mock and silently break stderr capture in these same tests.
+
+    Returns:
+        Callable[[bool], None]: Call with True or False to set interactivity.
+    """
+
+    def _inner(is_terminal: bool) -> None:  # noqa: FBT001
+        mocker.patch(
+            "rich.console.Console.is_terminal",
+            new_callable=mocker.PropertyMock,
+            return_value=is_terminal,
+        )
+
+    return _inner
+
+
+def test_confirm_errors_on_non_tty_without_yes(mocker, capsys, interactive_console):
+    """Verify a non-interactive terminal without --yes errors instead of hanging on stdin."""
+    # Given: A non-interactive console
+    report = make_report(results=[make_result(mocker, "a.mkv", 100)], total=1)
+    interactive_console(False)  # noqa: FBT003
+
+    # When: Confirming without assume_yes
+    with pytest.raises(cappa.Exit) as exc_info:
+        confirm_selection(report, assume_yes=False)
+
+    # Then: The command errors and names the flag that would have allowed it
+    assert exc_info.value.code == 1
+    assert "--yes" in capsys.readouterr().err
+
+
+def test_confirm_exits_zero_when_declined(mocker, interactive_console):
+    """Verify declining is a successful no-op, not a failure."""
+    # Given: An interactive console where the user answers no
+    report = make_report(results=[make_result(mocker, "a.mkv", 100)], total=1)
+    interactive_console(True)  # noqa: FBT003
+    mocker.patch("vid_cleaner.cli.discovery_output.Confirm.ask", return_value=False)
+
+    # When: Confirming
+    with pytest.raises(cappa.Exit) as exc_info:
+        confirm_selection(report, assume_yes=False)
+
+    # Then: The command exits successfully without acting
+    assert exc_info.value.code == 0
+
+
+def test_confirm_returns_when_accepted(mocker, interactive_console):
+    """Verify accepting prompts once and lets the caller proceed."""
+    # Given: An interactive console where the user answers yes
+    report = make_report(results=[make_result(mocker, "a.mkv", 100)], total=1)
+    interactive_console(True)  # noqa: FBT003
+    ask = mocker.patch("vid_cleaner.cli.discovery_output.Confirm.ask", return_value=True)
+
+    # When: Confirming
+    confirm_selection(report, assume_yes=False)
+
+    # Then: The user was asked exactly once and the call returned rather than exiting
+    ask.assert_called_once()
+
+
+def test_confirm_prompt_reports_count_and_total_size(mocker, interactive_console):
+    """Verify the prompt states how many files and how many bytes are at stake."""
+    # Given: Two selected files totaling 300 bytes
+    report = make_report(
+        results=[make_result(mocker, "a.mkv", 100), make_result(mocker, "b.mkv", 200)],
+        total=2,
+    )
+    interactive_console(True)  # noqa: FBT003
+    ask = mocker.patch("vid_cleaner.cli.discovery_output.Confirm.ask", return_value=True)
+
+    # When: Confirming
+    confirm_selection(report, assume_yes=False)
+
+    # Then: The prompt names the count and the combined size
+    prompt = ask.call_args.args[0]
+    assert "2 files" in prompt
+    assert "300" in prompt
