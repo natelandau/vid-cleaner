@@ -242,7 +242,7 @@ class CleanCommand:
     out: Annotated[
         Path | None,
         cappa.Arg(
-            help="Output path (Default: `./<input_file>_1.xxx`)",
+            help="Output path (Default: replace the input file, keeping a timestamped `.bak` copy of the original)",
             long=True,
             short=True,
             show_default=False,
@@ -395,7 +395,7 @@ Clip a section from a video file.
 This command allows you to extract a specific portion of a video file based on start time and duration.
 
 * The start time and duration should be specified in `HH:MM:SS` format.
-* You can also specify an output file to save the clipped video. If the output file is not specified, the clip will be saved with a default naming convention.
+* Use `--out` to write the clip to a new file. Without it the clip replaces the input file, and the original is kept alongside it as a timestamped `.bak` copy.
 
 Use the `--overwrite` option to avoid creating a backup of the original file if it would be overwritten.
 """,
@@ -429,7 +429,7 @@ class ClipCommand:
     out: Annotated[
         Path | None,
         cappa.Arg(
-            help="Output file path (Default: `<input_file>_1`)",
+            help="Output file path (Default: replace the input file, keeping a timestamped `.bak` copy of the original)",
             long=True,
             short=True,
             show_default=False,
