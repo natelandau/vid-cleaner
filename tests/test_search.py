@@ -1,7 +1,6 @@
 # type: ignore
 """Test the search command."""
 
-import copy
 from pathlib import Path
 
 import cappa
@@ -29,42 +28,6 @@ def set_default_settings(tmp_path, mocker, mock_ffprobe_box):
             "drop_original_audio": False,
         }
     )
-
-
-@pytest.fixture
-def search_dir(tmp_path, mocker, mock_ffprobe_box):
-    """Build a directory of video files with per-file size and bitrate.
-
-    Names may include a nested path, e.g. "aaa/mike.mkv", to exercise recursive
-    searches; the parent directory is created automatically.
-
-    Returns:
-        Callable[[list[tuple[str, int, int]]], Path]: Call with `(filename, size_bytes,
-            bitrate_bps)` triples to create the files and patch ffprobe to report the
-            matching bitrate for each one.
-    """
-
-    def _inner(files: list[tuple[str, int, int]]) -> Path:
-        reference = mock_ffprobe_box("reference.json")
-        directory = tmp_path / "library"
-        directory.mkdir(exist_ok=True)
-
-        boxes = {}
-        for name, size, bitrate in files:
-            path = directory / name
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(b"\0" * size)
-            file_box = copy.deepcopy(reference)
-            file_box.bit_rate = str(bitrate) if bitrate else None
-            boxes[name] = file_box
-
-        mocker.patch(
-            "vid_cleaner.models.video_file.get_probe_as_box",
-            side_effect=lambda path: boxes[path.relative_to(directory).as_posix()],
-        )
-        return directory
-
-    return _inner
 
 
 def test_search_no_video_files(tmp_path, capsys, mocker, debug):
@@ -271,10 +234,10 @@ def test_search_skips_files_that_vanish_before_stat(
         (["--sort", "bitrate", "--reverse"], ["banana", "apple", "cherry"]),
     ],
 )
-def test_search_sort_orders_results(capsys, search_dir, sort_args, expected_order):
+def test_search_sort_orders_results(capsys, video_library, sort_args, expected_order):
     """Verify each sort key and --reverse order the results as documented."""
     # Given: Three files whose alphabetical, size, and bitrate orders all differ
-    directory = search_dir(
+    directory = video_library(
         [
             ("apple.mkv", 100, 2_000_000),
             ("banana.mkv", 300, 1_000_000),
@@ -295,10 +258,10 @@ def test_search_sort_orders_results(capsys, search_dir, sort_args, expected_orde
     assert positions == sorted(positions)
 
 
-def test_search_sort_alpha_uses_full_path(capsys, search_dir):
+def test_search_sort_alpha_uses_full_path(capsys, video_library):
     """Verify alphabetical sorting groups results by directory, not by bare filename."""
     # Given: Files whose directory order and filename order disagree
-    directory = search_dir([("zulu.mkv", 100, 1_000_000), ("aaa/mike.mkv", 100, 1_000_000)])
+    directory = video_library([("zulu.mkv", 100, 1_000_000), ("aaa/mike.mkv", 100, 1_000_000)])
 
     # When: Running a recursive search with the default sort
     args = ["search", str(directory), "--depth", "1", "--filters", "h264"]
@@ -312,10 +275,10 @@ def test_search_sort_alpha_uses_full_path(capsys, search_dir):
     assert output.index("mike") < output.index("zulu")
 
 
-def test_search_table_shows_relative_directory_when_recursive(capsys, search_dir):
+def test_search_table_shows_relative_directory_when_recursive(capsys, video_library):
     """Verify a recursive search renders each result's directory as a dim path segment."""
     # Given: A file nested one directory below the search root
-    directory = search_dir([("zulu.mkv", 100, 1_000_000), ("aaa/mike.mkv", 100, 1_000_000)])
+    directory = video_library([("zulu.mkv", 100, 1_000_000), ("aaa/mike.mkv", 100, 1_000_000)])
 
     # When: Running a recursive search
     args = ["search", str(directory), "--depth", "1", "--filters", "h264"]
@@ -329,10 +292,10 @@ def test_search_table_shows_relative_directory_when_recursive(capsys, search_dir
     assert "aaa/mike.mkv" in output
 
 
-def test_search_table_omits_directory_when_not_recursive(capsys, search_dir):
+def test_search_table_omits_directory_when_not_recursive(capsys, video_library):
     """Verify a depth-0 search renders the bare filename with no directory prefix."""
     # Given: A file at the top level of the search directory
-    directory = search_dir([("mike.mkv", 100, 1_000_000)])
+    directory = video_library([("mike.mkv", 100, 1_000_000)])
 
     # When: Running a non-recursive search (the default depth)
     args = ["search", str(directory), "--filters", "h264"]
@@ -347,10 +310,10 @@ def test_search_table_omits_directory_when_not_recursive(capsys, search_dir):
     assert str(directory) not in output
 
 
-def test_search_sort_bitrate_handles_missing_bitrate(capsys, search_dir):
+def test_search_sort_bitrate_handles_missing_bitrate(capsys, video_library):
     """Verify a file whose probe omits bit_rate sorts last instead of raising."""
     # Given: One file with a bitrate and one without
-    directory = search_dir([("apple.mkv", 100, 0), ("banana.mkv", 100, 5_000_000)])
+    directory = video_library([("apple.mkv", 100, 0), ("banana.mkv", 100, 5_000_000)])
 
     # When: Sorting by bitrate
     args = ["search", str(directory), "--filters", "h264", "--sort", "bitrate"]
@@ -364,14 +327,16 @@ def test_search_sort_bitrate_handles_missing_bitrate(capsys, search_dir):
     assert output.index("banana") < output.index("apple")
 
 
-def test_search_sort_ties_are_deterministic(capsys, search_dir, mocker):
+def test_search_sort_ties_are_deterministic(capsys, video_library, mocker):
     """Verify equal-size files render in a stable order regardless of scan order."""
     # Given: Three files with an identical size, so `--sort=size` cannot break the tie
-    directory = search_dir([("alpha.mkv", 100, 0), ("bravo.mkv", 100, 0), ("charlie.mkv", 100, 0)])
+    directory = video_library(
+        [("alpha.mkv", 100, 0), ("bravo.mkv", 100, 0), ("charlie.mkv", 100, 0)]
+    )
     # find_files' scan order is arbitrary; scramble it here to prove the table's row
     # order does not simply mirror whatever order the filesystem happened to return.
     scrambled = [directory / "bravo.mkv", directory / "charlie.mkv", directory / "alpha.mkv"]
-    mocker.patch("vid_cleaner.cli.search.find_files", return_value=scrambled)
+    mocker.patch("vid_cleaner.controllers.discovery.find_files", return_value=scrambled)
 
     # When: Sorting by size
     args = ["search", str(directory), "--filters", "h264", "--sort", "size"]
@@ -398,10 +363,10 @@ def test_search_rejects_unknown_sort_key(capsys):
     assert exc_info.value.code != 0
 
 
-def test_search_table_shows_size_and_bitrate(capsys, search_dir):
+def test_search_table_shows_size_and_bitrate(capsys, video_library):
     """Verify the results table reports each file's size and bitrate."""
     # Given: A single file with a known size and bitrate
-    directory = search_dir([("apple.mkv", 1500, 2_000_000)])
+    directory = video_library([("apple.mkv", 1500, 2_000_000)])
 
     # When: Running the search command
     args = ["search", str(directory), "--filters", "h264"]
@@ -418,10 +383,10 @@ def test_search_table_shows_size_and_bitrate(capsys, search_dir):
     assert "2.0 Mb/s" in output
 
 
-def test_search_table_marks_the_active_sort_column(capsys, search_dir):
+def test_search_table_marks_the_active_sort_column(capsys, video_library):
     """Verify the sorted column header carries a direction arrow that --reverse flips."""
     # Given: A directory with one matching file
-    directory = search_dir([("apple.mkv", 100, 2_000_000)])
+    directory = video_library([("apple.mkv", 100, 2_000_000)])
 
     # When: Sorting by size
     args = ["search", str(directory), "--filters", "h264", "--sort", "size"]
@@ -439,10 +404,10 @@ def test_search_table_marks_the_active_sort_column(capsys, search_dir):
     assert "Size ↑" in reversed_output
 
 
-def test_search_table_arrow_reports_the_direction_rows_run(capsys, search_dir):
+def test_search_table_arrow_reports_the_direction_rows_run(capsys, video_library):
     """Verify the arrow follows the rendered order, not the --reverse flag."""
     # Given: Two files whose alphabetical order is visible in the table
-    directory = search_dir([("apple.mkv", 100, 2_000_000), ("banana.mkv", 100, 1_000_000)])
+    directory = video_library([("apple.mkv", 100, 2_000_000), ("banana.mkv", 100, 1_000_000)])
 
     # When: Sorting alphabetically, which ascends by default
     args = ["search", str(directory), "--filters", "h264"]
@@ -463,10 +428,10 @@ def test_search_table_arrow_reports_the_direction_rows_run(capsys, search_dir):
     assert reversed_output.index("banana") < reversed_output.index("apple")
 
 
-def test_search_table_caption_reports_counts(capsys, search_dir):
+def test_search_table_caption_reports_counts(capsys, video_library):
     """Verify the caption reports how many files matched out of those scanned."""
     # Given: Two files where only one matches the active filter
-    directory = search_dir([("apple.mkv", 100, 2_000_000), ("banana.mkv", 100, 1_000_000)])
+    directory = video_library([("apple.mkv", 100, 2_000_000), ("banana.mkv", 100, 1_000_000)])
 
     # When: Running a search whose filter matches both
     args = ["search", str(directory), "--filters", "h264"]

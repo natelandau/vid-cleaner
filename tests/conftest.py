@@ -1,5 +1,6 @@
 """Shared fixtures for tests."""
 
+import copy
 import json
 from pathlib import Path
 
@@ -110,6 +111,42 @@ def mock_ffmpeg(mocker):
     mock_instance = mock_ffmpeg_progress.return_value
     mock_instance.run_command_with_progress.return_value = iter([0, 25, 50, 75, 100])
     return mock_ffmpeg_progress
+
+
+@pytest.fixture
+def video_library(tmp_path, mocker, mock_ffprobe_box):
+    """Build a directory of probeable video files with per-file size and bitrate.
+
+    Names may include a nested path, e.g. "aaa/mike.mkv", to exercise recursive
+    searches; the parent directory is created automatically.
+
+    Returns:
+        Callable[[list[tuple[str, int, int]]], Path]: Call with `(filename, size_bytes,
+            bitrate_bps)` triples to create the files and patch ffprobe to report the
+            matching bitrate for each one.
+    """
+
+    def _inner(files: list[tuple[str, int, int]]) -> Path:
+        reference = mock_ffprobe_box("reference.json")
+        directory = tmp_path / "library"
+        directory.mkdir(exist_ok=True)
+
+        boxes = {}
+        for name, size, bitrate in files:
+            path = directory / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"\0" * size)
+            file_box = copy.deepcopy(reference)
+            file_box.bit_rate = str(bitrate) if bitrate else None
+            boxes[name] = file_box
+
+        mocker.patch(
+            "vid_cleaner.models.video_file.get_probe_as_box",
+            side_effect=lambda path: boxes[path.relative_to(directory).as_posix()],
+        )
+        return directory
+
+    return _inner
 
 
 @pytest.fixture
