@@ -445,6 +445,73 @@ def test_search_table_caption_reports_counts(capsys, video_library):
     assert "2 of 2 files matched" in output
 
 
+def test_search_limit_keeps_top_results(capsys, video_library):
+    """Verify --limit keeps only the top N on the active sort key."""
+    # Given: Three files of differing size
+    directory = video_library(
+        [
+            ("apple.mkv", 100, 1_000_000),
+            ("banana.mkv", 300, 1_000_000),
+            ("cherry.mkv", 200, 1_000_000),
+        ]
+    )
+
+    # When: Asking for the two largest
+    args = ["search", str(directory), "--filters", "h264", "--sort", "size", "--limit", "2"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: Only the two largest render
+    assert exc_info.value.code == 0
+    assert "banana" in output
+    assert "cherry" in output
+    assert "apple" not in output
+
+
+def test_search_limit_caption_reports_truncation(capsys, video_library):
+    """Verify a limited view says so, so it never reads as a complete result set."""
+    # Given: Three matching files
+    directory = video_library(
+        [
+            ("apple.mkv", 100, 1_000_000),
+            ("banana.mkv", 300, 1_000_000),
+            ("cherry.mkv", 200, 1_000_000),
+        ]
+    )
+
+    # When: Limiting to two
+    args = ["search", str(directory), "--filters", "h264", "--sort", "size", "--limit", "2"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: The caption distinguishes shown from matched
+    assert exc_info.value.code == 0
+    assert "showing 2" in output
+    assert "3 of 3 files matched" in output
+
+
+def test_search_without_limit_caption_omits_truncation(capsys, video_library):
+    """Verify an unlimited view's caption is unchanged, with no 'showing' prefix."""
+    # Given: Two matching files
+    directory = video_library([("apple.mkv", 100, 1_000_000), ("banana.mkv", 200, 1_000_000)])
+
+    # When: Searching with no limit
+    args = ["search", str(directory), "--filters", "h264"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: The caption reads exactly as it did before --limit existed
+    assert exc_info.value.code == 0
+    assert "2 of 2 files matched" in output
+    assert "showing" not in output
+
+
 def test_search_table_caption_reports_skipped_files(
     capsys, mock_video_path, mocker, mock_ffprobe_box
 ):

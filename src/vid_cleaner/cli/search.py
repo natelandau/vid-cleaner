@@ -21,17 +21,18 @@ def main(search_cmd: SearchCommand) -> None:
 
     report = discover_video_files(
         search_cmd.directory,
-        depth=search_cmd.depth,
+        depth=search_cmd.discovery.depth,
         filters=filters,
-        sort=search_cmd.sort,
-        reverse=search_cmd.reverse,
+        sort=search_cmd.discovery.sort,
+        reverse=search_cmd.discovery.reverse,
+        limit=search_cmd.discovery.limit,
     )
 
     present_discovery(
         report,
         root=search_cmd.directory,
         filters=filters,
-        recursive=search_cmd.depth > 0,
+        recursive=search_cmd.discovery.depth > 0,
     )
 
     raise cappa.Exit(code=0)

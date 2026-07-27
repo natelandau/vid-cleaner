@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated
 
@@ -37,10 +38,11 @@ def config_subcommand(vidcleaner: VidCleaner) -> None:
     if langs_to_keep and isinstance(langs_to_keep, str):
         langs_to_keep = langs_to_keep.split(",")
 
-    if getattr(vidcleaner.command, "filters", None):
-        filters = parse_trait_filters(getattr(vidcleaner.command, "filters", None))
-    else:
-        filters = set()
+    # Discovery options are destructured onto a nested object shared by `search` and
+    # `clean`, so the raw filter string is one level down from the command itself.
+    discovery = getattr(vidcleaner.command, "discovery", None)
+    raw_filters = getattr(discovery, "filters", None)
+    filters = parse_trait_filters(raw_filters) if raw_filters else set()
 
     # Apply command-specific settings
     cli_settings = {
@@ -66,6 +68,61 @@ def config_subcommand(vidcleaner: VidCleaner) -> None:
     SettingsManager.apply_cli_settings(cli_settings)
 
     pp.trace("Settings", details=[settings.to_dict(), vidcleaner.__dict__])
+
+
+@dataclass
+class DiscoveryOptions:
+    """The query vocabulary shared by `search` and `clean`.
+
+    Composed into both commands so a `search` invocation and a `clean` invocation with
+    the same flags always select the same files.
+    """
+
+    depth: Annotated[
+        int,
+        cappa.Arg(
+            help="Depth to search for video files",
+            long=True,
+            show_default=False,
+            group="Discovery",
+        ),
+    ] = 0
+    filters: Annotated[
+        str | None,
+        cappa.Arg(
+            help=f"Comma separated list of facets to search for. Valid options: {VideoTrait.help_options()}",
+            long=True,
+            show_default=False,
+            group="Discovery",
+        ),
+    ] = None
+    sort: Annotated[
+        SortOrder,
+        cappa.Arg(
+            help="Sort results by name, file size, or bitrate.",
+            long=True,
+            show_default=True,
+            group="Discovery",
+        ),
+    ] = SortOrder.ALPHA
+    reverse: Annotated[
+        bool,
+        cappa.Arg(
+            help="Reverse the sort order",
+            long=True,
+            show_default=True,
+            group="Discovery",
+        ),
+    ] = False
+    limit: Annotated[
+        int | None,
+        cappa.Arg(
+            help="Act on only the first N results after sorting",
+            long=True,
+            show_default=False,
+            group="Discovery",
+        ),
+    ] = None
 
 
 @cappa.command(
@@ -399,6 +456,9 @@ vidcleaner search --filters=h264,1080p --depth=2
 
 # List 4k files, largest first:
 vidcleaner search --filters=4k --sort=size
+
+# List the 5 largest 4k files:
+vidcleaner search --filters=4k --sort=size --limit=5
 ```
 """,
     invoke="vid_cleaner.cli.search.main",
@@ -410,39 +470,7 @@ class SearchCommand:
         Path,
         cappa.Arg(help="Directory to search for video files", show_default=False),
     ] = Path.cwd()
-    depth: Annotated[
-        int,
-        cappa.Arg(
-            help="Depth to search for video files", long=True, short=False, show_default=False
-        ),
-    ] = 0
-    filters: Annotated[
-        str,
-        cappa.Arg(
-            help=f"Comma separated list of facets to search for. Valid options: {VideoTrait.help_options()}",
-            long=True,
-            short=False,
-            show_default=False,
-        ),
-    ] = None
-    sort: Annotated[
-        SortOrder,
-        cappa.Arg(
-            help="Sort results by name, file size, or bitrate.",
-            long=True,
-            short=False,
-            show_default=True,
-        ),
-    ] = SortOrder.ALPHA
-    reverse: Annotated[
-        bool,
-        cappa.Arg(
-            help="Reverse the sort order",
-            long=True,
-            short=False,
-            show_default=True,
-        ),
-    ] = False
+    discovery: cappa.Destructured[DiscoveryOptions] = field(default_factory=DiscoveryOptions)
 
 
 def main() -> None:  # pragma: no cover
