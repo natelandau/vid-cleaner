@@ -31,8 +31,8 @@ SORT_KEYS: dict[SortOrder, tuple[SortKey, bool]] = {
 class DiscoveryReport:
     """The outcome of one discovery run, carrying everything a caller needs to render or act.
 
-    Hold the active sort state alongside the rows so a renderer's header arrow and caption
-    cannot disagree with the order the rows are actually in.
+    Hold the active query and sort state alongside the rows so a renderer's header arrow,
+    caption, and error messages cannot disagree with the query that produced the rows.
     """
 
     results: list[SearchResult]
@@ -41,7 +41,26 @@ class DiscoveryReport:
     truncated: int
     sort: SortOrder
     descending: bool
-    filtered: bool
+    filters: set[VideoTrait]
+    depth: int
+
+    @property
+    def filtered(self) -> bool:
+        """Report whether any trait filter narrowed the selection.
+
+        Returns:
+            bool: True when at least one filter was applied.
+        """
+        return bool(self.filters)
+
+    @property
+    def recursive(self) -> bool:
+        """Report whether the search descended below its root.
+
+        Returns:
+            bool: True when subdirectories were searched.
+        """
+        return self.depth > 0
 
 
 def coerce_bitrate(raw: str | int | None) -> int:
@@ -174,5 +193,6 @@ def discover_video_files(
         truncated=truncated,
         sort=sort,
         descending=descending,
-        filtered=bool(active_filters),
+        filters=active_filters,
+        depth=depth,
     )

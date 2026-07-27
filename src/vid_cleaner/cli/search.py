@@ -17,22 +17,15 @@ def main(search_cmd: SearchCommand) -> None:
     Raises:
         cappa.Exit: Always, carrying the command's exit code.
     """
-    filters = set(settings.filters)
-
     report = discover_video_files(
         search_cmd.directory,
         depth=search_cmd.discovery.depth,
-        filters=filters,
+        filters=set(settings.filters),
         sort=search_cmd.discovery.sort,
         reverse=search_cmd.discovery.reverse,
         limit=search_cmd.discovery.limit,
     )
 
-    present_discovery(
-        report,
-        root=search_cmd.directory,
-        filters=filters,
-        recursive=search_cmd.discovery.depth > 0,
-    )
+    present_discovery(report, root=search_cmd.directory)
 
     raise cappa.Exit(code=0)

@@ -112,22 +112,16 @@ def select_video_files(clean_cmd: CleanCommand) -> list[VideoFile]:
         pp.error(f"`--from` must be an existing directory: {clean_cmd.from_}")
         raise cappa.Exit(code=1)
 
-    filters = set(settings.filters)
     report = discover_video_files(
         clean_cmd.from_,
         depth=discovery.depth,
-        filters=filters,
+        filters=set(settings.filters),
         sort=discovery.sort,
         reverse=discovery.reverse,
         limit=discovery.limit,
     )
 
-    present_discovery(
-        report,
-        root=clean_cmd.from_,
-        filters=filters,
-        recursive=discovery.depth > 0,
-    )
+    present_discovery(report, root=clean_cmd.from_)
 
     # A dry run previews rather than acts, so there is nothing to approve.
     if not settings.dryrun:

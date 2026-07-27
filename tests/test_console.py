@@ -59,3 +59,15 @@ def test_no_applied_actions_shows_no_changes(capsys):
     ]
     render_operations(actions, debug=False)
     assert "No changes needed" in _plain(capsys)
+
+
+def test_open_tree_branches_every_line(capsys):
+    """Verify an unclosed tree never emits TREE_LAST, so later lines extend the same tree."""
+    actions = [
+        PlanAction(label="Reorder streams", applied=True),
+        PlanAction(label="Convert to H.265", applied=True),
+    ]
+    render_operations(actions, debug=True, closes_tree=False)
+    out = _plain(capsys)
+    assert TREE_BRANCH in out
+    assert TREE_LAST not in out

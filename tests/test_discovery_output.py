@@ -26,7 +26,8 @@ def make_report(**overrides) -> DiscoveryReport:
         "truncated": 0,
         "sort": SortOrder.ALPHA,
         "descending": False,
-        "filtered": False,
+        "filters": set(),
+        "depth": 0,
     }
     return DiscoveryReport(**{**defaults, **overrides})
 
@@ -38,7 +39,7 @@ def test_present_exits_zero_when_nothing_found(capsys, tmp_path):
 
     # When: Presenting it
     with pytest.raises(cappa.Exit) as exc_info:
-        present_discovery(report, root=tmp_path, filters=set(), recursive=False)
+        present_discovery(report, root=tmp_path)
 
     # Then: The command warns and exits successfully
     assert exc_info.value.code == 0
@@ -48,11 +49,11 @@ def test_present_exits_zero_when_nothing_found(capsys, tmp_path):
 def test_present_exits_one_when_nothing_matched(capsys, tmp_path):
     """Verify files found but none matching the filters is an error naming the filters."""
     # Given: A report where candidates existed but none matched
-    report = make_report(total=3, filtered=True)
+    report = make_report(total=3, filters={VideoTrait.REORDER})
 
     # When: Presenting it with an active filter
     with pytest.raises(cappa.Exit) as exc_info:
-        present_discovery(report, root=tmp_path, filters={VideoTrait.REORDER}, recursive=False)
+        present_discovery(report, root=tmp_path)
 
     # Then: The command errors and names the unmatched filter
     assert exc_info.value.code == 1
@@ -64,13 +65,13 @@ def test_present_empty_match_reports_skipped_count(capsys, tmp_path):
     # Given: A report where every candidate was unreadable
     report = make_report(
         total=1,
-        filtered=True,
+        filters={VideoTrait.REORDER},
         skipped=[VideoProbeError(path=tmp_path / "bad.mkv", reason="Invalid data")],
     )
 
     # When: Presenting it
     with pytest.raises(cappa.Exit) as exc_info:
-        present_discovery(report, root=tmp_path, filters={VideoTrait.REORDER}, recursive=False)
+        present_discovery(report, root=tmp_path)
 
     # Then: The error reports the skipped file alongside the mismatch
     error = capsys.readouterr().err
@@ -81,11 +82,11 @@ def test_present_empty_match_reports_skipped_count(capsys, tmp_path):
 def test_present_unfiltered_empty_match_says_unreadable(capsys, tmp_path):
     """Verify an unfiltered run that matched nothing blames readability, not the filters."""
     # Given: A report with candidates, no filters, and no results
-    report = make_report(total=2, filtered=False)
+    report = make_report(total=2)
 
     # When: Presenting it
     with pytest.raises(cappa.Exit) as exc_info:
-        present_discovery(report, root=tmp_path, filters=set(), recursive=False)
+        present_discovery(report, root=tmp_path)
 
     # Then: The error explains that nothing could be read
     assert exc_info.value.code == 1

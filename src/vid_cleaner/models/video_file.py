@@ -748,7 +748,9 @@ class VideoFile:
         )
 
         debug = int(settings.get("verbosity", 0) or 0) >= 1
-        render_operations(plan.actions, debug=debug)
+        # A real run always follows these with write-outcome substeps, so leave the tree
+        # open for them; a dry run writes nothing, making the operations its last lines.
+        render_operations(plan.actions, debug=debug, closes_tree=bool(settings.dryrun))
 
         # Nothing to encode: the up-front render already reported "No changes needed".
         if plan.is_noop(stream_count=len(self.all_streams)) and not needs_reorder:

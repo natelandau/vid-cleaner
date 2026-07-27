@@ -7,6 +7,7 @@ import cappa
 import pytest
 from iso639 import Lang
 
+from vid_cleaner.constants import TREE_LAST
 from vid_cleaner.exceptions import VideoCleanError
 from vid_cleaner.models import video_file as video_file_module
 from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
@@ -1718,3 +1719,32 @@ def test_clean_from_declining_the_prompt_changes_nothing(
     mock_ffmpeg.assert_not_called()
     write.assert_not_called()
     assert video.read_bytes() == original
+
+
+def test_clean_renders_one_tree_per_file(
+    mocker, mock_ffprobe_box, mock_video_path, capsys, mock_ffmpeg
+):
+    """Verify a file's operations and outcomes close a single tree, not one each."""
+    # Given: A file whose operations render up front and whose write then reports a save
+    args = ["clean", "-vv", "--h265", str(mock_video_path)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
+    )
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+
+    # When: Running clean
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: Everything printed for the file closes a single tree, on its last line
+    assert exc_info.value.code == 0
+    per_file = output.rsplit("\u21e8", 1)[-1]
+    assert per_file.count(TREE_LAST) == 1
+    assert TREE_LAST in per_file.splitlines()[-1]

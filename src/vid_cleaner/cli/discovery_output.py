@@ -19,27 +19,21 @@ from vid_cleaner.views import search_table
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from vid_cleaner.constants import VideoTrait
     from vid_cleaner.controllers.discovery import DiscoveryReport
 
 
-def present_discovery(
-    report: DiscoveryReport,
-    *,
-    root: Path,
-    filters: set[VideoTrait],
-    recursive: bool,
-) -> None:
+def present_discovery(report: DiscoveryReport, *, root: Path) -> None:
     """Render a discovery report, or exit with the message its emptiness calls for.
 
     Distinguish "the directory holds no video files" (not an error) from "files were
     found but none matched" (an error), so a user can tell a bad path from a bad filter.
+    Read the query off the report rather than taking it as arguments, so the no-match
+    error can never name a filter set discovery did not actually apply.
 
     Args:
-        report (DiscoveryReport): The selection to present.
+        report (DiscoveryReport): The selection to present, carrying the query that
+            produced it.
         root (Path): The directory that was searched, named in the empty-directory warning.
-        filters (set[VideoTrait]): The active trait filters, named in the no-match error.
-        recursive (bool): Whether the search descended, so rows can show their directory.
 
     Raises:
         cappa.Exit: With code 0 when no video files exist under `root`, or code 1 when
@@ -60,7 +54,7 @@ def present_discovery(
         # The table caption is the sole reporter of the skipped count on the success
         # path, but it never renders here, so fold the count into the error instead of
         # leaving the user unable to tell "nothing matches" from "nothing was readable".
-        human_readable_filters = ", ".join(f"'{f.value}'" for f in filters)
+        human_readable_filters = ", ".join(f"'{f.value}'" for f in report.filters)
         message = (
             f"No video files found matching {human_readable_filters}"
             if human_readable_filters
@@ -72,7 +66,7 @@ def present_discovery(
         raise cappa.Exit(code=1)
 
     pp.console().print(
-        search_table(report, root=root.expanduser().resolve() if recursive else None)
+        search_table(report, root=root.expanduser().resolve() if report.recursive else None)
     )
 
 

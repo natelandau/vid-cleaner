@@ -17,6 +17,9 @@ if TYPE_CHECKING:
     from box import Box
 
     from vid_cleaner.constants import VideoTrait
+
+    # A view naming a controller type is fine as long as it stays type-only: the
+    # annotation buys the view no runtime dependency on the controller layer.
     from vid_cleaner.controllers.discovery import DiscoveryReport
 
 # Scene releases lead with the title and switch to release metadata at the year (movies) or
