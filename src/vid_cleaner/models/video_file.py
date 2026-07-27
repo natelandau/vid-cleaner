@@ -32,6 +32,7 @@ from vid_cleaner.constants import (
     CodecTypes,
     VideoTrait,
 )
+from vid_cleaner.exceptions import VideoCleanError
 from vid_cleaner.models.conversion_plan import ConversionPlan, OutputStream, PlanAction
 from vid_cleaner.utils import (
     MediaId,
@@ -739,14 +740,12 @@ class VideoFile:
                 caller to inspect.
 
         Raises:
-            cappa.Exit: If the file has no video or no audio streams.
+            VideoCleanError: If the file has no video or no audio streams.
         """
         if not self.video_streams:
-            pp.error("No video streams found")
-            raise cappa.Exit(code=1)
+            raise VideoCleanError(path=self.path, reason="no video streams found")
         if not self.audio_streams:
-            pp.error("No audio streams found")
-            raise cappa.Exit(code=1)
+            raise VideoCleanError(path=self.path, reason="no audio streams found")
 
         plan = self._build_plan()
 

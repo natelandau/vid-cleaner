@@ -2,7 +2,25 @@
 
 from pathlib import Path
 
-__all__ = ["VideoProbeError"]
+__all__ = ["VideoCleanError", "VideoProbeError"]
+
+
+class VideoCleanError(Exception):
+    """Raised when one file cannot be cleaned, so a batch can skip it and continue.
+
+    Distinct from `cappa.Exit`, which means the whole run should stop.
+    """
+
+    def __init__(self, path: Path, reason: str) -> None:
+        """Initialize VideoCleanError.
+
+        Args:
+            path (Path): The file that could not be cleaned.
+            reason (str): Short explanation of why the file could not be cleaned.
+        """
+        self.path = path
+        self.reason = reason
+        super().__init__(f"Could not clean '{path}': {reason}")
 
 
 class VideoProbeError(Exception):

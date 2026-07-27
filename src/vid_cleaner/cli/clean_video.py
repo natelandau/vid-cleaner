@@ -7,8 +7,9 @@ from nclutils import pp
 
 from vid_cleaner import settings
 from vid_cleaner.cli.discovery_output import confirm_selection, present_discovery
-from vid_cleaner.constants import SortOrder
+from vid_cleaner.constants import SYMBOL_CROSS, SortOrder
 from vid_cleaner.controllers.discovery import discover_video_files
+from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
 from vid_cleaner.utils import (
     coerce_video_files,
     copy_to_output,
@@ -134,6 +135,8 @@ def main(clean_cmd: CleanCommand) -> None:
     out_path_override = resolve_out_path_override(clean_cmd.files, from_directory=clean_cmd.from_)
     video_files = select_video_files(clean_cmd)
 
+    failures: list[str] = []
+
     for video_file in video_files:
         settings.out_path = out_path_override or video_file.path
 
@@ -147,7 +150,17 @@ def main(clean_cmd: CleanCommand) -> None:
             video_file.clean()
             if not settings.dryrun:
                 substeps.extend(write_output(video_file))
+        # One unusable or failing file must not discard the files queued behind it.
+        # `cappa.Exit` is deliberately not caught: it carries KeyboardInterrupt, which
+        # means stop the whole run.
+        except (VideoCleanError, VideoProbeError, RuntimeError, OSError) as e:
+            failures.append(f"{video_file.path.name}: {e}")
+            substeps.append(f"{SYMBOL_CROSS} Failed: {e}")
         finally:
             render_substeps(substeps)
+
+    if failures:
+        pp.error(f"{len(failures)} file(s) failed", details=failures, markup=False)
+        raise cappa.Exit(code=1)
 
     raise cappa.Exit(code=0)

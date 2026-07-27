@@ -7,6 +7,7 @@ import cappa
 import pytest
 from iso639 import Lang
 
+from vid_cleaner.exceptions import VideoCleanError
 from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
@@ -796,7 +797,12 @@ def test_clean_multiple_files_overwrite_each_in_place(
 def test_clean_renders_completed_steps_on_error(
     mocker, mock_ffprobe_box, mock_ffmpeg, capsys, mock_video_path
 ) -> None:
-    """Verify operations render up front even when the later write step raises."""
+    """Verify operations render up front even when the later write step raises.
+
+    A write failure is a per-file failure like any other: it is reported and the batch
+    exits non-zero rather than propagating raw, since a single write error must not be
+    able to look different from any other file-level failure to the caller.
+    """
     # Given: operations render up front inside clean(), before the write step, so a
     # failing write can't hide what already completed
     args = ["clean", "-vv", "--h265", str(mock_video_path)]
@@ -811,16 +817,19 @@ def test_clean_renders_completed_steps_on_error(
     )
 
     # When: running clean and the output write raises after processing completes
-    with pytest.raises(RuntimeError):
+    with pytest.raises(cappa.Exit) as exc_info:
         cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: the operations render up front, before the failing write, proving the CLI
     # reports what actually happened even when `write_output()` raises. reference.json's
     # video stream is already first, so reorder is skipped and H.265 conversion is the
-    # operation that proves clean() ran to completion.
-    output = capsys.readouterr().out
+    # operation that proves clean() ran to completion. The write failure is reported and
+    # the command exits non-zero rather than crashing.
+    output, error = capsys.readouterr()
+    assert exc_info.value.code == 1
     assert "✔ Convert to H.265" in output
     assert "✖ Reorder streams  (streams already in order)" in output
+    assert "1 file(s) failed" in output + error
 
 
 def test_clean_video_downmix_skip_when_stereo_exists(
@@ -1284,3 +1293,75 @@ def test_clean_from_limit_selects_top_results(capsys, video_library, mock_ffmpeg
     assert exc_info.value.code == 0
     assert "banana.mkv" in output
     assert "apple.mkv" not in output
+
+
+def test_clean_continues_after_a_file_fails(capsys, tmp_path, mocker, mock_ffmpeg):
+    """Verify one failing file does not discard the work queued behind it."""
+    # Given: Two files where the first fails to clean
+    first = tmp_path / "first.mkv"
+    first.touch()
+    second = tmp_path / "second.mkv"
+    second.touch()
+
+    def clean(self):
+        if self.path.name == "first.mkv":
+            msg = "no video streams found"
+            raise VideoCleanError(path=self.path, reason=msg)
+        return []
+
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", clean)
+
+    # When: Cleaning both files
+    args = ["-n", "clean", str(first), str(second)]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output, error = capsys.readouterr()
+
+    # Then: The second file was still attempted and the failure is reported at the end
+    assert exc_info.value.code == 1
+    assert "second.mkv" in output
+    assert "first.mkv" in output + error
+    assert "1 file(s) failed" in output + error
+
+
+def test_clean_exits_zero_when_every_file_succeeds(capsys, tmp_path, mocker, mock_ffmpeg):
+    """Verify a clean run with no failures still exits successfully."""
+    # Given: One file that cleans without error
+    video = tmp_path / "movie.mkv"
+    video.touch()
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", return_value=[])
+
+    # When: Cleaning it
+    args = ["-n", "clean", str(video)]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The command exits successfully with no failure report
+    assert exc_info.value.code == 0
+    assert "failed" not in capsys.readouterr().out
+
+
+def test_clean_keyboard_interrupt_aborts_the_whole_batch(capsys, tmp_path, mocker):
+    """Verify Ctrl-C stops the run rather than being collected as a per-file failure."""
+    # Given: Two files where the first raises the exit cappa uses for an interrupt
+    first = tmp_path / "first.mkv"
+    first.touch()
+    second = tmp_path / "second.mkv"
+    second.touch()
+
+    def clean(self):
+        if self.path.name == "first.mkv":
+            raise cappa.Exit(code=1)
+        return []
+
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", clean)
+
+    # When: Cleaning both files
+    args = ["-n", "clean", str(first), str(second)]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The run aborts before reaching the second file
+    assert exc_info.value.code == 1
+    assert "second.mkv" not in capsys.readouterr().out

@@ -3,12 +3,12 @@
 
 from pathlib import Path
 
-import cappa
 import pytest
 from iso639 import Lang
 
 from vid_cleaner import settings
 from vid_cleaner.constants import CodecTypes
+from vid_cleaner.exceptions import VideoCleanError
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
@@ -361,10 +361,12 @@ def test_clean_no_video_streams_raises(make_video):
     video = make_video("audio_only.json")
 
     # When: cleaning
-    # Then: cappa.Exit is raised with code 1
-    with pytest.raises(cappa.Exit) as exc_info:
+    # Then: VideoCleanError is raised, distinct from cappa.Exit, so a batch loop can
+    # catch it and continue to the next file without swallowing a real interrupt
+    with pytest.raises(VideoCleanError) as exc_info:
         video.clean()
-    assert exc_info.value.code == 1
+    assert exc_info.value.path == video.path
+    assert exc_info.value.reason == "no video streams found"
 
 
 def test_clean_no_audio_streams_raises(make_video):
@@ -373,10 +375,12 @@ def test_clean_no_audio_streams_raises(make_video):
     video = make_video("video_only.json")
 
     # When: cleaning
-    # Then: cappa.Exit is raised with code 1
-    with pytest.raises(cappa.Exit) as exc_info:
+    # Then: VideoCleanError is raised, distinct from cappa.Exit, so a batch loop can
+    # catch it and continue to the next file without swallowing a real interrupt
+    with pytest.raises(VideoCleanError) as exc_info:
         video.clean()
-    assert exc_info.value.code == 1
+    assert exc_info.value.path == video.path
+    assert exc_info.value.reason == "no audio streams found"
 
 
 def test_clean_noop_skips_ffmpeg(make_video, mock_ffmpeg):
