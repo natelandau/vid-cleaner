@@ -34,6 +34,32 @@ def test_inspect_table(tmp_path, capsys, debug, mock_video_path, mock_ffprobe_bo
     assert re.search(r"1920 +│ 1080 +│ Test", output)
 
 
+def test_inspect_title_shows_file_size(capsys, mock_video_path, mocker, mock_ffprobe_box):
+    """Verify the stream table title reports the file's size."""
+    # Given: A video file with a known size on disk
+    mock_video_path.write_bytes(b"\0" * 2000)
+    # mock_ffprobe_box sets path_to_file to the fixture JSON it reads, not the video
+    # under test; point it at mock_video_path so the size read from disk is the 2000
+    # bytes just written, matching what get_probe_as_box does for a real probe.
+    probe_box = mock_ffprobe_box("reference.json")
+    probe_box.path_to_file = mock_video_path
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=probe_box,
+    )
+
+    # When: Inspecting the file
+    args = ["inspect", str(mock_video_path)]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: The title carries the human readable size
+    assert exc_info.value.code == 0
+    assert "(2.0 kB)" in output
+
+
 def test_inspect_json(tmp_path, capsys, debug, mock_video_path, mock_ffprobe, mocker):
     """Verify inspect command displays video information in JSON format."""
     # Given: Mock video file and ffprobe data

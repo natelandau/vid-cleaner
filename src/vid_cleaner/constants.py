@@ -84,6 +84,14 @@ class VideoTrait(StrEnum):
         return ", ".join(values)
 
 
+class SortOrder(StrEnum):
+    """Ordering applied to `search` results."""
+
+    ALPHA = "alpha"
+    SIZE = "size"
+    BITRATE = "bitrate"
+
+
 @dataclass
 class Resolution:
     """Resolution for vid-cleaner."""

@@ -4,6 +4,7 @@ import shutil
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cappa
 from nclutils import pp
@@ -17,10 +18,12 @@ from vid_cleaner.constants import (
     VideoContainerTypes,
     VideoTrait,
 )
-from vid_cleaner.models.video_file import VideoFile
+
+if TYPE_CHECKING:
+    from vid_cleaner.models.video_file import VideoFile
 
 
-def coerce_video_files(files: list[Path]) -> list[VideoFile]:
+def coerce_video_files(files: list[Path]) -> list["VideoFile"]:
     """Parse and validate a list of video file paths.
 
     Verify each path exists and has a valid video container extension. Convert valid paths into VideoFile objects.
@@ -34,6 +37,10 @@ def coerce_video_files(files: list[Path]) -> list[VideoFile]:
     Raises:
         cappa.Exit: If a file doesn't exist or has an invalid extension
     """
+    # Imported here because `vid_cleaner.models.video_file` imports this package at module
+    # scope; a top-level import makes `vid_cleaner.models` unimportable on its own.
+    from vid_cleaner.models.video_file import VideoFile  # noqa: PLC0415
+
     for file in files:
         f = file.expanduser().resolve().absolute()
 

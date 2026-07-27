@@ -11,7 +11,7 @@ from rich.traceback import install
 
 from vid_cleaner import settings
 from vid_cleaner.config import SettingsManager
-from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel, VideoTrait
+from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel, SortOrder, VideoTrait
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.utils import create_default_config, parse_trait_filters
 
@@ -389,10 +389,16 @@ By using filters, you can search for video files that match specific criteria. F
 
 Files that can not be read as video, such as corrupt files or non-video files carrying a video extension, are counted and skipped rather than ending the search. Run with `-v` to list them.
 
+Results are sorted alphabetically by path. Use `--sort=size` or `--sort=bitrate` to order by
+file size or overall bitrate instead, largest first. `--reverse` flips whichever order is active.
+
 **Usage Examples:**
 ```shell
 # Search for video files that are in the H264 codec and have a resolution of 1080p up to 2 levels deep:
 vidcleaner search --filters=h264,1080p --depth=2
+
+# List 4k files, largest first:
+vidcleaner search --filters=4k --sort=size
 ```
 """,
     invoke="vid_cleaner.cli.search.main",
@@ -419,6 +425,24 @@ class SearchCommand:
             show_default=False,
         ),
     ] = None
+    sort: Annotated[
+        SortOrder,
+        cappa.Arg(
+            help="Sort results by name, file size, or bitrate.",
+            long=True,
+            short=False,
+            show_default=True,
+        ),
+    ] = SortOrder.ALPHA
+    reverse: Annotated[
+        bool,
+        cappa.Arg(
+            help="Reverse the sort order",
+            long=True,
+            short=False,
+            show_default=True,
+        ),
+    ] = False
 
 
 def main() -> None:  # pragma: no cover
