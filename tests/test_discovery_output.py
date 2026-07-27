@@ -117,28 +117,6 @@ def test_confirm_returns_when_assume_yes(mocker, capsys):
     ask.assert_not_called()
 
 
-@pytest.fixture
-def interactive_console(mocker):
-    """Force `Console.is_terminal` so the prompt path can be exercised under pytest.
-
-    Patch the property on the class rather than replacing `pp.console`, which would hand
-    `pp.error` a mock and silently break stderr capture in these same tests.
-
-    Returns:
-        Callable[..., None]: Call with `is_terminal=True` or `is_terminal=False` to set
-            interactivity.
-    """
-
-    def _inner(*, is_terminal: bool) -> None:
-        mocker.patch(
-            "rich.console.Console.is_terminal",
-            new_callable=mocker.PropertyMock,
-            return_value=is_terminal,
-        )
-
-    return _inner
-
-
 def test_confirm_errors_on_non_tty_without_yes(mocker, capsys, interactive_console):
     """Verify a non-interactive terminal without --yes errors instead of hanging on stdin."""
     # Given: A non-interactive console

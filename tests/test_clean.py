@@ -8,6 +8,7 @@ import pytest
 from iso639 import Lang
 
 from vid_cleaner.exceptions import VideoCleanError
+from vid_cleaner.models import video_file as video_file_module
 from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
@@ -1546,3 +1547,174 @@ def test_clean_reports_a_failed_original_removal_accurately(
     assert exc_info.value.code == 0
     assert "could not remove the original" in output
     assert "could not clean up temporary files" not in output
+
+
+def _normalize(text: str) -> str:
+    """Collapse Rich's line wrapping so assertions can match whole phrases.
+
+    Returns:
+        str: The text with every run of whitespace reduced to a single space.
+    """
+    return " ".join(text.split())
+
+
+def test_clean_failure_lines_name_the_file_exactly_once(capsys, tmp_path, mocker, mock_ffmpeg):
+    """Verify a domain error's failure line carries the short reason, not the full message.
+
+    `VideoCleanError` embeds the absolute path in its own message, so reporting `str(e)`
+    under a line already prefixed with the filename names the file twice.
+    """
+    # Given: One file failing with a domain error and one with a plain RuntimeError
+    first = tmp_path / "first.mkv"
+    first.touch()
+    second = tmp_path / "second.mkv"
+    second.touch()
+
+    def clean(self):
+        if self.path.name == "first.mkv":
+            raise VideoCleanError(path=self.path, reason="no video streams found")
+        msg = "boom"
+        raise RuntimeError(msg)
+
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", clean)
+
+    # When: Cleaning both files
+    args = ["-n", "clean", str(first), str(second)]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output, error = capsys.readouterr()
+    combined = _normalize(output + error)
+
+    # Then: The domain failure names the file once, and the plain error still names it
+    assert exc_info.value.code == 1
+    assert "first.mkv: no video streams found" in combined
+    assert "Could not clean" not in combined
+    assert "second.mkv: boom" in combined
+
+
+def test_clean_clears_the_temp_directory_when_a_file_fails(capsys, tmp_path, mocker, mock_ffmpeg):
+    """Verify a failed file's full-size temp transcode is discarded immediately.
+
+    A batch that fails on every file would otherwise hold one full-size intermediate per
+    file on disk until the process exits.
+    """
+    # Given: A file that fails to clean
+    video = tmp_path / "movie.mkv"
+    video.touch()
+
+    def clean(self):
+        raise VideoCleanError(path=self.path, reason="no video streams found")
+
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", clean)
+    cleanup = mocker.patch.object(TempFile, "clean_up")
+
+    # When: Cleaning it
+    args = ["-n", "clean", str(video)]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The temp directory was cleared as part of handling the failure
+    assert exc_info.value.code == 1
+    cleanup.assert_called_once()
+
+
+def test_clean_from_cleanup_failure_does_not_mask_the_real_failure(
+    capsys, tmp_path, mocker, mock_ffmpeg
+):
+    """Verify a cleanup error while handling a failure does not replace the reported cause."""
+    # Given: A file that fails to clean and whose temp cleanup then also fails
+    video = tmp_path / "movie.mkv"
+    video.touch()
+
+    def clean(self):
+        raise VideoCleanError(path=self.path, reason="no video streams found")
+
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", clean)
+    mocker.patch.object(TempFile, "clean_up", side_effect=OSError("temp dir busy"))
+
+    # When: Cleaning it
+    args = ["-n", "clean", str(video)]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output, error = capsys.readouterr()
+    combined = _normalize(output + error)
+
+    # Then: The original cause is still what the batch reports
+    assert exc_info.value.code == 1
+    assert "movie.mkv: no video streams found" in combined
+
+
+def test_clean_from_yes_reaches_the_transcode_loop(capsys, video_library, mocker, mock_ffmpeg):
+    """Verify --yes skips the prompt and actually transcodes the discovered selection."""
+    # Given: Two discoverable files and a stubbed writer
+    directory = video_library([("apple.mkv", 100, 1_000_000), ("banana.mkv", 200, 1_000_000)])
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+    args = ["clean", "--from", str(directory), "--filters", "h264", "--yes"]
+
+    # When: Running clean with --yes and no TTY
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    output = capsys.readouterr().out
+
+    # Then: Both files were transcoded and written
+    assert exc_info.value.code == 0
+    assert mock_ffmpeg.call_count == 2
+    assert "apple.mkv" in output
+    assert "banana.mkv" in output
+
+
+def test_clean_from_yes_reuses_the_discovery_probe(capsys, video_library, mocker, mock_ffmpeg):
+    """Verify each file is probed once, not again when the transcode loop reaches it.
+
+    Discovery already probed every candidate and `VideoFile` caches the result, so
+    `select_video_files` hands back those instances. Rebuilding them from paths would
+    silently double the dominant cost of a large `--from` run.
+    """
+    # Given: Two discoverable files and a stubbed writer
+    directory = video_library([("apple.mkv", 100, 1_000_000), ("banana.mkv", 200, 1_000_000)])
+    probe = video_file_module.get_probe_as_box
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+    args = ["clean", "--from", str(directory), "--filters", "h264", "--yes"]
+
+    # When: Running clean with --yes
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: ffprobe ran exactly once per file
+    assert exc_info.value.code == 0
+    assert probe.call_count == 2
+
+
+def test_clean_from_declining_the_prompt_changes_nothing(
+    capsys, video_library, mocker, mock_ffmpeg, interactive_console
+):
+    """Verify answering no is a successful no-op that leaves every file untouched."""
+    # Given: A discoverable file and a user who declines the prompt
+    directory = video_library([("apple.mkv", 100, 1_000_000)])
+    video = directory / "apple.mkv"
+    original = video.read_bytes()
+    interactive_console(is_terminal=True)
+    mocker.patch("vid_cleaner.cli.discovery_output.Confirm.ask", return_value=False)
+    write = mocker.patch("vid_cleaner.cli.clean_video.copy_to_output")
+    args = ["clean", "--from", str(directory), "--filters", "h264"]
+
+    # When: Running clean and declining
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: Nothing was transcoded, nothing was written, and the file is unchanged
+    assert exc_info.value.code == 0
+    mock_ffmpeg.assert_not_called()
+    write.assert_not_called()
+    assert video.read_bytes() == original
