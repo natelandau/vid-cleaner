@@ -62,8 +62,7 @@ class VideoTrait(StrEnum):
     SURROUND5 = "surround5"
     SURROUND7 = "surround7"
     COMMENTARY = "commentary"
-    NOSTEREO = "no_stereo"
-    SURROUND_ONLY = "surround_only"
+    NEEDS_STEREO = "needs_stereo"
     FHD = "1080p"
     UHDTV = "4k"
     HDTV = "720p"
@@ -107,6 +106,9 @@ DROP_SUBTITLES_LABEL = "Drop unwanted subtitles"
 TREE_BRANCH = "├─"  # Connector for a non-final child line in faked step output
 TREE_LAST = "└─"  # Connector for the final child line in faked step output
 COMMENTARY_STREAM_TITLE_REGEX = r"commentary|sdh|description"
+# Fewest channels that still carries a discrete surround field, so 5.0 counts alongside 5.1.
+# Any stream at or above this can seed a stereo downmix.
+MIN_SURROUND_CHANNELS = 5
 
 # Dialogue-forward surround-to-stereo filter chain, shared by every surround layout.
 # The pan is addressed by channel NAME, so one matrix serves 5.1, 7.1 and Atmos (>7.1):

@@ -23,6 +23,7 @@ from vid_cleaner.constants import (
     FHD_RESOLUTION,
     H265_CODECS,
     HDTV_RESOLUTION,
+    MIN_SURROUND_CHANNELS,
     SDTV_RESOLUTION,
     SYMBOL_CHECK,
     TEXT_SUBTITLE_CODECS,
@@ -133,11 +134,8 @@ class VideoFile:
         traits.extend(self._get_video_traits())
 
         # Add derived traits
-        if VideoTrait.STEREO not in traits:
-            traits.append(VideoTrait.NOSTEREO)
-
-        if VideoTrait.STEREO not in traits and VideoTrait.MONO not in traits:
-            traits.append(VideoTrait.SURROUND_ONLY)
+        if self._needs_stereo():
+            traits.append(VideoTrait.NEEDS_STEREO)
 
         if self._need_stream_reorder():
             traits.append(VideoTrait.REORDER)
@@ -215,6 +213,40 @@ class VideoFile:
             stream.title and re.search(COMMENTARY_STREAM_TITLE_REGEX, stream.title, re.IGNORECASE)
         )
 
+    @staticmethod
+    def _is_surround_stream(stream: Box) -> bool:
+        """Check whether a stream carries a surround bed a stereo mix can be downmixed from.
+
+        Read the raw channel count rather than the bucketed `AudioLayout`, which is None for
+        Atmos (>7.1) tracks that downmix perfectly well.
+
+        Args:
+            stream (Box): The stream to inspect.
+
+        Returns:
+            bool: True if the stream has enough channels to seed a downmix.
+        """
+        return bool(stream.channel_count) and stream.channel_count >= MIN_SURROUND_CHANNELS
+
+    def _needs_stereo(self) -> bool:
+        """Check whether the file lacks a stereo mix but could have one built from its audio.
+
+        Distinguishes a file worth downmixing from one that merely has no stereo track, such as
+        an original mono recording, which has nothing to downmix and should be left alone. The
+        commentary handling mirrors `_plan_downmix` so the trait never promises a stereo track
+        the planner would decline to build.
+
+        Returns:
+            bool: True if no non-commentary stereo mix exists and a surround bed does.
+        """
+        has_stereo_mix = any(
+            stream.channels == AudioLayout.STEREO and not self._is_commentary_stream(stream)
+            for stream in self.audio_streams
+        )
+        return not has_stereo_mix and any(
+            self._is_surround_stream(stream) for stream in self.audio_streams
+        )
+
     def _plan_video_streams(self) -> list[OutputStream]:
         """Plan the video streams to keep as passthrough copies.
 
@@ -260,11 +292,10 @@ class VideoFile:
         # Group surround sources by layout tier and downmix the simplest bed present:
         # 5.1 (5-6ch) over 7.1 (7-8ch) over Atmos (>8ch). A single dialogue-forward filter
         # serves every tier, so a >7.1 track no longer passes through un-downmixed.
-        surround5 = [s for s in streams if s.channel_count in (5, 6)]
-        surround7 = [s for s in streams if s.channel_count in (7, 8)]
-        surround_gt7 = [
-            s for s in streams if s.channel_count and s.channel_count > AudioLayout.SURROUND7.value
-        ]
+        surround = [s for s in streams if VideoFile._is_surround_stream(s)]
+        surround5 = [s for s in surround if s.channel_count in (5, 6)]
+        surround7 = [s for s in surround if s.channel_count in (7, 8)]
+        surround_gt7 = [s for s in surround if s.channel_count > AudioLayout.SURROUND7.value]
         surround_source = surround5 or surround7 or surround_gt7
 
         if existing_stereo:

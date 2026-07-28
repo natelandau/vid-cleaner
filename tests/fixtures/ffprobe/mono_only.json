@@ -1,0 +1,52 @@
+// Streams:
+// 0: 1080p H264 video
+// 1: mono FLAC, ita
+{
+    "format": {
+        "bit_rate": "15076000",
+        "duration": "60.268000",
+        "filename": "test_movie.mkv",
+        "format_long_name": "Matroska / WebM",
+        "format_name": "matroska,webm",
+        "size": "197319234",
+        "start_time": "0.000000",
+        "tags": {
+            "ENCODER": "Lavf60.3.100",
+            "title": "Test Move"
+        }
+    },
+    "streams": [
+        // 0: 1080p H264 video
+        {
+            "index": 0,
+            "codec_long_name": "H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10",
+            "codec_name": "h264",
+            "codec_type": "video",
+            "coded_height": 1080,
+            "coded_width": 1440,
+            "height": 1080,
+            "sample_aspect_ratio": "4:3",
+            "start_time": "0.000000",
+            "tags": {
+                "language": "eng",
+                "title": "Test Movie"
+            },
+            "width": 1440
+        },
+        // 1: mono FLAC, ita
+        {
+            "index": 1,
+            "codec_name": "flac",
+            "codec_long_name": "FLAC (Free Lossless Audio Codec)",
+            "codec_type": "audio",
+            "sample_rate": "48000",
+            "channels": 1,
+            "channel_layout": "mono",
+            "bit_rate": "512000",
+            "tags": {
+                "language": "ita",
+                "DURATION": "00:01:00.000000000"
+            }
+        }
+    ]
+}

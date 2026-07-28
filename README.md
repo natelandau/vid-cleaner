@@ -50,8 +50,8 @@ vidcleaner search /media --filters=4k --sort=size --depth=2 --limit=5
 Listing several filters narrows the search rather than widening it: a file must have every trait you name to be returned.
 
 ```shell
-# Only 4k files that also have a surround track and no stereo track
-vidcleaner search /media --filters=4k,surround5,no_stereo
+# Only 4k files that also have a 5.1 track and no stereo track to go with it
+vidcleaner search /media --filters=4k,surround5,needs_stereo
 ```
 
 ### Cleaning what you searched for
