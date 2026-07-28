@@ -1,3 +1,16 @@
+## v0.11.0 (2026-07-27)
+
+### Feat
+
+- **clean**: add short flags for every option
+- **clean**: show the stream removal plan with -v
+- **clean**: add --from to clean what a search query matches (#87)
+- **search**: sort results and show file size and bitrate (#86)
+
+### Fix
+
+- **search**: skip files that cannot be read as video (#85)
+
 ## v0.10.2 (2026-07-23)
 
 ### Fix
