@@ -47,6 +47,13 @@ Run `vidcleaner --help` to see the available commands and options.
 vidcleaner search /media --filters=4k --sort=size --depth=2 --limit=5
 ```
 
+Listing several filters narrows the search rather than widening it: a file must have every trait you name to be returned.
+
+```shell
+# Only 4k files that also have a surround track and no stereo track
+vidcleaner search /media --filters=4k,surround5,no_stereo
+```
+
 ### Cleaning what you searched for
 
 `clean` accepts the same query flags as `search`, so a `search` command is a preview of the `clean` command that acts on it. Swap the positional directory for `--from`:

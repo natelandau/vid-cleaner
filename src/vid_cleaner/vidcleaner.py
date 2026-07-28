@@ -90,7 +90,7 @@ class DiscoveryOptions:
     filters: Annotated[
         str | None,
         cappa.Arg(
-            help=f"Comma separated list of facets to search for. Valid options: {VideoTrait.help_options()}",
+            help=f"Comma separated list of facets a file must have all of. Valid options: {VideoTrait.help_options()}",
             long=True,
             show_default=False,
             group="Discovery",
@@ -488,7 +488,7 @@ class CacheCommand:
     description="""\
 This command allows you to search for video files under a directory and display detailed information about the video and audio streams of a video file. The information includes stream type, codec, language, and audio channel details. This command is useful for understanding the composition of a video file before performing operations like clipping or transcoding.
 
-By using filters, you can search for video files that match specific criteria. For example, you can search for video files that are in the H264 codec and have a resolution of 1080p.
+By using filters, you can search for video files that match specific criteria. Every filter you name must match, so listing more of them narrows the results. For example, `--filters=h264,1080p` returns only files that are in the H264 codec *and* have a resolution of 1080p.
 
 Files that can not be read as video, such as corrupt files or non-video files carrying a video extension, are counted and skipped rather than ending the search. Run with `-v` to list them.
 

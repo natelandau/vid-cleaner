@@ -47,6 +47,32 @@ def test_discover_reports_total_and_filters(video_library):
     assert report.filtered is True
 
 
+def test_discover_multiple_filters_require_every_trait(video_library):
+    """Verify a file missing any one of the active filters is dropped."""
+    # Given: Two probeable files, both h264 and 1080p but neither needing a stream reorder
+    directory = video_library([("apple.mkv", 100, 1_000_000), ("banana.mkv", 200, 2_000_000)])
+
+    # When: Filtering for a trait they have alongside one they lack
+    report = discover_video_files(directory, filters={VideoTrait.H264, VideoTrait.REORDER})
+
+    # Then: Neither file survives, since matching only one filter is not enough
+    assert report.total == 2
+    assert report.results == []
+
+
+def test_discover_all_filters_present_matches(video_library):
+    """Verify a file carrying every active filter survives."""
+    # Given: Two probeable files, both h264 and 1080p per the reference fixture
+    directory = video_library([("apple.mkv", 100, 1_000_000), ("banana.mkv", 200, 2_000_000)])
+
+    # When: Filtering for two traits both files have
+    report = discover_video_files(directory, filters={VideoTrait.H264, VideoTrait.FHD})
+
+    # Then: Both survive and each reports both filters as matches
+    assert len(report.results) == 2
+    assert all(set(r.matches) == {VideoTrait.H264, VideoTrait.FHD} for r in report.results)
+
+
 def test_discover_without_filters_keeps_everything(video_library):
     """Verify an empty filter set matches every readable file."""
     # Given: Two probeable files

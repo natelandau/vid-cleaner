@@ -54,7 +54,7 @@ def present_discovery(report: DiscoveryReport, *, root: Path) -> None:
         # The table caption is the sole reporter of the skipped count on the success
         # path, but it never renders here, so fold the count into the error instead of
         # leaving the user unable to tell "nothing matches" from "nothing was readable".
-        human_readable_filters = ", ".join(f"'{f.value}'" for f in report.filters)
+        human_readable_filters = " and ".join(f"'{f}'" for f in sorted(report.filters))
         message = (
             f"No video files found matching {human_readable_filters}"
             if human_readable_filters

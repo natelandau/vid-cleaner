@@ -61,7 +61,7 @@ def test_search_with_results(
 ):
     """Test that the search command returns results when there are video files."""
     # When: Running the search command
-    args = ["search", str(mock_video_path.parent), "--filters", "h264,reorder"]
+    args = ["search", str(mock_video_path.parent), "--filters", "h264,1080p"]
 
     mocker.patch(
         "vid_cleaner.models.video_file.get_probe_as_box",
@@ -111,6 +111,26 @@ def test_search_with_no_results(
     assert "Found 1 video files in 1/1 directories" in output
     assert "No video files found matching 'reorder'" in error
     assert "Bitrate" not in output
+
+
+def test_search_filters_combine_with_and(capsys, mocker, mock_video_path, mock_ffprobe_box):
+    """Verify a file matching only some of the filters is not returned."""
+    # Given: A file that is h264 but needs no stream reorder
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
+    )
+
+    # When: Searching for a trait it has together with one it lacks
+    args = ["search", str(mock_video_path.parent), "--filters", "h264,reorder"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    _, error = capsys.readouterr()
+
+    # Then: Matching one filter is not enough and the error names both
+    assert exc_info.value.code == 1
+    assert "No video files found matching 'h264' and 'reorder'" in error
 
 
 def test_search_no_results_reports_skipped_count(capsys, mock_video_path, mocker, mock_ffprobe_box):

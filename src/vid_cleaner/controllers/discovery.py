@@ -98,8 +98,8 @@ def discover_video_files(
     Args:
         root (Path): Directory to search.
         depth (int): Subdirectory levels to descend. 0 searches only `root`.
-        filters (set[VideoTrait] | None): Traits a file must have at least one of. None or
-            an empty set keeps every readable file.
+        filters (set[VideoTrait] | None): Traits a file must have all of. None or an empty
+            set keeps every readable file.
         sort (SortOrder): Key to rank results by.
         reverse (bool): Flip the key's natural direction.
         limit (int | None): Keep only the first N results after sorting.
@@ -108,7 +108,7 @@ def discover_video_files(
         DiscoveryReport: The ranked selection plus the counts needed to describe it.
     """
     active_filters = filters or set()
-    human_readable_filters = ", ".join(f"'{f.value}'" for f in active_filters)
+    human_readable_filters = " and ".join(f"'{f}'" for f in sorted(active_filters))
 
     directories_to_search = [*find_subdirectories(root, depth=depth), root] if depth > 0 else [root]
 
@@ -149,9 +149,10 @@ def discover_video_files(
             unreadable.append(e)
             continue
 
-        matches = [trait for trait in video_traits if trait in active_filters]
-        if active_filters and not matches:
+        if not active_filters.issubset(video_traits):
             continue
+
+        matches = [trait for trait in video_traits if trait in active_filters]
 
         # A file that vanishes between the probe above and this stat() (e.g. deleted by
         # another process mid-scan) must not abort a run that may have already spent
