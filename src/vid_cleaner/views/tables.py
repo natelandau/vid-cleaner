@@ -17,7 +17,10 @@ if TYPE_CHECKING:
     from box import Box
 
     from vid_cleaner.constants import VideoTrait
-    from vid_cleaner.models import SearchResult
+
+    # A view naming a controller type is fine as long as it stays type-only: the
+    # annotation buys the view no runtime dependency on the controller layer.
+    from vid_cleaner.controllers.discovery import DiscoveryReport
 
 # Scene releases lead with the title and switch to release metadata at the year (movies) or
 # the season/episode token (TV). Everything after that point restates, in scene shorthand,
@@ -155,30 +158,15 @@ def sort_header(label: str, *, active: bool, descending: bool) -> Text:
     return Text(f"{label} {'↓' if descending else '↑'}", style="bold cyan")
 
 
-def search_table(  # noqa: PLR0913
-    results: list[SearchResult],
-    *,
-    sort: SortOrder,
-    descending: bool,
-    total: int,
-    skipped: int,
-    filtered: bool,
-    root: Path | None = None,
-) -> Table:
-    """Build the `search` results table.
+def search_table(report: DiscoveryReport, *, root: Path | None = None) -> Table:
+    """Build the discovery results table shared by `search` and `clean`.
 
     Stack each file's traits beneath its name inside one cell so the filename gets the
     table's full width instead of competing with a traits column, and so filter matches
     can be shown as emphasis rather than as a second column repeating the same tokens.
 
     Args:
-        results (list[SearchResult]): Matching files, already in display order.
-        sort (SortOrder): The active sort key, marked in the column headers.
-        descending (bool): Whether the rows run from largest to smallest on the active
-            key, so the header arrow can point the way the values actually run.
-        total (int): How many candidate video files were discovered.
-        skipped (int): How many files could not be read as video.
-        filtered (bool): Whether any trait filters were active.
+        report (DiscoveryReport): The ranked selection and the counts describing it.
         root (Path | None): The directory a recursive search started from. When set,
             each row's directory renders as a dim segment ahead of its filename so
             same-named files in different directories stay distinguishable. Omitted
@@ -187,8 +175,17 @@ def search_table(  # noqa: PLR0913
     Returns:
         Table: Rich table ready to print.
     """
-    summary = f"{len(results)} of {total} files matched" if filtered else f"{len(results)} files"
-    caption = f"{summary} · {skipped} skipped" if skipped else summary
+    matched = len(report.results) + report.truncated
+    summary = (
+        f"{matched} of {report.total} files matched" if report.filtered else f"{matched} files"
+    )
+
+    parts = [summary]
+    if report.truncated:
+        parts.insert(0, f"showing {len(report.results)}")
+    if report.skipped:
+        parts.append(f"{len(report.skipped)} skipped")
+    caption = " · ".join(parts)
 
     table = Table(
         box=box.SIMPLE_HEAD,
@@ -205,20 +202,23 @@ def search_table(  # noqa: PLR0913
     table.add_column("#", justify="right", style="dim", header_style="dim", no_wrap=True)
     # Fold rather than truncate: a clipped filename cannot identify a file.
     table.add_column(
-        sort_header("File", active=sort == SortOrder.ALPHA, descending=descending), overflow="fold"
+        sort_header("File", active=report.sort == SortOrder.ALPHA, descending=report.descending),
+        overflow="fold",
     )
     table.add_column(
-        sort_header("Size", active=sort == SortOrder.SIZE, descending=descending),
+        sort_header("Size", active=report.sort == SortOrder.SIZE, descending=report.descending),
         justify="right",
         no_wrap=True,
     )
     table.add_column(
-        sort_header("Bitrate", active=sort == SortOrder.BITRATE, descending=descending),
+        sort_header(
+            "Bitrate", active=report.sort == SortOrder.BITRATE, descending=report.descending
+        ),
         justify="right",
         no_wrap=True,
     )
 
-    for index, result in enumerate(results, start=1):
+    for index, result in enumerate(report.results, start=1):
         parent = ""
         if root is not None:
             try:

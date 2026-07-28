@@ -7,6 +7,7 @@ import cappa
 from nclutils import pp
 
 from vid_cleaner import settings
+from vid_cleaner.constants import SYMBOL_CROSS
 from vid_cleaner.utils import (
     coerce_video_files,
     copy_to_output,
@@ -58,8 +59,15 @@ def main(clip_cmd: ClipCommand) -> None:
                     Path(settings.out_path),
                     overwrite=settings.overwrite,
                 )
-                video.temp_file.clean_up()
+                # The clip is already written, so keep its messages and treat a cleanup
+                # failure as a warning rather than losing the save and raising past main().
                 substeps.extend(messages)
+                try:
+                    video.temp_file.clean_up()
+                except OSError as e:
+                    substeps.append(
+                        f"{SYMBOL_CROSS} Warning: could not clean up temporary files: {e}"
+                    )
         finally:
             render_substeps(substeps)
 

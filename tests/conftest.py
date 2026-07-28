@@ -1,5 +1,6 @@
 """Shared fixtures for tests."""
 
+import copy
 import json
 from pathlib import Path
 
@@ -113,6 +114,45 @@ def mock_ffmpeg(mocker):
 
 
 @pytest.fixture
+def video_library(tmp_path, mocker, mock_ffprobe_box):
+    """Build a directory of probeable video files with per-file size and bitrate.
+
+    Names may include a nested path, e.g. "aaa/mike.mkv", to exercise recursive
+    searches; the parent directory is created automatically.
+
+    Returns:
+        Callable[[list[tuple[str, int, int]]], Path]: Call with `(filename, size_bytes,
+            bitrate_bps)` triples to create the files and patch ffprobe to report the
+            matching bitrate for each one.
+    """
+
+    def _inner(files: list[tuple[str, int, int]]) -> Path:
+        reference = mock_ffprobe_box("reference.json")
+        directory = tmp_path / "library"
+        directory.mkdir(exist_ok=True)
+
+        boxes = {}
+        for name, size, bitrate in files:
+            path = directory / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"\0" * size)
+            file_box = copy.deepcopy(reference)
+            file_box.bit_rate = str(bitrate) if bitrate else None
+            # Real probe boxes carry the path they were built from, and `VideoFile`
+            # compares it to decide whether its cached probe is still current.
+            file_box.path_to_file = path
+            boxes[name] = file_box
+
+        mocker.patch(
+            "vid_cleaner.models.video_file.get_probe_as_box",
+            side_effect=lambda path: boxes[path.relative_to(directory).as_posix()],
+        )
+        return directory
+
+    return _inner
+
+
+@pytest.fixture
 def mock_probe_tags(mocker):
     """Patch VideoFile.probe_box to expose only the given container format tags.
 
@@ -131,6 +171,28 @@ def mock_probe_tags(mocker):
         mocker.patch(
             "vid_cleaner.models.video_file.get_probe_as_box",
             return_value=Box({"format": {"tags": tags or {}}}, default_box=True),
+        )
+
+    return _inner
+
+
+@pytest.fixture
+def interactive_console(mocker):
+    """Force `Console.is_terminal` so the prompt path can be exercised under pytest.
+
+    Patch the property on the class rather than replacing `pp.console`, which would hand
+    `pp.error` a mock and silently break stderr capture in these same tests.
+
+    Returns:
+        Callable[..., None]: Call with `is_terminal=True` or `is_terminal=False` to set
+            interactivity.
+    """
+
+    def _inner(*, is_terminal: bool) -> None:
+        mocker.patch(
+            "rich.console.Console.is_terminal",
+            new_callable=mocker.PropertyMock,
+            return_value=is_terminal,
         )
 
     return _inner

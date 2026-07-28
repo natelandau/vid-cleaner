@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from vid_cleaner.models.conversion_plan import PlanAction
 
 
-def _render_tree(lines: list[tuple[str, str]]) -> None:
+def _render_tree(lines: list[tuple[str, str]], *, closes_tree: bool) -> None:
     """Print styled lines beneath the current video as a faked ``pp`` sub-item tree.
 
     A real ``pp.step`` spinner recomputes the connector on each live refresh, but its
@@ -23,8 +23,10 @@ def _render_tree(lines: list[tuple[str, str]]) -> None:
     Args:
         lines: ``(message, style)`` pairs in display order; ``style`` is a Rich style
             applied to the message text (empty string for no styling).
+        closes_tree: Whether these are the last lines for the current video. When False
+            every line branches with ``├─``, so a later batch can close the same tree.
     """
-    last_index = len(lines) - 1
+    last_index = len(lines) - 1 if closes_tree else -1
     for index, (message, style) in enumerate(lines):
         connector = TREE_LAST if index == last_index else TREE_BRANCH
         # `sub.pipe` is nclutils' dim connector style, matching its own Step sub-items.
@@ -41,10 +43,10 @@ def render_substeps(messages: list[str]) -> None:
     Args:
         messages: Outcome lines to display beneath the current video, in order.
     """
-    _render_tree([(message, "") for message in messages])
+    _render_tree([(message, "") for message in messages], closes_tree=True)
 
 
-def render_operations(actions: list[PlanAction], *, debug: bool) -> None:
+def render_operations(actions: list[PlanAction], *, debug: bool, closes_tree: bool = True) -> None:
     """Render the cleaning operations for a file as a tree beneath its name.
 
     Print the truthful operation list up front, before the ffmpeg progress bar. In
@@ -55,6 +57,8 @@ def render_operations(actions: list[PlanAction], *, debug: bool) -> None:
     Args:
         actions: The plan's operations, in display order.
         debug: When True, also show skipped operations with their reason.
+        closes_tree: Whether the operations are all this video will print. Pass False when
+            outcome substeps follow, so the file renders as one tree rather than two.
     """
     visible = actions if debug else [action for action in actions if action.applied]
 
@@ -69,4 +73,4 @@ def render_operations(actions: list[PlanAction], *, debug: bool) -> None:
                 suffix = f"  ({action.reason})" if action.reason else ""
                 lines.append((f"{SYMBOL_CROSS} {action.label}{suffix}", "dim"))
 
-    _render_tree(lines)
+    _render_tree(lines, closes_tree=closes_tree)

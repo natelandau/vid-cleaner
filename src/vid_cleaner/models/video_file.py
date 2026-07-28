@@ -1,6 +1,5 @@
 """VideoFile model."""
 
-import atexit
 import re
 from pathlib import Path
 
@@ -32,6 +31,7 @@ from vid_cleaner.constants import (
     CodecTypes,
     VideoTrait,
 )
+from vid_cleaner.exceptions import VideoCleanError
 from vid_cleaner.models.conversion_plan import ConversionPlan, OutputStream, PlanAction
 from vid_cleaner.utils import (
     MediaId,
@@ -46,15 +46,6 @@ from vid_cleaner.utils import (
 )
 
 from vid_cleaner.controllers import TempFile  # isort: skip
-
-
-def cleanup_on_exit(video_file: "VideoFile") -> None:  # pragma: no cover
-    """Cleanup temporary files on exit.
-
-    Args:
-        video_file (VideoFile): The VideoFile object to perform cleanup on.
-    """
-    video_file.temp_file.clean_up()
 
 
 class VideoFile:
@@ -79,8 +70,6 @@ class VideoFile:
         self._video_streams: list[Box] = []
         self._audio_streams: list[Box] = []
         self._subtitle_streams: list[Box] = []
-
-        atexit.register(cleanup_on_exit, self)
 
     @property
     def probe_box(self) -> Box:
@@ -739,14 +728,12 @@ class VideoFile:
                 caller to inspect.
 
         Raises:
-            cappa.Exit: If the file has no video or no audio streams.
+            VideoCleanError: If the file has no video or no audio streams.
         """
         if not self.video_streams:
-            pp.error("No video streams found")
-            raise cappa.Exit(code=1)
+            raise VideoCleanError(path=self.path, reason="no video streams found")
         if not self.audio_streams:
-            pp.error("No audio streams found")
-            raise cappa.Exit(code=1)
+            raise VideoCleanError(path=self.path, reason="no audio streams found")
 
         plan = self._build_plan()
 
@@ -761,7 +748,9 @@ class VideoFile:
         )
 
         debug = int(settings.get("verbosity", 0) or 0) >= 1
-        render_operations(plan.actions, debug=debug)
+        # A real run always follows these with write-outcome substeps, so leave the tree
+        # open for them; a dry run writes nothing, making the operations its last lines.
+        render_operations(plan.actions, debug=debug, closes_tree=bool(settings.dryrun))
 
         # Nothing to encode: the up-front render already reported "No changes needed".
         if plan.is_noop(stream_count=len(self.all_streams)) and not needs_reorder:

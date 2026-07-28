@@ -6,6 +6,10 @@ import cappa
 from nclutils import pp
 
 from vid_cleaner import settings
+from vid_cleaner.cli.discovery_output import confirm_selection, present_discovery
+from vid_cleaner.constants import SYMBOL_CROSS, SortOrder
+from vid_cleaner.controllers.discovery import discover_video_files
+from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
 from vid_cleaner.utils import (
     coerce_video_files,
     copy_to_output,
@@ -17,11 +21,12 @@ from vid_cleaner.vidcleaner import CleanCommand
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
-def write_output(video_file: VideoFile) -> list[str]:
+def write_output(video_file: VideoFile, *, out_override: Path | None = None) -> list[str]:
     """Copy the processed result to the output path and return the closing substep messages.
 
     Args:
         video_file (VideoFile): The processed video file to write out.
+        out_override (Path | None): The user's explicit `--out` destination, when given.
 
     Returns:
         list[str]: Substep messages describing the backup and save, or a single note when nothing changed.
@@ -34,13 +39,102 @@ def write_output(video_file: VideoFile) -> list[str]:
         Path(settings.out_path),
         overwrite=settings.overwrite,
     )
-    video_file.temp_file.clean_up()
 
-    if settings.overwrite and out_file != video_file.path:
+    # The write above already landed and swapped the result into place, so a failure past
+    # this point is housekeeping, not a failed write: warn instead of discarding the
+    # "Saved to" message and counting a successful file as failed. Each step is guarded
+    # separately so a failed temp cleanup cannot skip the removal below, and so neither
+    # failure is ever reported under the other one's description.
+    try:
+        video_file.temp_file.clean_up()
+    except OSError as e:
+        messages.append(f"{SYMBOL_CROSS} Warning: could not clean up temporary files: {e}")
+
+    # This removal exists for a container change that renamed the result (e.g. `.mkv` to
+    # `.webm`), where `--overwrite` means "do not leave two copies of the same film".
+    # `--out` writes to a destination the user chose, so the input is not a leftover copy
+    # of the output and must survive.
+    if settings.overwrite and out_override is None and out_file != video_file.path:
         pp.debug(f"Delete: {video_file.path}")
-        video_file.path.unlink()
+        try:
+            video_file.path.unlink()
+        except OSError as e:
+            messages.append(
+                f"{SYMBOL_CROSS} Warning: could not remove the original {video_file.path}: {e}"
+            )
 
     return messages
+
+
+def select_video_files(clean_cmd: CleanCommand) -> list[VideoFile]:
+    """Resolve the files to clean from either explicit paths or a `--from` discovery run.
+
+    Keep the two modes strictly separate so a query and a path list can never disagree
+    about what the command is about to rewrite.
+
+    Args:
+        clean_cmd (CleanCommand): The parsed clean command.
+
+    Returns:
+        list[VideoFile]: The files to process, in the order they should be processed.
+
+    Raises:
+        cappa.Exit: If the two modes are mixed, if discovery flags appear without
+            `--from`, if neither a file nor `--from` was given, or if `--from` does not
+            name an existing directory.
+    """
+    discovery = clean_cmd.discovery
+    # Compare against defaults rather than asking cappa what the user typed; an explicit
+    # `--sort=alpha` would have been a no-op anyway, so treating it as unset is harmless.
+    uses_discovery_flags = bool(
+        discovery.filters
+        or discovery.limit is not None
+        or discovery.depth
+        or discovery.reverse
+        or discovery.sort != SortOrder.ALPHA
+        or clean_cmd.yes
+    )
+
+    if clean_cmd.from_ is not None and clean_cmd.files:
+        pp.error("`--from` cannot be combined with explicit file paths")
+        raise cappa.Exit(code=1)
+
+    if clean_cmd.from_ is None and uses_discovery_flags:
+        pp.error(
+            "These options require `--from`: `--filters`, `--sort`, `--reverse`, `--depth`, `--limit`, `--yes`"
+        )
+        raise cappa.Exit(code=1)
+
+    if clean_cmd.from_ is None:
+        if not clean_cmd.files:
+            pp.error("Provide file path(s) or `--from` to discover them")
+            raise cappa.Exit(code=1)
+        return coerce_video_files(clean_cmd.files)
+
+    # A missing or non-directory `--from` would otherwise discover nothing and exit 0, so a
+    # typo or an unmounted media share would report success having cleaned nothing.
+    if not clean_cmd.from_.is_dir():
+        pp.error(f"`--from` must be an existing directory: {clean_cmd.from_}")
+        raise cappa.Exit(code=1)
+
+    report = discover_video_files(
+        clean_cmd.from_,
+        depth=discovery.depth,
+        filters=set(settings.filters),
+        sort=discovery.sort,
+        reverse=discovery.reverse,
+        limit=discovery.limit,
+    )
+
+    present_discovery(report, root=clean_cmd.from_)
+
+    # A dry run previews rather than acts, so there is nothing to approve.
+    if not settings.dryrun:
+        confirm_selection(report, assume_yes=clean_cmd.yes)
+
+    # Discovery already probed every file and `VideoFile` caches its probe, so reusing
+    # these instances skips a second ffprobe per file.
+    return [result.video_file for result in report.results]
 
 
 def main(clean_cmd: CleanCommand) -> None:
@@ -53,15 +147,21 @@ def main(clean_cmd: CleanCommand) -> None:
         clean_cmd (CleanCommand): Clean-specific command options
 
     Raises:
-        cappa.Exit: If incompatible options are specified (e.g., both H265 and VP9)
+        cappa.Exit: If incompatible options are specified (e.g., both H265 and VP9), or
+            if one or more files failed to process.
     """
     if settings.h265 and settings.vp9:
         pp.error("Cannot convert to both H265 and VP9")
         raise cappa.Exit(code=1)
 
-    out_path_override = resolve_out_path_override(clean_cmd.files)
+    # Check the `--out`/`--from` conflict before discovery runs, so an empty `--from`
+    # directory can't short-circuit the command with "no files found" ahead of this error.
+    out_path_override = resolve_out_path_override(clean_cmd.files, from_directory=clean_cmd.from_)
+    video_files = select_video_files(clean_cmd)
 
-    for video_file in coerce_video_files(clean_cmd.files):
+    failures: list[str] = []
+
+    for video_file in video_files:
         settings.out_path = out_path_override or video_file.path
 
         # Print the video name first so live progress bars and clean()'s up-front operation
@@ -73,8 +173,30 @@ def main(clean_cmd: CleanCommand) -> None:
         try:
             video_file.clean()
             if not settings.dryrun:
-                substeps.extend(write_output(video_file))
+                substeps.extend(write_output(video_file, out_override=out_path_override))
+        # One unusable or failing file must not discard the files queued behind it.
+        # `cappa.Exit` is deliberately not caught: it carries KeyboardInterrupt, which
+        # means stop the whole run.
+        except (VideoCleanError, VideoProbeError, RuntimeError, OSError) as e:
+            # VideoCleanError/VideoProbeError's str() already embeds the path, so use the
+            # short reason instead to avoid naming the file twice in one line.
+            detail = e.reason if isinstance(e, (VideoCleanError, VideoProbeError)) else str(e)
+            failures.append(f"{video_file.path.name}: {detail}")
+            substeps.append(f"{SYMBOL_CROSS} Failed: {detail}")
+            # A failed file still leaves its full-size temp transcode on disk; clear it now
+            # rather than letting a batch that fails on every file pile up N of them until
+            # atexit finally clears them.
+            try:
+                video_file.temp_file.clean_up()
+            except OSError as cleanup_error:
+                pp.debug(
+                    f"Could not clean up temporary files for {video_file.path}: {cleanup_error}"
+                )
         finally:
             render_substeps(substeps)
+
+    if failures:
+        pp.error(f"{len(failures)} file(s) failed", details=failures, markup=False)
+        raise cappa.Exit(code=1)
 
     raise cappa.Exit(code=0)

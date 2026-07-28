@@ -55,21 +55,27 @@ def coerce_video_files(files: list[Path]) -> list["VideoFile"]:
     return [VideoFile(path.expanduser().resolve().absolute()) for path in files]
 
 
-def resolve_out_path_override(files: list[Path]) -> Path | None:
+def resolve_out_path_override(
+    files: list[Path], *, from_directory: Path | None = None
+) -> Path | None:
     """Capture the explicit `--out` override before per-file processing mutates it.
 
-    Read `settings.out_path` once up front so the first file's resolved path can't leak into later files and overwrite them all with the first file's name. Reject a single `--out` paired with multiple inputs, since one path cannot name many outputs.
+    Read `settings.out_path` once up front so the first file's resolved path can't leak into later files and overwrite them all with the first file's name. Reject a single `--out` paired with a multi-file selection, since one path cannot name many outputs.
 
     Args:
         files (list[Path]): The input files the command will process.
+        from_directory (Path | None): The `--from` discovery root, when discovery mode is active.
 
     Returns:
         Path | None: The user's explicit `--out` value, or None when not set.
 
     Raises:
-        cappa.Exit: If `--out` is combined with more than one input file.
+        cappa.Exit: If `--out` is combined with more than one input file or with `--from`.
     """
     override = settings.out_path
+    if override and from_directory is not None:
+        pp.error("`--out` cannot be used with `--from`")
+        raise cappa.Exit(code=1)
     if override and len(files) > 1:
         pp.error("`--out` cannot be used with multiple input files")
         raise cappa.Exit(code=1)
@@ -147,6 +153,29 @@ def create_default_config() -> None:
         USER_CONFIG_PATH.touch(exist_ok=True)
         shutil.copy(DEFAULT_CONFIG_PATH, USER_CONFIG_PATH)
         pp.info(f"Default configuration file created: `{USER_CONFIG_PATH}`")
+
+
+def parse_limit(raw: str) -> int:
+    """Parse `--limit` as a count of results to keep, rejecting anything below one.
+
+    Reject the bad value at parse time because the limit reaches a list slice unchecked:
+    zero selects nothing and a negative value quietly trims from the end, so either one
+    acts on a selection the user never described.
+
+    Args:
+        raw (str): The raw command line value.
+
+    Returns:
+        int: The validated limit.
+
+    Raises:
+        ValueError: If the value is not a whole number of 1 or greater.
+    """
+    value = int(raw)
+    if value < 1:
+        msg = f"must be 1 or greater, got {value}"
+        raise ValueError(msg)
+    return value
 
 
 def parse_trait_filters(facets: str) -> set[VideoTrait]:

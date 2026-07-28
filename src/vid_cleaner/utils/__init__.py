@@ -9,6 +9,7 @@ from .cli import (  # isort: skip
     coerce_video_files,
     copy_to_output,
     create_default_config,
+    parse_limit,
     parse_trait_filters,
     resolve_out_path_override,
 )
@@ -21,6 +22,7 @@ __all__ = [
     "create_default_config",
     "find_media_ids",
     "get_probe_as_box",
+    "parse_limit",
     "parse_trait_filters",
     "query_radarr",
     "query_sonarr",

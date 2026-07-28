@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated
 
@@ -13,7 +14,7 @@ from vid_cleaner import settings
 from vid_cleaner.config import SettingsManager
 from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel, SortOrder, VideoTrait
 from vid_cleaner.exceptions import VideoProbeError
-from vid_cleaner.utils import create_default_config, parse_trait_filters
+from vid_cleaner.utils import create_default_config, parse_limit, parse_trait_filters
 
 
 def config_subcommand(vidcleaner: VidCleaner) -> None:
@@ -37,10 +38,11 @@ def config_subcommand(vidcleaner: VidCleaner) -> None:
     if langs_to_keep and isinstance(langs_to_keep, str):
         langs_to_keep = langs_to_keep.split(",")
 
-    if getattr(vidcleaner.command, "filters", None):
-        filters = parse_trait_filters(getattr(vidcleaner.command, "filters", None))
-    else:
-        filters = set()
+    # Discovery options are destructured onto a nested object shared by `search` and
+    # `clean`, so the raw filter string is one level down from the command itself.
+    discovery = getattr(vidcleaner.command, "discovery", None)
+    raw_filters = getattr(discovery, "filters", None)
+    filters = parse_trait_filters(raw_filters) if raw_filters else set()
 
     # Apply command-specific settings
     cli_settings = {
@@ -66,6 +68,62 @@ def config_subcommand(vidcleaner: VidCleaner) -> None:
     SettingsManager.apply_cli_settings(cli_settings)
 
     pp.trace("Settings", details=[settings.to_dict(), vidcleaner.__dict__])
+
+
+@dataclass
+class DiscoveryOptions:
+    """The query vocabulary shared by `search` and `clean`.
+
+    Composed into both commands so a `search` invocation and a `clean` invocation with
+    the same flags always select the same files.
+    """
+
+    depth: Annotated[
+        int,
+        cappa.Arg(
+            help="Depth to search for video files",
+            long=True,
+            show_default=False,
+            group="Discovery",
+        ),
+    ] = 0
+    filters: Annotated[
+        str | None,
+        cappa.Arg(
+            help=f"Comma separated list of facets to search for. Valid options: {VideoTrait.help_options()}",
+            long=True,
+            show_default=False,
+            group="Discovery",
+        ),
+    ] = None
+    sort: Annotated[
+        SortOrder,
+        cappa.Arg(
+            help="Sort results by name, file size, or bitrate.",
+            long=True,
+            show_default=True,
+            group="Discovery",
+        ),
+    ] = SortOrder.ALPHA
+    reverse: Annotated[
+        bool,
+        cappa.Arg(
+            help="Reverse the sort order",
+            long=True,
+            show_default=True,
+            group="Discovery",
+        ),
+    ] = False
+    limit: Annotated[
+        int | None,
+        cappa.Arg(
+            help="Act on only the first N results after sorting",
+            long=True,
+            show_default=False,
+            group="Discovery",
+            parse=parse_limit,
+        ),
+    ] = None
 
 
 @cappa.command(
@@ -159,6 +217,9 @@ vidcleaner clean --h265 --langs=eng <video_file>
 
 # Downmix audio to stereo and keep all subtitles:
 vidcleaner clean --downmix --keep-subs <video_file>
+
+# Convert the five largest 4k files under a directory to H265:
+vidcleaner clean --from /media --filters=4k --sort=size --limit=5 --h265
 ```
     """,
 )
@@ -167,12 +228,21 @@ class CleanCommand:
 
     files: Annotated[
         list[Path],
-        cappa.Arg(help="Video file path(s)"),
-    ]
+        cappa.Arg(help="Video file path(s)", show_default=False),
+    ] = field(default_factory=list)
+    from_: Annotated[
+        Path | None,
+        cappa.Arg(
+            help="Directory to discover files in instead of naming them explicitly",
+            long="--from",
+            show_default=False,
+            group="Discovery",
+        ),
+    ] = None
     out: Annotated[
         Path | None,
         cappa.Arg(
-            help="Output path (Default: `./<input_file>_1.xxx`)",
+            help="Output path (Default: replace the input file, keeping a timestamped `.bak` copy of the original)",
             long=True,
             short=True,
             show_default=False,
@@ -275,6 +345,16 @@ class CleanCommand:
             show_default=True,
         ),
     ] = False
+    yes: Annotated[
+        bool,
+        cappa.Arg(
+            help="Skip the confirmation prompt. Requires `--from`",
+            long=True,
+            short="-y",
+            show_default=True,
+        ),
+    ] = False
+    discovery: cappa.Destructured[DiscoveryOptions] = field(default_factory=DiscoveryOptions)
 
 
 @cappa.command(
@@ -315,7 +395,7 @@ Clip a section from a video file.
 This command allows you to extract a specific portion of a video file based on start time and duration.
 
 * The start time and duration should be specified in `HH:MM:SS` format.
-* You can also specify an output file to save the clipped video. If the output file is not specified, the clip will be saved with a default naming convention.
+* Use `--out` to write the clip to a new file. Without it the clip replaces the input file, and the original is kept alongside it as a timestamped `.bak` copy.
 
 Use the `--overwrite` option to avoid creating a backup of the original file if it would be overwritten.
 """,
@@ -349,7 +429,7 @@ class ClipCommand:
     out: Annotated[
         Path | None,
         cappa.Arg(
-            help="Output file path (Default: `<input_file>_1`)",
+            help="Output file path (Default: replace the input file, keeping a timestamped `.bak` copy of the original)",
             long=True,
             short=True,
             show_default=False,
@@ -399,6 +479,9 @@ vidcleaner search --filters=h264,1080p --depth=2
 
 # List 4k files, largest first:
 vidcleaner search --filters=4k --sort=size
+
+# List the 5 largest 4k files:
+vidcleaner search --filters=4k --sort=size --limit=5
 ```
 """,
     invoke="vid_cleaner.cli.search.main",
@@ -410,39 +493,7 @@ class SearchCommand:
         Path,
         cappa.Arg(help="Directory to search for video files", show_default=False),
     ] = Path.cwd()
-    depth: Annotated[
-        int,
-        cappa.Arg(
-            help="Depth to search for video files", long=True, short=False, show_default=False
-        ),
-    ] = 0
-    filters: Annotated[
-        str,
-        cappa.Arg(
-            help=f"Comma separated list of facets to search for. Valid options: {VideoTrait.help_options()}",
-            long=True,
-            short=False,
-            show_default=False,
-        ),
-    ] = None
-    sort: Annotated[
-        SortOrder,
-        cappa.Arg(
-            help="Sort results by name, file size, or bitrate.",
-            long=True,
-            short=False,
-            show_default=True,
-        ),
-    ] = SortOrder.ALPHA
-    reverse: Annotated[
-        bool,
-        cappa.Arg(
-            help="Reverse the sort order",
-            long=True,
-            short=False,
-            show_default=True,
-        ),
-    ] = False
+    discovery: cappa.Destructured[DiscoveryOptions] = field(default_factory=DiscoveryOptions)
 
 
 def main() -> None:  # pragma: no cover
@@ -457,8 +508,8 @@ def main() -> None:  # pragma: no cover
         pp.info("\nExiting...")
         raise cappa.Exit(code=1) from e
     except VideoProbeError as e:
-        # Commands given explicit files abort on an unreadable one; `search` handles its own
-        # skipping before the error can reach here.
+        # Only `inspect` and `clip` reach this: `search` skips unreadable files itself, and
+        # `clean` catches this per file in its batch loop rather than letting it propagate.
         pp.error(str(e))
         raise cappa.Exit(code=1) from e
 
