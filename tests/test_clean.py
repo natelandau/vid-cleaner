@@ -1765,6 +1765,51 @@ def test_clean_from_yes_reaches_the_transcode_loop(capsys, video_library, mocker
     assert "banana.mkv" in output
 
 
+def test_clean_from_depth_writes_each_file_back_to_its_own_directory(
+    video_library, mocker, mock_ffmpeg, monkeypatch, tmp_path
+):
+    """Verify a recursive --from run rewrites each file in place, not into one directory.
+
+    A library holds each film in its own subdirectory, so a destination derived from the
+    `--from` root or the working directory would collapse the whole selection onto one
+    path and destroy every file but the last.
+    """
+    # Given: A library with files at the root and one level down, and a working directory
+    # unrelated to any of them
+    directory = video_library(
+        [
+            ("top.mkv", 100, 1_000_000),
+            ("movie_a/a.mkv", 100, 1_000_000),
+            ("movie_b/b.mkv", 100, 1_000_000),
+        ]
+    )
+    elsewhere = tmp_path / "unrelated_cwd"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    write = mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+    args = ["clean", "--overwrite", "--from", str(directory), "--depth", "1", "--yes"]
+
+    # When: Cleaning everything discovered one level deep
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: Each file is written back over itself, with no backup kept
+    assert exc_info.value.code == 0
+    assert sorted(call.args[1] for call in write.mock_calls) == sorted(
+        [
+            directory / "top.mkv",
+            directory / "movie_a" / "a.mkv",
+            directory / "movie_b" / "b.mkv",
+        ]
+    )
+    assert {call.kwargs["overwrite"] for call in write.mock_calls} == {True}
+
+
 def test_clean_from_yes_reuses_the_discovery_probe(capsys, video_library, mocker, mock_ffmpeg):
     """Verify each file is probed once, not again when the transcode loop reaches it.
 
