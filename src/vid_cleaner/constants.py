@@ -131,7 +131,7 @@ H265_CODECS = {"hevc", "vp9"}
 # Subtitle codecs ffmpeg can convert to WebVTT; image-based subs (PGS/VobSub/DVB)
 # cannot be carried in WebM and are dropped instead.
 TEXT_SUBTITLE_CODECS = {"ass", "mov_text", "srt", "ssa", "subrip", "text", "webvtt"}
-VERSION = "0.11.0"
+VERSION = "0.12.0"
 FHD_RESOLUTION = Resolution(width=1920, height=1080)
 UHDTV_RESOLUTION = Resolution(width=3840, height=2160)
 HDTV_RESOLUTION = Resolution(width=1280, height=720)

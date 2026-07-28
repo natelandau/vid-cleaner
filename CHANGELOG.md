@@ -1,3 +1,13 @@
+## v0.12.0 (2026-07-28)
+
+### Feat
+
+- **search**: replace no_stereo filter with needs_stereo
+
+### Fix
+
+- **search**: require every filter to match, not just one
+
 ## v0.11.0 (2026-07-27)
 
 ### Feat
