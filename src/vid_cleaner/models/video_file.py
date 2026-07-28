@@ -334,14 +334,14 @@ class VideoFile:
 
             # Commentary tracks are often unwanted and take up space
             if not settings.keep_commentary and self._is_commentary_stream(stream):
-                pp.trace(rf"PLAN AUDIO: Remove stream #{stream.index} [commentary]")
+                pp.debug(rf"PLAN AUDIO: Remove stream #{stream.index} [commentary]")
                 continue
 
             if stream.language == "und" or Lang(stream.language) in langs:
                 streams_to_keep.append(stream)
                 continue
 
-            pp.trace(f"PLAN AUDIO: Remove stream #{stream.index}")
+            pp.debug(f"PLAN AUDIO: Remove stream #{stream.index}")
 
         # If every stream would be removed, keep them all to prevent silent video
         fallback_triggered = not streams_to_keep
@@ -446,7 +446,7 @@ class VideoFile:
                 # Remove commentary/SDH/description tracks unless explicitly kept
                 # These are typically supplementary and take up extra space
                 if not settings.keep_commentary and self._is_commentary_stream(stream):
-                    pp.trace(rf"PLAN SUBTITLES: Remove stream #{stream.index} [commentary]")
+                    pp.debug(rf"PLAN SUBTITLES: Remove stream #{stream.index} [commentary]")
                     continue
 
                 if self._should_keep_subtitle(stream, langs, original_language):
@@ -455,7 +455,7 @@ class VideoFile:
                     )
                     continue
 
-                pp.trace(f"PLAN SUBTITLES: Remove stream #{stream.index}")
+                pp.debug(f"PLAN SUBTITLES: Remove stream #{stream.index}")
 
         dropped = len(self.subtitle_streams) - len(keep)
         if dropped > 0:
