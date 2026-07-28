@@ -1425,6 +1425,67 @@ def test_clean_rejects_yes_without_from(capsys, tmp_path):
     assert "require `--from`" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    ("short", "long", "attribute"),
+    [
+        ("-H", "--h265", "h265"),
+        ("-V", "--vp9", "vp9"),
+        ("-p", "--1080p", "video_1080"),
+        ("-d", "--downmix", "downmix_stereo"),
+        ("-D", "--drop-original", "drop_original_audio"),
+        ("-s", "--keep-subs", "keep_all_subtitles"),
+        ("-S", "--keep-local-subs", "keep_local_subtitles"),
+        ("-x", "--drop-local-subs", "drop_local_subs"),
+        ("-c", "--keep-commentary", "keep_commentary"),
+        ("-f", "--force", "force"),
+        ("-w", "--overwrite", "overwrite"),
+    ],
+)
+def test_clean_short_flag_matches_long_flag(tmp_path, short, long, attribute):
+    """Verify each short flag toggles the same option as its long form."""
+    # Given: A clean invocation naming one file
+    video = tmp_path / "movie.mkv"
+    video.touch()
+
+    # When: Parsing the short form and the long form of the same option
+    from_short = cappa.parse(VidCleaner, argv=["clean", short, str(video)]).command
+    from_long = cappa.parse(VidCleaner, argv=["clean", long, str(video)]).command
+    unset = cappa.parse(VidCleaner, argv=["clean", str(video)]).command
+
+    # Then: Both set the same field, and to something other than the default
+    assert getattr(from_short, attribute) == getattr(from_long, attribute)
+    assert getattr(from_short, attribute) != getattr(unset, attribute)
+
+
+def test_clean_short_flags_bundle(tmp_path):
+    """Verify short flags combine into one token so common conversions stay terse."""
+    # Given: A clean invocation bundling several boolean short flags
+    video = tmp_path / "movie.mkv"
+    video.touch()
+
+    # When: Parsing the bundled form
+    command = cappa.parse(VidCleaner, argv=["clean", "-Hdsc", str(video)]).command
+
+    # Then: Every bundled flag is set
+    assert command.h265
+    assert command.downmix_stereo
+    assert command.keep_all_subtitles
+    assert command.keep_commentary
+
+
+def test_clean_langs_short_flag_takes_a_value(tmp_path):
+    """Verify -l accepts a language list rather than being treated as a boolean."""
+    # Given: A clean invocation passing languages via the short flag
+    video = tmp_path / "movie.mkv"
+    video.touch()
+
+    # When: Parsing the short form
+    command = cappa.parse(VidCleaner, argv=["clean", "-l", "es,fr", str(video)]).command
+
+    # Then: The value lands in langs_to_keep
+    assert command.langs_to_keep == "es,fr"
+
+
 @pytest.mark.parametrize("limit", ["0", "-1"])
 def test_clean_rejects_limit_below_one(capsys, tmp_path, limit):
     """Verify a limit below one is refused instead of silently selecting the wrong files."""

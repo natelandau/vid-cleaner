@@ -253,6 +253,7 @@ class CleanCommand:
         cappa.Arg(
             help="Do not create a backup of the original file if it would be overwritten",
             long=True,
+            short="-w",
             show_default=True,
         ),
     ] = False
@@ -261,6 +262,7 @@ class CleanCommand:
         cappa.Arg(
             help="Create a stereo track if none exists (add --force to recreate an existing one)",
             long="--downmix",
+            short="-d",
             show_default=True,
             group="Configuration",
         ),
@@ -270,6 +272,7 @@ class CleanCommand:
         cappa.Arg(
             help="Drop original language audio if not specified in langs_to_keep",
             long="--drop-original",
+            short="-D",
             show_default=True,
             group="Configuration",
         ),
@@ -279,6 +282,7 @@ class CleanCommand:
         cappa.Arg(
             help="Keep all subtitles",
             long="--keep-subs",
+            short="-s",
             show_default=True,
             group="Configuration",
         ),
@@ -288,6 +292,7 @@ class CleanCommand:
         cappa.Arg(
             help="Keep commentary audio",
             long="--keep-commentary",
+            short="-c",
             show_default=True,
             group="Configuration",
         ),
@@ -297,6 +302,7 @@ class CleanCommand:
         cappa.Arg(
             help="Keep subtitles matching the local language(s)",
             long="--keep-local-subs",
+            short="-S",
             show_default=True,
             group="Configuration",
         ),
@@ -306,6 +312,7 @@ class CleanCommand:
         cappa.Arg(
             help="Force dropping local subtitles even if audio is not default language",
             long="--drop-local-subs",
+            short="-x",
             show_default=True,
             group="Configuration",
         ),
@@ -315,6 +322,7 @@ class CleanCommand:
         cappa.Arg(
             help="Languages to keep. Comma separated language ISO 639-1 codes (e.g. `en,es`)",
             long="--langs",
+            short="-l",
             show_default=True,
             group="Configuration",
         ),
@@ -324,17 +332,31 @@ class CleanCommand:
     h265: Annotated[
         bool,
         cappa.Arg(
-            help="Convert to H265", long="--h265", show_default=True, group="Video Conversion"
+            help="Convert to H265",
+            long="--h265",
+            short="-H",
+            show_default=True,
+            group="Video Conversion",
         ),
     ] = False
     vp9: Annotated[
         bool,
-        cappa.Arg(help="Convert to VP9", long="--vp9", show_default=True, group="Video Conversion"),
+        cappa.Arg(
+            help="Convert to VP9",
+            long="--vp9",
+            short="-V",
+            show_default=True,
+            group="Video Conversion",
+        ),
     ] = False
     video_1080: Annotated[
         bool,
         cappa.Arg(
-            help="Convert to 1080p", long="--1080p", show_default=True, group="Video Conversion"
+            help="Convert to 1080p",
+            long="--1080p",
+            short="-p",
+            show_default=True,
+            group="Video Conversion",
         ),
     ] = False
     force: Annotated[
@@ -342,6 +364,7 @@ class CleanCommand:
         cappa.Arg(
             help="Force processing of file even if it is already in the desired format. With --downmix, recreate the stereo track even if one already exists",
             long="--force",
+            short="-f",
             show_default=True,
         ),
     ] = False
