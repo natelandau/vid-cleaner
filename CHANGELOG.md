@@ -1,3 +1,9 @@
+## v0.13.0 (2026-08-13)
+
+### Feat
+
+- **check**: add command to verify video files are valid (#89)
+
 ## v0.12.0 (2026-07-28)
 
 ### Feat
