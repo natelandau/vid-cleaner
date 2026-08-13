@@ -7,7 +7,7 @@ import pytest
 
 from vid_cleaner import settings
 from vid_cleaner.utils import copy_to_output
-from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
+from vid_cleaner.vidcleaner import VidCleaner, config_subcommand, verify_required_binaries
 
 
 @pytest.mark.parametrize(
@@ -195,3 +195,65 @@ def test_copy_to_output_overwrite_does_not_mutate_hardlink(tmp_path: Path) -> No
     # Then: the destination has the new content but the hardlink keeps the original
     assert dst.read_text() == "new content"
     assert link.read_text() == "original content"
+
+
+@pytest.mark.parametrize(
+    ("missing", "expected"),
+    [
+        pytest.param(["ffmpeg"], "ffmpeg", id="ffmpeg_only"),
+        pytest.param(["ffprobe"], "ffprobe", id="ffprobe_only"),
+        pytest.param(["ffmpeg", "ffprobe"], "ffmpeg, ffprobe", id="both"),
+    ],
+)
+def test_missing_binaries_stops_the_run(capsys, mocker, missing, expected) -> None:
+    """Verify a command that needs ffmpeg refuses to start when a program is absent."""
+    # Given: One or both programs are absent from PATH
+    mocker.patch(
+        "vid_cleaner.utils.cli.which",
+        side_effect=lambda cmd: None if cmd in missing else Path(f"/usr/bin/{cmd}"),
+    )
+
+    # When: Running a command that needs them
+    args = ["check", "movie.mkv"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[verify_required_binaries])
+
+    captured = capsys.readouterr()
+
+    # Then: The run stops and names every absent program
+    assert exc_info.value.code == 1
+    assert expected in captured.err
+
+
+def test_present_binaries_allow_the_run(mocker) -> None:
+    """Verify the preflight is silent when both programs are on PATH."""
+    # Given: Both programs are present
+    mocker.patch("vid_cleaner.utils.cli.which", return_value=Path("/usr/bin/ffmpeg"))
+
+    # When: Running the preflight for a command that needs them
+    args = ["check", "movie.mkv"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[verify_required_binaries])
+
+    # Then: The run reaches the command itself rather than stopping at the preflight
+    assert exc_info.value.code == 1  # `movie.mkv` does not exist
+
+
+def test_cache_runs_without_ffmpeg(capsys, mocker, tmp_path) -> None:
+    """Verify the cache command works on a machine with no ffmpeg installed.
+
+    The cache holds API responses, so it never touches a video file.
+    """
+    # Given: Neither program is on PATH
+    mocker.patch("vid_cleaner.utils.cli.which", return_value=None)
+    settings.update({"cache_dir": tmp_path / "cache"})
+
+    # When: Running the cache command
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=["cache"], deps=[verify_required_binaries])
+
+    captured = capsys.readouterr()
+
+    # Then: The preflight does not block it
+    assert exc_info.value.code == 0
+    assert "ffmpeg" not in captured.err

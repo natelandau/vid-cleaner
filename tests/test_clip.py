@@ -166,3 +166,70 @@ def test_clip_cleanup_failure_still_reports_the_save(
     assert exc_info.value.code == 0
     assert "clipped_video.mkv" in output
     assert "temp dir busy" in output
+
+
+def test_clip_rejects_file_without_video_streams(
+    mocker, mock_ffprobe_box, mock_video_path, capsys, mock_ffmpeg, tmp_path
+):
+    """Verify clipping a file with no video streams fails cleanly instead of crashing.
+
+    Copying a time range out of an audio-only file produces an output nobody asked for,
+    so the file is refused before ffmpeg runs.
+    """
+    # Given: A file that probes cleanly but carries only audio
+    args = ["clip", str(mock_video_path)]
+    settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("audio_only.json"),
+    )
+
+    # When: Running clip
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    captured = capsys.readouterr()
+
+    # Then: ffmpeg never runs, the reason is reported, and the run fails
+    mock_ffmpeg.assert_not_called()
+    assert exc_info.value.code == 1
+    assert "no video streams found" in captured.out + captured.err
+
+
+def test_clip_continues_past_a_bad_file(
+    mocker, mock_ffprobe_box, mock_video_path, capsys, mock_ffmpeg, tmp_path
+):
+    """Verify one unusable file does not discard the files queued behind it."""
+    # Given: An audio-only file named ahead of a good one
+    good = tmp_path / "good.mp4"
+    good.touch()
+    args = ["clip", str(mock_video_path), str(good)]
+    settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
+
+    # Build both boxes up front and stamp each with the path it describes: `VideoFile`
+    # compares `path_to_file` to decide whether its cached probe is still current.
+    audio_box = mock_ffprobe_box("audio_only.json")
+    audio_box.path_to_file = mock_video_path
+    video_box = mock_ffprobe_box("reference.json")
+    video_box.path_to_file = good
+    boxes = {mock_video_path: audio_box, good: video_box}
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        side_effect=lambda path: boxes[path],
+    )
+    mocker.patch(
+        "vid_cleaner.cli.clip_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to clipped_video.mkv"]),
+    )
+
+    # When: Running clip over both
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    captured = capsys.readouterr()
+
+    # Then: The good file was still clipped, and the run reports the failure
+    mock_ffmpeg.assert_called_once()
+    assert exc_info.value.code == 1
+    assert "no video streams found" in captured.out + captured.err
+    assert "clipped_video.mkv" in captured.out

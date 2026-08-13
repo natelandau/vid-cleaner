@@ -4,6 +4,7 @@ from pathlib import Path
 
 import ffmpeg as python_ffmpeg
 from box import Box
+from nclutils.sh import ShellCommandError, run_command
 
 from vid_cleaner.constants import AudioLayout, CodecTypes
 from vid_cleaner.exceptions import VideoProbeError
@@ -58,6 +59,53 @@ def run_ffprobe(path: Path) -> dict:  # pragma: no cover
         return python_ffmpeg.probe(path)
     except python_ffmpeg.Error as e:
         raise VideoProbeError.from_ffprobe_stderr(path=path, stderr=e.stderr) from e
+
+
+def decode_check(path: Path) -> str | None:
+    """Decode every frame of a file and report the first error ffmpeg raises.
+
+    ffprobe reads only the header, so a file whose index and metadata are intact can
+    still be unplayable partway through. Decoding every video and audio stream to the
+    null muxer forces the whole bitstream through the decoders without writing output,
+    which is the only way to catch that. Expect this to take minutes per file.
+
+    Args:
+        path (Path): Path to the video file to decode.
+
+    Returns:
+        str | None: The first error line ffmpeg reported, or None when it decoded cleanly.
+    """
+    # `-map 0:v? -map 0:a?` overrides ffmpeg's default stream selection, which would pick
+    # only the "best" video and audio stream and leave damage in the other audio tracks
+    # undetected. `?` keeps a file without one of the two kinds from being an error.
+    try:
+        result = run_command(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-i",
+                str(path),
+                "-map",
+                "0:v?",
+                "-map",
+                "0:a?",
+                "-f",
+                "null",
+                "-",
+            ],
+            check=False,
+        )
+    except ShellCommandError as e:
+        return str(e)
+
+    # `-v error` silences the banner and progress, so anything on stderr is a real
+    # diagnostic. Trust it over the exit code, which stays 0 for recoverable errors.
+    for line in result.stderr_lines:
+        if stripped := line.strip():
+            return stripped
+
+    return None if result.ok else f"ffmpeg exited with code {result.returncode}"
 
 
 def get_probe_as_box(input_path: Path) -> Box:
