@@ -7,18 +7,18 @@
         "Programming Language :: Python :: 3.14",
     ]
     dependencies = [
-        "cappa>=0.32.1,<1.0.0",
-        "dynaconf>=3.3.2,<4.0.0",
+        "cappa>=0.32.2,<1.0.0",
+        "dynaconf>=3.3.5,<4.0.0",
         "ffmpeg-progress-yield>=1.1.3",
         "ffmpeg-progress>=0.0.6",
         "ffmpeg-python>=0.2.0",
         "httpx>=0.28.1",
         "iso639-lang>=2.6.3",
-        "nclutils>=3.4.2,<4.0.0",
+        "nclutils>=3.4.3,<4.0.0",
         "python-box>=7.4.1, <8.0.0",
         "rich>=15.0.0",
         "validators>=0.35.0",
-    ]
+]
     description = "Tools to transcode, inspect and convert videos."
     license = { file = "LICENSE" }
     name = "vid-cleaner"
@@ -39,22 +39,22 @@
 
 [dependency-groups]
     dev = [
-        "commitizen>=4.16.5",
-        "coverage>=7.15.2",
+        "commitizen>=4.17.0",
+        "coverage>=7.15.4",
         "duty>=1.9.0",
         "mypy>=2.3.0",
-        "prek>=0.4.10",
+        "prek>=0.4.13",
         "pytest-clarity>=1.0.1",
         "pytest-cov>=7.1.0",
-        "pytest-devtools>=1.2.0",
-        "pytest-env>=1.6.0",
+        "pytest-devtools>=1.3.0",
+        "pytest-env>=1.7.0",
         "pytest-mock>=3.15.1",
         "pytest-pretty-terminal>=1.1.0",
         "pytest-sugar>=1.1.1",
         "pytest-xdist>=3.8.0",
         "pytest>=9.1.1",
-        "ruff>=0.15.22",
-        "typos>=1.48.0",
+        "ruff>=0.16.2",
+        "typos>=1.49.0",
         "yamllint>=1.38.0",
     ]
 
