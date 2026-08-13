@@ -8,6 +8,7 @@ from nclutils import pp
 
 from vid_cleaner import settings
 from vid_cleaner.constants import SYMBOL_CROSS
+from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
 from vid_cleaner.utils import (
     coerce_video_files,
     copy_to_output,
@@ -27,7 +28,8 @@ def main(clip_cmd: ClipCommand) -> None:
         clip_cmd (ClipCommand): Clip-specific command options
 
     Raises:
-        cappa.Exit: If start or duration times are not in HH:MM:SS format
+        cappa.Exit: If start or duration times are not in HH:MM:SS format, or if one or
+            more files failed to clip
     """
     time_pattern = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 
@@ -40,6 +42,8 @@ def main(clip_cmd: ClipCommand) -> None:
         raise cappa.Exit(code=1)
 
     out_path_override = resolve_out_path_override(clip_cmd.files)
+
+    failures: list[str] = []
 
     for video in coerce_video_files(clip_cmd.files):
         settings.out_path = out_path_override or video.path
@@ -68,7 +72,28 @@ def main(clip_cmd: ClipCommand) -> None:
                     substeps.append(
                         f"{SYMBOL_CROSS} Warning: could not clean up temporary files: {e}"
                     )
+        # One unusable or failing file must not discard the files queued behind it.
+        # `cappa.Exit` is deliberately not caught: it carries KeyboardInterrupt, which
+        # means stop the whole run.
+        except (VideoCleanError, VideoProbeError, RuntimeError, OSError) as e:
+            # VideoCleanError/VideoProbeError's str() already embeds the path, so use the
+            # short reason instead to avoid naming the file twice in one line.
+            detail = e.reason if isinstance(e, (VideoCleanError, VideoProbeError)) else str(e)
+            failures.append(f"{video.path.name}: {detail}")
+            substeps.append(f"{SYMBOL_CROSS} Failed: {detail}")
+            # A failed file still leaves its temp copy on disk; clear it now rather than
+            # letting a batch that fails on every file pile up N of them until atexit runs.
+            try:
+                video.temp_file.clean_up()
+            except OSError as cleanup_error:
+                substeps.append(
+                    f"{SYMBOL_CROSS} Warning: could not clean up temporary files: {cleanup_error}"
+                )
         finally:
             render_substeps(substeps)
+
+    if failures:
+        pp.error("Failed to clip:", details=failures)
+        raise cappa.Exit(code=1)
 
     raise cappa.Exit(code=0)

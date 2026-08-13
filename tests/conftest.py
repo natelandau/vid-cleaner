@@ -15,16 +15,20 @@ console = Console()
 
 
 @pytest.fixture(autouse=True)
-def _reset_verbosity():
-    """Reset settings.verbosity to its default before and after every test.
+def _reset_leaky_settings():
+    """Reset the process-wide settings a command run mutates, before and after each test.
 
-    `settings` is a process-wide singleton, so a test that persists a CLI
-    verbosity flag (e.g. via `config_subcommand`) would otherwise leak that
-    value into unrelated tests run later in the same session.
+    `settings` is a process-wide singleton, so a test that persists a CLI verbosity flag
+    (e.g. via `config_subcommand`) would otherwise leak that value into unrelated tests
+    run later in the same session. `out_path` leaks the same way: the clean and clip
+    commands assign it per file as they iterate, so it outlives the run that set it and
+    a later multi-file test would fail the `--out` conflict check against a path no one
+    passed.
     """
-    settings.update({"verbosity": 0})
+    leaked = {"verbosity": 0, "out_path": None}
+    settings.update(leaked)
     yield
-    settings.update({"verbosity": 0})
+    settings.update(leaked)
 
 
 @pytest.fixture

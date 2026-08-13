@@ -964,7 +964,13 @@ class VideoFile:
 
         Returns:
             list[str]: Substep messages describing the outcome, for the caller to display.
+
+        Raises:
+            VideoCleanError: If the file has no video streams.
         """
+        if not self.video_streams:
+            raise VideoCleanError(path=self.path, reason="no video streams found")
+
         ffmpeg_command: list[str] = ["-ss", start, "-t", duration, "-map", "0", "-c", "copy"]
 
         return self._run_ffmpeg(ffmpeg_command, title="Clip video", step="clip")
