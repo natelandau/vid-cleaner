@@ -124,6 +124,9 @@ DOWNMIX_STEREO_FILTER = (
     "acompressor=threshold=-18dB:ratio=3:attack=20:release=250:makeup=3,"
     "loudnorm=I=-16:TP=-1.5:LRA=11"
 )
+# Every command except `cache` shells out to both, so their absence is worth catching once
+# up front rather than as a failure part way through a library scan.
+REQUIRED_BINARIES = ("ffmpeg", "ffprobe")
 EXCLUDED_VIDEO_CODECS = {"mjpeg", "mjpg", "png"}
 FFMPEG_APPEND: list[str] = ["-max_muxing_queue_size", "9999"]
 FFMPEG_PREPEND: list[str] = ["-y", "-hide_banner"]

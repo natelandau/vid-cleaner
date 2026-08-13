@@ -15,6 +15,7 @@ Tools to transcode, inspect and convert videos. This package provides convenienc
 -   Remove unwanted audio and subtitle tracks, optionally keeping the original language audio track
 -   Create clips from a video file
 -   Search for video files under a directory that match specific criteria
+-   Check that video files are valid, and exit non-zero when any file is not
 
 ## Install
 
@@ -23,6 +24,8 @@ Before installing vid-cleaner, the following dependencies must be installed:
 -   [ffmpeg](https://ffmpeg.org/)
 -   [ffprobe](https://ffmpeg.org/ffprobe.html)
 -   python 3.11+
+
+Every command except `cache` needs ffmpeg and ffprobe. If either program is absent from PATH, the command stops before it reads any file.
 
 To install vid-cleaner, run:
 
@@ -76,7 +79,50 @@ vidcleaner clean --from /media --filters=4k --sort=size --limit=5 --h265
 
 `--vp9` is the exception, because VP9 has to go in a WebM container. `vidcleaner clean --vp9 movie.mkv` writes `movie.webm` next to the input. Without `--overwrite` the original `movie.mkv` is left where it is; with `--overwrite` it is removed, so the container change does not leave two copies of the same film on disk.
 
-When cleaning several files, a failure on one file does not stop the run. Every remaining file is still processed, failures are listed at the end, and the command exits with a non-zero status.
+When you clean or clip several files, a failure on one file does not stop the run. Every remaining file is still processed, failures are listed at the end, and the command exits with a non-zero status. `clean` and `clip` refuse a file that has no video stream, so an audio-only file with a video extension does not produce an output.
+
+### Checking that files are valid
+
+`vidcleaner check` reports whether each video file is valid. If any file is not valid, the command exits `1`. Use it to find damaged and mislabeled files in a library.
+
+```shell
+# Two files named directly
+vidcleaner check movie.mkv other.mp4
+
+# Every video file in a library, three levels deep
+vidcleaner check --from /media --depth=3
+```
+
+The command prints one line for every file, so one invalid file does not hide the state of the others.
+
+```console
+✓ movie.mkv
+✗ broken.mkv  Invalid data found when processing input
+✗ audiobook.mkv  no video stream
+✗ notes.txt  not a video file
+
+Checked 4 file(s): 1 valid, 3 invalid
+```
+
+A file is valid when all of these conditions are true:
+
+-   The file exists.
+-   The file has a video container extension.
+-   ffprobe can read the file.
+-   The file has a minimum of one video stream.
+
+Cover art does not count as a video stream. An audio-only file with an embedded poster is invalid.
+
+The command prints valid files to stdout and invalid files to stderr. To hide the invalid files, run `vidcleaner check FILES 2>/dev/null`.
+
+By default the command reads only the metadata of each file, which takes milliseconds. To decode every frame instead, use `--deep`. A deep check finds damage in the body of a file whose header is intact. It costs minutes for each file.
+
+```shell
+# Fully decode every 4k file to find damage that ffprobe cannot see
+vidcleaner check --from /media --filters=4k --deep
+```
+
+`check` accepts the same query flags as `search`, but it refuses `--limit`. A truncated selection can exit `0` while files stay unchecked. A trait filter never hides an invalid file, because a file that ffprobe cannot read has no traits.
 
 ### Configuration
 

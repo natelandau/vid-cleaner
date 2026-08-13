@@ -14,7 +14,37 @@ from vid_cleaner import settings
 from vid_cleaner.config import SettingsManager
 from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel, SortOrder, VideoTrait
 from vid_cleaner.exceptions import VideoProbeError
-from vid_cleaner.utils import create_default_config, parse_limit, parse_trait_filters
+from vid_cleaner.utils import (
+    create_default_config,
+    find_missing_binaries,
+    parse_limit,
+    parse_trait_filters,
+)
+
+
+def verify_required_binaries(vidcleaner: VidCleaner) -> None:
+    """Stop the run when the external programs a command needs are not installed.
+
+    Fail here rather than at the first file, so a missing program cannot be mistaken for
+    a library full of unreadable video.
+
+    Args:
+        vidcleaner (VidCleaner): The main CLI application object, used to identify the
+            subcommand about to run.
+
+    Raises:
+        cappa.Exit: If any required program is absent from PATH.
+    """
+    # `cache` reads and clears stored API responses, so it never shells out to either.
+    if isinstance(vidcleaner.command, CacheCommand):
+        return
+
+    if missing := find_missing_binaries():
+        pp.error(
+            f"Not found on PATH: {', '.join(missing)}",
+            details=["vid-cleaner needs ffmpeg and ffprobe. Install ffmpeg to get both."],
+        )
+        raise cappa.Exit(code=1)
 
 
 def config_subcommand(vidcleaner: VidCleaner) -> None:
@@ -71,11 +101,12 @@ def config_subcommand(vidcleaner: VidCleaner) -> None:
 
 
 @dataclass
-class DiscoveryOptions:
-    """The query vocabulary shared by `search` and `clean`.
+class SelectionOptions:
+    """The query vocabulary that names a set of files without narrowing it to a count.
 
-    Composed into both commands so a `search` invocation and a `clean` invocation with
-    the same flags always select the same files.
+    Split from `DiscoveryOptions` so `check` can share the query language without
+    inheriting `--limit`: truncating a validator's selection would let it exit 0 while
+    leaving files unchecked.
     """
 
     depth: Annotated[
@@ -114,6 +145,16 @@ class DiscoveryOptions:
             group="Discovery",
         ),
     ] = False
+
+
+@dataclass
+class DiscoveryOptions(SelectionOptions):
+    """The query vocabulary shared by `search` and `clean`.
+
+    Composed into both commands so a `search` invocation and a `clean` invocation with
+    the same flags always select the same files.
+    """
+
     limit: Annotated[
         int | None,
         cappa.Arg(
@@ -131,6 +172,7 @@ class DiscoveryOptions:
     description=f"""Transcode video files to different formats or configurations using ffmpeg. This script provides a simple CLI for common video transcoding tasks.
 
 - **Inspect** video files to display detailed stream information
+- **Check** that video files are valid
 - **Clip** a section from a video file
 - **Drop audio streams** containing undesired languages or commentary
 - **Drop subtitles** containing undesired languages
@@ -160,7 +202,7 @@ class VidCleaner:
     """Transcode video files to different formats or configurations using ffmpeg. This script provides a simple CLI for common video transcoding tasks."""
 
     command: cappa.Subcommands[
-        CacheCommand | CleanCommand | InspectCommand | ClipCommand | SearchCommand
+        CacheCommand | CheckCommand | CleanCommand | InspectCommand | ClipCommand | SearchCommand
     ]
 
     verbosity: Annotated[
@@ -469,6 +511,75 @@ class ClipCommand:
 
 
 @cappa.command(
+    name="check",
+    invoke="vid_cleaner.cli.check_video.main",
+    help="Check that video files are valid",
+    description="""\
+Report whether each video file is valid, and exit non-zero when any file is not.
+
+Use this to find damaged and mislabeled files in a library. The command prints one line for every file, so one invalid file does not hide the state of the others. Valid files go to stdout and invalid files to stderr.
+
+A file is valid when all of these conditions are true:
+
+* The file exists
+* The file has a video container extension
+* ffprobe can read the file
+* The file has a minimum of one video stream
+
+Cover art does not count as a video stream. An audio-only file with an embedded poster is invalid.
+
+By default the command reads only the metadata of each file, which takes milliseconds. To decode every frame instead, use `--deep`. A deep check finds damage in the body of a file whose header is intact. It costs minutes for each file.
+
+Name the files directly, or use `--from` to check every video file under a directory. `check` accepts the same query flags as `search`, but it refuses `--limit`, because a truncated selection can exit `0` while files stay unchecked. A trait filter never hides an invalid file, because a file that ffprobe cannot read has no traits.
+
+**Exit codes:** `0` when every file is valid, `1` when any file is not.
+
+**Usage Examples:**
+```shell
+# Two files named directly
+vidcleaner check movie.mkv other.mp4
+
+# Every .mkv file in the current directory
+vidcleaner check *.mkv
+
+# A whole library, three levels deep
+vidcleaner check --from /media --depth=3
+
+# Fully decode every 4k file to find damage that ffprobe cannot see
+vidcleaner check --from /media --filters=4k --deep
+```
+""",
+)
+class CheckCommand:
+    """Check that video files are valid."""
+
+    files: Annotated[
+        list[Path],
+        cappa.Arg(help="Video file path(s)", show_default=False),
+    ] = field(default_factory=list)
+    from_: Annotated[
+        Path | None,
+        cappa.Arg(
+            help="Directory to discover files in instead of naming them explicitly",
+            long="--from",
+            show_default=False,
+            group="Discovery",
+        ),
+    ] = None
+    deep: Annotated[
+        bool,
+        cappa.Arg(
+            help="Decode every frame to find damage ffprobe cannot see (minutes per file)",
+            long=True,
+            show_default=True,
+        ),
+    ] = False
+    # Named `discovery` to match `clean` and `search` so `config_subcommand` reads the
+    # trait filters off every command through one attribute.
+    discovery: cappa.Destructured[SelectionOptions] = field(default_factory=SelectionOptions)
+
+
+@cappa.command(
     name="cache",
     help="View and clear the vidcleaner cache",
     invoke="vid_cleaner.cli.cache.main",
@@ -525,7 +636,9 @@ def main() -> None:  # pragma: no cover
 
     try:
         cappa.invoke(
-            obj=VidCleaner, deps=[create_default_config, config_subcommand], completion=False
+            obj=VidCleaner,
+            deps=[create_default_config, verify_required_binaries, config_subcommand],
+            completion=False,
         )
     except KeyboardInterrupt as e:
         pp.info("\nExiting...")

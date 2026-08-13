@@ -9,10 +9,12 @@ from typing import TYPE_CHECKING
 import cappa
 from nclutils import pp
 from nclutils.fs import copy_file
+from nclutils.sh import which
 
 from vid_cleaner import settings
 from vid_cleaner.constants import (
     DEFAULT_CONFIG_PATH,
+    REQUIRED_BINARIES,
     SYMBOL_CHECK,
     USER_CONFIG_PATH,
     VideoContainerTypes,
@@ -141,6 +143,16 @@ def copy_to_output(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list
 
     messages.append(f"{SYMBOL_CHECK} Saved to {dst}")
     return dst, messages
+
+
+def find_missing_binaries() -> list[str]:
+    """Report which of the external programs vid-cleaner needs are absent from PATH.
+
+    Returns:
+        list[str]: The absent program names, in the order they are required. Empty when
+            every program is installed.
+    """
+    return [name for name in REQUIRED_BINARIES if which(name) is None]
 
 
 def create_default_config() -> None:
