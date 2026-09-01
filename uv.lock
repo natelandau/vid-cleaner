@@ -926,15 +926,15 @@ wheels = [
 
 [[package]]
 name = "nclutils"
-version = "3.4.3"
+version = "3.4.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "questionary" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5f/2e/fc28592ab507b5cd2b42261df699780f50b55746ebcd50b04f4c70bfaad6/nclutils-3.4.3.tar.gz", hash = "sha256:60952ffe635f2c12de23011b03575dfcdba9140b59d99e529dc8606e73fa728e", size = 60715, upload-time = "2026-08-13T13:20:21.627Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7e/f0/95349210d681bc1a36e188cbb1e1763c5334e819f0939da065fc38712a2d/nclutils-3.4.4.tar.gz", hash = "sha256:51caa14b9db06fe4097a8a7ca463dee05c51d40e5b6d5425e7717763452acad2", size = 62085, upload-time = "2026-08-15T13:26:23.374Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c9/b9/4f8796bc74fd7fc7ae4c77595fe07b0c1a35fb105102add1cf1ef582a804/nclutils-3.4.3-py3-none-any.whl", hash = "sha256:4c57193167a15ea252a64473e2ea2706a1f9e76b7e08e0d9a4a45b5edd702c88", size = 71285, upload-time = "2026-08-13T13:20:20.505Z" },
+    { url = "https://files.pythonhosted.org/packages/21/ef/f1ffddfb00ed54ebc05dbb0843d342ab98695ca962e20f085901db3daa48/nclutils-3.4.4-py3-none-any.whl", hash = "sha256:0183795883b2b35523e3746a151fb8dc296323c663fa093a2ed52b85a04d93c7", size = 72732, upload-time = "2026-08-15T13:26:22.158Z" },
 ]
 
 [[package]]
