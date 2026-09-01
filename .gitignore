@@ -8,6 +8,7 @@ GEMINI.md
 .tmp/
 .github/copilot-instructions.md
 .github/instructions/
+graphify-out/
 
 
 # video files maybe used during development

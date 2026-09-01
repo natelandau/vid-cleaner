@@ -12,7 +12,7 @@ Once uv is installed, follow these steps to start developing.
 4. Activate your virtual environment with `source .venv/bin/activate`
 5. Install the [prek](https://github.com/j178/prek) hooks with `prek install`.
 
-Confirm everything is up and running by running `which vid-cleaner`. The output should reference your virtual environment and be something like `/Users/your-username/vid-cleaner/.venv/bin/vid-cleaner`.
+Confirm everything is installed by running `which vidcleaner`. The output must reference your virtual environment, for example `/Users/your-username/vid-cleaner/.venv/bin/vidcleaner`.
 
 ## Developing
 
@@ -42,4 +42,9 @@ We use [Duty](https://pawamoy.github.io/duty/) as a task runner. Run `duty --lis
 
 ## Development Configuration
 
-If you have a user config file, you can override the settings for development by adding a `dev-config.toml` file to the root level of the project. Any settings in this file will override settings in the default (user space) configuration file. You can easily create this file by running `cp src/vid_cleaner/default_config.toml dev-config.toml` from the root of the project.
+To override your configuration during development, create `.development/dev-config.toml` in the project root. Settings in this file override both the packaged defaults and your user configuration file. Create it with these commands, from the root of the project:
+
+```bash
+mkdir -p .development
+cp src/vid_cleaner/default_config.toml .development/dev-config.toml
+```

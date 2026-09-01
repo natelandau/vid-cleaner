@@ -6,13 +6,13 @@ Tools to transcode, inspect and convert videos. This package provides convenienc
 
 ## Features
 
--   Remove commentary tracks and subtitles
--   Remove unwanted audio and subtitle tracks
+-   Remove unwanted audio and subtitle tracks, optionally keeping the original language audio track
+-   Remove commentary, SDH, and description tracks
 -   Determine a video's original language from its filename, its container metadata, or the TMDb, Radarr, and Sonarr APIs
 -   Convert to H.265 or VP9
 -   Convert 4k to 1080p
 -   Downmix any surround layout (5.1, 7.1, and Atmos above 7.1) into a stereo track when one is missing, or recreate an existing stereo track with `--force`, using a dialogue-forward filter that keeps speech clear
--   Remove unwanted audio and subtitle tracks, optionally keeping the original language audio track
+-   Inspect the streams in a video file
 -   Create clips from a video file
 -   Search for video files under a directory that match specific criteria
 -   Check that video files are valid, and exit non-zero when any file is not
@@ -41,9 +41,18 @@ python -m pip install --user vid-cleaner
 
 Run `vidcleaner --help` to see the available commands and options.
 
+### Inspecting a video file
+
+`vidcleaner inspect FILE` prints a table of the video, audio, and subtitle streams in a file, with the codec, language, and channel layout of each one. Use `--json` to print the raw ffprobe output instead.
+
+```shell
+vidcleaner inspect movie.mkv
+vidcleaner inspect --json movie.mkv
+```
+
 ### Searching for video files
 
-`vidcleaner search DIRECTORY` finds video files under a directory and prints a table of matches. Narrow the search with `--filters`, control how deep it recurses with `--depth`, and change the order with `--sort` and `--reverse`. Use `--limit` to keep only the top results on the active sort key:
+`vidcleaner search DIRECTORY` finds video files under a directory and prints a table of matches. The directory defaults to the current directory. Narrow the search with `--filters`, control how deep it recurses with `--depth`, and change the order with `--sort` and `--reverse`. Use `--limit` to keep only the top results on the active sort key:
 
 ```shell
 # The five largest 4k files, two directories deep
@@ -77,7 +86,7 @@ vidcleaner clean --from /media --filters=4k --sort=size --limit=5 --h265
 
 `clean` and `clip` replace the file they were given. The original is not deleted: it is renamed alongside the result as a timestamped `.bak` copy. Pass `--overwrite` to skip the backup and rewrite the file in place with no way back, or `--out PATH` (single input file only) to write somewhere else and leave the input untouched.
 
-`--vp9` is the exception, because VP9 has to go in a WebM container. `vidcleaner clean --vp9 movie.mkv` writes `movie.webm` next to the input. Without `--overwrite` the original `movie.mkv` is left where it is; with `--overwrite` it is removed, so the container change does not leave two copies of the same film on disk.
+`--vp9` is the exception, because VP9 has to go in a WebM container. `vidcleaner clean --vp9 movie.mkv` writes `movie.webm` next to the input. Without `--overwrite` the original `movie.mkv` is left where it is. With `--overwrite` it is removed, so the container change does not leave two copies of the same film on disk.
 
 When you clean or clip several files, a failure on one file does not stop the run. Every remaining file is still processed, failures are listed at the end, and the command exits with a non-zero status. `clean` and `clip` refuse a file that has no video stream, so an audio-only file with a video extension does not produce an output.
 
@@ -174,6 +183,8 @@ Vid-cleaner uses the [XDG specification](https://specifications.freedesktop.org/
 
 -   Configuration file: `~/.config/vid-cleaner/config.toml`
 -   Cache: `~/.cache/vid-cleaner`
+
+Run `vidcleaner cache` to print the contents of the cache, and `vidcleaner cache --clear` to empty it.
 
 ## Contributing
 
