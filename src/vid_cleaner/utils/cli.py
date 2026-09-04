@@ -191,19 +191,25 @@ def parse_limit(raw: str) -> int:
 
 
 def parse_trait_filters(facets: str) -> set[VideoTrait]:
-    """Parse a comma-separated list of facets into a list of VideoTrait enums.
+    """Parse a comma-separated list of facets into a set of VideoTrait enums.
+
+    Raise `ValueError` rather than exiting so cappa reports the bad value as a usage
+    error, the same way it does for every other discovery flag.
 
     Args:
         facets (str): Comma-separated string of facet names to parse
 
     Returns:
-        set[SearchFacet]: Set of VideoTrait enum values
+        set[VideoTrait]: Set of VideoTrait enum values
 
     Raises:
-        cappa.Exit: If any facet is invalid, exits with code 1
+        ValueError: If any facet is not a known video trait.
     """
-    try:
-        return {VideoTrait(facet.lower()) for facet in facets.split(",")}
-    except ValueError as e:
-        pp.error(f"Invalid facet: {e}")
-        raise cappa.Exit(code=1) from e
+    traits: set[VideoTrait] = set()
+    for facet in facets.split(","):
+        try:
+            traits.add(VideoTrait(facet.strip().lower()))
+        except ValueError as e:
+            msg = f"'{facet}' is not a valid filter. Valid options: {VideoTrait.help_options()}"
+            raise ValueError(msg) from e
+    return traits

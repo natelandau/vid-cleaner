@@ -68,11 +68,10 @@ def config_subcommand(vidcleaner: VidCleaner) -> None:
     if langs_to_keep and isinstance(langs_to_keep, str):
         langs_to_keep = langs_to_keep.split(",")
 
-    # Discovery options are destructured onto a nested object shared by `search` and
-    # `clean`, so the raw filter string is one level down from the command itself.
+    # Discovery options are destructured onto a nested object shared by `search`,
+    # `check`, and `clean`, so the filters sit one level down from the command itself.
     discovery = getattr(vidcleaner.command, "discovery", None)
-    raw_filters = getattr(discovery, "filters", None)
-    filters = parse_trait_filters(raw_filters) if raw_filters else set()
+    filters = getattr(discovery, "filters", None) or set()
 
     # Apply command-specific settings
     cli_settings = {
@@ -119,12 +118,13 @@ class SelectionOptions:
         ),
     ] = 0
     filters: Annotated[
-        str | None,
+        set[VideoTrait] | None,
         cappa.Arg(
             help=f"Comma separated list of facets a file must have all of. Valid options: {VideoTrait.help_options()}",
             long=True,
             show_default=False,
             group="Discovery",
+            parse=parse_trait_filters,
         ),
     ] = None
     sort: Annotated[

@@ -257,3 +257,25 @@ def test_cache_runs_without_ffmpeg(capsys, mocker, tmp_path) -> None:
     # Then: The preflight does not block it
     assert exc_info.value.code == 0
     assert "ffmpeg" not in captured.err
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["search", ".", "--filters", "bogus"],
+        ["search", ".", "--filters", "h264,bogus"],
+        ["check", "--from", ".", "--filters", "bogus"],
+        ["clean", "--from", ".", "--filters", "bogus"],
+    ],
+)
+def test_invalid_filter_is_a_usage_error(capsys, args):
+    """Verify a bad `--filters` value fails at parse time like every other discovery flag."""
+    # When: Parsing a filter that names no trait
+    with pytest.raises(cappa.Exit) as exc_info:
+        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The usage-error exit code and message name the flag and the bad value
+    _, error = capsys.readouterr()
+    assert exc_info.value.code == 2
+    assert "--filters" in error
+    assert "bogus" in error
