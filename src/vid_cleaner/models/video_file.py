@@ -259,10 +259,46 @@ class VideoFile:
         ]
 
     @staticmethod
+    def _downmix_source_rank(stream: Box, langs: list[Lang]) -> tuple[bool, int, int]:
+        """Rank a surround stream as a downmix source; lower sorts first.
+
+        Commentary is never a mix of the main audio, so it ranks last. Among the rest,
+        the configured keep languages win in their listed order, then untagged or `und`
+        streams, then any other language. Ties fall to the simplest layout, since a 5.1
+        bed downmixes more predictably than 7.1 or Atmos.
+
+        Args:
+            stream (Box): A surround audio stream.
+            langs (list[Lang]): Keep languages in preference order.
+
+        Returns:
+            tuple[bool, int, int]: Sort key of (is commentary, language rank, layout tier).
+        """
+        unknown_rank = len(langs)
+        if not stream.language or stream.language == "und":
+            lang_rank = unknown_rank
+        else:
+            try:
+                lang = Lang(stream.language)
+            except (InvalidLanguageValue, DeprecatedLanguageValue):
+                lang_rank = unknown_rank
+            else:
+                lang_rank = langs.index(lang) if lang in langs else unknown_rank + 1
+
+        if stream.channel_count <= AudioLayout.SURROUND5.value:
+            tier = 0
+        elif stream.channel_count <= AudioLayout.SURROUND7.value:
+            tier = 1
+        else:
+            tier = 2
+
+        return (VideoFile._is_commentary_stream(stream), lang_rank, tier)
+
+    @staticmethod
     def _plan_downmix(
-        streams: list[Box],
+        streams: list[Box], langs: list[Lang]
     ) -> tuple[list[OutputStream], list[Box], PlanAction | None]:
-        """Plan a downmix of the simplest surround bed to a dialogue-forward stereo track.
+        """Plan a downmix of the best surround bed to a dialogue-forward stereo track.
 
         Skip the work when a non-commentary stereo mix already exists, unless
         `settings.force` is set, in which case the existing stereo track(s) are dropped
@@ -271,6 +307,8 @@ class VideoFile:
 
         Args:
             streams (list[Box]): Audio streams that would otherwise be kept.
+            langs (list[Lang]): Keep languages in preference order, used to choose
+                between surround sources.
 
         Returns:
             tuple[list[OutputStream], list[Box], PlanAction | None]: The planned downmix
@@ -289,14 +327,14 @@ class VideoFile:
             if stream.channels == AudioLayout.STEREO and not VideoFile._is_commentary_stream(stream)
         ]
 
-        # Group surround sources by layout tier and downmix the simplest bed present:
-        # 5.1 (5-6ch) over 7.1 (7-8ch) over Atmos (>8ch). A single dialogue-forward filter
-        # serves every tier, so a >7.1 track no longer passes through un-downmixed.
+        # One stereo track per file: rank every surround bed and keep the best. `min` returns
+        # the first of equal ranks, so file order breaks ties.
         surround = [s for s in streams if VideoFile._is_surround_stream(s)]
-        surround5 = [s for s in surround if s.channel_count in (5, 6)]
-        surround7 = [s for s in surround if s.channel_count in (7, 8)]
-        surround_gt7 = [s for s in surround if s.channel_count > AudioLayout.SURROUND7.value]
-        surround_source = surround5 or surround7 or surround_gt7
+        surround_source = min(
+            surround,
+            key=lambda s: VideoFile._downmix_source_rank(stream=s, langs=langs),
+            default=None,
+        )
 
         if existing_stereo:
             if not settings.force:
@@ -309,7 +347,7 @@ class VideoFile:
                     reason="stereo track already exists; use --force",
                 )
                 return downmix_streams, streams_to_drop, action
-            if not surround_source:
+            if surround_source is None:
                 pp.info(
                     "No surround source to recreate stereo from; keeping existing stereo track."
                 )
@@ -320,17 +358,17 @@ class VideoFile:
             # Forced recreation: drop the existing stereo mix and rebuild it from the surround bed
             streams_to_drop = existing_stereo
 
-        downmix_streams = [
-            OutputStream(
-                source_index=stream.index,
-                codec_type=CodecTypes.AUDIO,
-                codec="aac",
-                stream_filter=DOWNMIX_STEREO_FILTER,
-                extra_args=["-ac:a:{n}", "2", "-b:a:{n}", "256k", "-ar:a:{n}", "48000"],
-                metadata={"title": "2.0"},
+        if surround_source is not None:
+            downmix_streams.append(
+                OutputStream(
+                    source_index=surround_source.index,
+                    codec_type=CodecTypes.AUDIO,
+                    codec="aac",
+                    stream_filter=DOWNMIX_STEREO_FILTER,
+                    extra_args=["-ac:a:{n}", "2", "-b:a:{n}", "256k", "-ar:a:{n}", "48000"],
+                    metadata={"title": "2.0"},
+                )
             )
-            for stream in surround_source
-        ]
         action = PlanAction(
             label="Downmix to stereo",
             applied=bool(downmix_streams),
@@ -396,7 +434,9 @@ class VideoFile:
 
         # Plan the downmix; forced recreation can request dropping an existing stereo track
         downmix_streams, streams_to_drop, downmix_action = (
-            self._plan_downmix(streams_to_keep) if settings.downmix_stereo else ([], [], None)
+            self._plan_downmix(streams=streams_to_keep, langs=langs)
+            if settings.downmix_stereo
+            else ([], [], None)
         )
         if downmix_action is not None:
             plan.actions.append(downmix_action)

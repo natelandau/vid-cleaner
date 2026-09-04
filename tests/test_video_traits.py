@@ -105,7 +105,7 @@ def test_get_traits_needs_stereo_agrees_with_downmix_planner(make_video, fixture
 
     # When: comparing the trait against what the downmix planner would produce
     tagged = VideoTrait.NEEDS_STEREO in video.get_traits()
-    downmix_streams, _, _ = video._plan_downmix(video.audio_streams)  # noqa: SLF001
+    downmix_streams, _, _ = video._plan_downmix(streams=video.audio_streams, langs=[])  # noqa: SLF001
 
     # Then: the tag promises exactly what the planner delivers
     assert tagged == bool(downmix_streams)

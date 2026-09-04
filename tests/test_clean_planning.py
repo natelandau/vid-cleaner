@@ -583,3 +583,45 @@ def test_drop_subtitles_records_reason_when_no_unwanted(make_video):
     drop = next(a for a in plan.actions if a.label == "Drop unwanted subtitles")
     assert drop.applied is False
     assert drop.reason == "no unwanted subtitles"
+
+
+def test_downmix_picks_one_source_per_file(make_video):
+    """Verify a forced downmix builds exactly one stereo track when several 5.1 beds qualify."""
+    # Given: reference.json keeps two 5.1 beds (English #2, French #3) with --downmix --force
+    settings.update({"downmix_stereo": True, "force": True, "langs_to_keep": ["en", "fr"]})
+    video = make_video("reference.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: only one downmix stream is appended
+    downmixes = [s for s in plan.streams if s.stream_filter is not None]
+    assert len(downmixes) == 1
+
+
+def test_downmix_prefers_first_configured_language(make_video):
+    """Verify the downmix source follows the order of the configured keep languages."""
+    # Given: reference.json keeps two 5.1 beds (English #2, French #3) with French listed first
+    settings.update({"downmix_stereo": True, "force": True, "langs_to_keep": ["fr", "en"]})
+    video = make_video("reference.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the French bed alone seeds the downmix even though the English bed comes first
+    downmixes = [s for s in plan.streams if s.stream_filter is not None]
+    assert [s.source_index for s in downmixes] == [3]
+
+
+def test_downmix_discounts_commentary_source(make_video):
+    """Verify a surround commentary track is not chosen as the downmix source."""
+    # Given: an untagged-language 5.1 commentary bed (#1) ahead of the main 5.1 bed (#2)
+    settings.update({"downmix_stereo": True})
+    video = make_video("surround_commentary_no_lang.json")
+
+    # When: building the plan
+    plan = video._build_plan()  # noqa: SLF001
+
+    # Then: the main bed alone seeds the downmix, not the commentary bed listed first
+    downmixes = [s for s in plan.streams if s.stream_filter is not None]
+    assert [s.source_index for s in downmixes] == [2]
