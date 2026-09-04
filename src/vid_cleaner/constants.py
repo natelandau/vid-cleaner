@@ -113,14 +113,16 @@ MIN_SURROUND_CHANNELS = 5
 # Dialogue-forward surround-to-stereo filter chain, shared by every surround layout.
 # The pan is addressed by channel NAME, so one matrix serves 5.1, 7.1 and Atmos (>7.1):
 # ffmpeg silently treats channels a layout lacks as zero and ignores the height channels
-# (TFL/TFR/...) we do not name. Center (dialogue) stays dominant at 0.8 while the fronts and
-# surrounds sit at 0.25. LFE is dropped entirely, as every standard downmix (ITU-R BS.775,
-# ATSC A/52) does, because its sub-bass energy masks speech. acompressor then narrows the gap
-# between loud effects and quiet dialogue, and loudnorm sets a consistent delivery loudness.
+# (TFL/TFR/...) we do not name. Center (dialogue) leads at 0.7 with the fronts at 0.5 and
+# surrounds at 0.35, about 6 dB more dialogue than the ITU reference matrix; pushing the fronts
+# and surrounds lower than this buries music and effects. LFE is dropped entirely, as every
+# standard downmix (ITU-R BS.775, ATSC A/52) does, because its sub-bass energy masks speech.
+# acompressor then narrows the gap between loud effects and quiet dialogue, and loudnorm sets
+# a consistent delivery loudness.
 DOWNMIX_STEREO_FILTER = (
     "pan=stereo|"
-    "FL=0.8*FC+0.25*FL+0.25*SL+0.25*BL|"
-    "FR=0.8*FC+0.25*FR+0.25*SR+0.25*BR,"
+    "FL=0.7*FC+0.5*FL+0.35*SL+0.35*BL|"
+    "FR=0.7*FC+0.5*FR+0.35*SR+0.35*BR,"
     "acompressor=threshold=-18dB:ratio=3:attack=20:release=250:makeup=3,"
     "loudnorm=I=-16:TP=-1.5:LRA=11"
 )
