@@ -465,7 +465,7 @@ def test_clean_video_downmix_dialogue_forward_filter(
     mock_ffmpeg.assert_called_once()
     call_args, _ = mock_ffmpeg.call_args
     command = " ".join(call_args[0])
-    assert "pan=stereo|FL=0.8*FC" in command
+    assert "pan=stereo|FL=0.7*FC" in command
     assert "acompressor=" in command
     assert "loudnorm=" in command
     assert "LFE" not in command
@@ -505,7 +505,7 @@ def test_clean_video_downmix_atmos(
     assert "-map 0:1 -map 0:1" in command
     assert "-c:a:1 aac" in command
     assert "-ac:a:1 2" in command
-    assert "pan=stereo|FL=0.8*FC" in command
+    assert "pan=stereo|FL=0.7*FC" in command
     assert exc_info.value.code == 0
     assert "✔ Downmix to stereo" in output
 

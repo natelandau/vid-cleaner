@@ -81,7 +81,7 @@ def test_build_plan_downmix_appends_encoded_stream(make_video):
     downmix = plan.streams[-1]
     assert downmix.source_index == 2
     assert downmix.codec == "aac"
-    assert downmix.stream_filter.startswith("pan=stereo|FL=0.8*FC")
+    assert downmix.stream_filter.startswith("pan=stereo|FL=0.7*FC")
     assert downmix.extra_args == ["-ac:a:{n}", "2", "-b:a:{n}", "256k", "-ar:a:{n}", "48000"]
     assert downmix.metadata == {"title": "2.0"}
 
