@@ -1,3 +1,10 @@
+## v0.13.2 (2026-09-04)
+
+### Fix
+
+- **cli**: exit 2 for an invalid --filters value like other discovery flags
+- **clean**: downmix a single surround track instead of one per source
+
 ## v0.13.1 (2026-09-03)
 
 ### Fix
