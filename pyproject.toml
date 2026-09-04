@@ -18,7 +18,7 @@
         "python-box>=7.4.1, <8.0.0",
         "rich>=15.0.0",
         "validators>=0.35.0",
-]
+    ]
     description = "Tools to transcode, inspect and convert videos."
     license = { file = "LICENSE" }
     name = "vid-cleaner"
@@ -34,8 +34,8 @@
         vidcleaner = "vid_cleaner.vidcleaner:main"
 
 [build-system]
-    build-backend = "hatchling.build"
-    requires      = ["hatchling"]
+    build-backend = "uv_build"
+    requires      = ["uv_build>=0.8.4,<0.13.0"]
 
 [dependency-groups]
     dev = [
@@ -43,7 +43,7 @@
         "coverage>=7.16.0",
         "duty>=1.9.0",
         "mypy>=2.3.1",
-        "prek>=0.5.1",
+        "prek>=0.5.2",
         "pytest-clarity>=1.0.1",
         "pytest-cov>=7.1.0",
         "pytest-devtools>=1.3.0",
@@ -53,8 +53,8 @@
         "pytest-sugar>=1.1.1",
         "pytest-xdist>=3.8.0",
         "pytest>=9.1.1",
-        "ruff>=0.16.5",
-        "typos>=1.50.0",
+        "ruff>=0.16.6",
+        "typos>=1.50.1",
         "yamllint>=1.38.0",
     ]
 
