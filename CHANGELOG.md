@@ -1,3 +1,9 @@
+## v0.13.1 (2026-09-03)
+
+### Fix
+
+- **clean**: bring music and effects forward in the stereo downmix (#92)
+
 ## v0.13.0 (2026-08-13)
 
 ### Feat
