@@ -14,6 +14,8 @@ uv run duty dev_setup         # generate sample .mkv files under .dev/ with ffmp
 
 `addopts` includes `--exitfirst` and `--failed-first`, so a run stops at the first failure and reruns previous failures first. `testpaths` includes `src`, so a bare `uv run pytest` also runs `--doctest-modules` over the package; `duty test` passes `tests` explicitly and skips those doctests.
 
+Every lint and test duty runs through gate-cache, so a gate that already passed on the same non-ignored file content prints `already passed on tree ..., skipping` and exits 0. The prek hooks call the same duties and share those markers. `duty test` puts its pytest arguments in the gate name, so a filtered pass never skips the full suite. `uv run gate-cache status` shows what passed; `GATE_CACHE_DISABLE=1` forces a real run. CI sets `CI=true`, which turns caching off.
+
 Commit with `cz c` (commitizen). The prek `pytest` hook runs `duty test` on every commit, against that commit's staged state with unstaged changes stashed, so each commit must be green on its own.
 
 ffmpeg and ffprobe must be on PATH for anything except the `cache` command.
