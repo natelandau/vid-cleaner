@@ -25,7 +25,7 @@
     name = "vid-cleaner"
     readme = "README.md"
     requires-python = ">=3.11"
-    version = "0.13.2"
+    version = "0.14.0"
 
     [project.urls]
         Homepage   = "https://github.com/natelandau/vid-cleaner"
