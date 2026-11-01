@@ -15,7 +15,7 @@
         "ffmpeg-python>=0.2.0",
         "httpx>=0.28.1",
         "iso639-lang>=2.6.3",
-        "nclutils>=3.4.4,<4.0.0",
+        "nclutils>=3.4.4,<5.0.0",
         "python-box>=7.4.1, <8.0.0",
         "rich>=15.0.0",
         "validators>=0.36.0",
