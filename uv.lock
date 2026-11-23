@@ -8,6 +8,12 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "actionlint-py"
+version = "1.7.12.25"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/33/75/36ee89db39bb3620d1e46fe1f6ec77d6000d30ff45345699e51b4c850e83/actionlint_py-1.7.12.25.tar.gz", hash = "sha256:83f83be4cd317c79b15cbb7022787513a6994f00bfb2dd8da02fa4e62b4f640d", size = 12438, upload-time = "2026-09-22T16:24:42.477Z" }
+
+[[package]]
 name = "ansimarkup"
 version = "1.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1053,6 +1059,18 @@ wheels = [
 ]
 
 [[package]]
+name = "shellcheck-py"
+version = "0.11.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/df/55/455b097417b3df3d330eff029c72c32f08b25739e3010acb30ad06d268ef/shellcheck_py-0.11.0.1.tar.gz", hash = "sha256:5c620c88901e8f1d3be5934b31ea99e3310065e1245253741eafd0a275c8c9cc", size = 3139, upload-time = "2025-08-09T17:53:42.492Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/54/27/d75b03e5458cefdb6d3b674566cd20476c3e4d3fe6cc9d68b7e3b854b296/shellcheck_py-0.11.0.1-py2.py3-none-macosx_10_9_x86_64.whl", hash = "sha256:b6a3fee28efda2e16e38d6e6d59faf7224300256456639727370d404730849e8", size = 6774472, upload-time = "2025-08-09T17:53:34.573Z" },
+    { url = "https://files.pythonhosted.org/packages/61/ac/2a84c37171c0cf5a10ea4b0a27d43eb0a1d29bd98b49c2c5ffe17ad24bbe/shellcheck_py-0.11.0.1-py2.py3-none-macosx_11_0_arm64.whl", hash = "sha256:6b88d0a244c82ed07e06a53e444da841f69330ca59ae15d4a66c391655dae7a0", size = 11381835, upload-time = "2025-08-09T17:53:36.852Z" },
+    { url = "https://files.pythonhosted.org/packages/96/55/250e0e3367613a5c22bd82e33b16b889287d81ab0f7dda67e6514a4cccf4/shellcheck_py-0.11.0.1-py2.py3-none-manylinux1_x86_64.manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:1b274df81de5b000ff78db433e7328b87e52e3c38481c60f8e488c3095beef05", size = 3800600, upload-time = "2025-08-09T17:53:38.643Z" },
+    { url = "https://files.pythonhosted.org/packages/15/5b/bb14c0a7474463b1aa3c09e866cb172dffc66ed2993b7ea8f1db581e86ee/shellcheck_py-0.11.0.1-py2.py3-none-win_amd64.whl", hash = "sha256:784156289ecb17e91c692cd783ab5152333309588cabb10032a047331c63e759", size = 8027541, upload-time = "2025-08-09T17:53:40.889Z" },
+]
+
+[[package]]
 name = "termcolor"
 version = "3.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1173,6 +1191,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "actionlint-py" },
     { name = "commitizen" },
     { name = "coverage" },
     { name = "duty" },
@@ -1185,9 +1204,11 @@ dev = [
     { name = "pytest-mock" },
     { name = "pytest-sugar" },
     { name = "ruff" },
+    { name = "shellcheck-py" },
     { name = "ty" },
     { name = "typos" },
     { name = "yamllint" },
+    { name = "zizmor" },
 ]
 
 [package.metadata]
@@ -1206,6 +1227,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "actionlint-py", specifier = ">=1.7.12.25" },
     { name = "commitizen", specifier = ">=4.19.3" },
     { name = "coverage", specifier = ">=7.17.0" },
     { name = "duty", specifier = ">=1.10.1" },
@@ -1218,9 +1240,11 @@ dev = [
     { name = "pytest-mock", specifier = ">=3.17.0" },
     { name = "pytest-sugar", specifier = ">=1.1.1" },
     { name = "ruff", specifier = ">=0.17.3" },
+    { name = "shellcheck-py", specifier = ">=0.11.0.1" },
     { name = "ty", specifier = ">=0.0.108" },
     { name = "typos", specifier = ">=1.51.1" },
     { name = "yamllint", specifier = ">=1.38.0" },
+    { name = "zizmor", specifier = ">=1.33.1" },
 ]
 
 [[package]]
@@ -1356,4 +1380,23 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/28/a0/8fc2d68e132cf918f18273fdc8a1b8432b60d75ac12fdae4b0ef5c9d2e8d/yamllint-1.38.0.tar.gz", hash = "sha256:09e5f29531daab93366bb061e76019d5e91691ef0a40328f04c927387d1d364d", size = 142446, upload-time = "2026-01-13T07:47:53.276Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/05/92/aed08e68de6e6a3d7c2328ce7388072cd6affc26e2917197430b646aed02/yamllint-1.38.0-py3-none-any.whl", hash = "sha256:fc394a5b3be980a4062607b8fdddc0843f4fa394152b6da21722f5d59013c220", size = 68940, upload-time = "2026-01-13T07:47:51.343Z" },
+]
+
+[[package]]
+name = "zizmor"
+version = "1.33.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3d/70/a269633902781427600109dbf311a30d789d22a2f63d7a1731bfe87d2b22/zizmor-1.33.1.tar.gz", hash = "sha256:d4ec8974b3cbd6e997ceac7cd788b0d49392d1683bb509cd4a897fcccf79c71a", size = 611913, upload-time = "2026-11-22T22:27:13.979Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0d/54/697841064465eefacbbb425a364dc008a4e4ac4d96ced7b704d4a2932d06/zizmor-1.33.1-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:f4458e4d845075a2238aee01874d1fbab4e4ba3983d844415dcb4f7bcd61ee08", size = 10312498, upload-time = "2026-11-22T22:26:50.619Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/fa/6e0fe9169c5675614767b120a0d34f42c30f7858beb3b2121d9fd798275d/zizmor-1.33.1-py3-none-macosx_11_0_arm64.whl", hash = "sha256:eaaeb5c4c4947fe4a29d69e90f45cd31bd68a7cb99f3171e4d32199761cb8aba", size = 9933389, upload-time = "2026-11-22T22:26:53.042Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/34/17f1f41e41c9ca5a2f8e9f9b33a9f439d2838a339cf774ded871e69197b1/zizmor-1.33.1-py3-none-manylinux_2_24_aarch64.whl", hash = "sha256:0927b0f2f86d67a98444ae7fe2529963e29ffc3acff73e588f479f33361c926c", size = 10172250, upload-time = "2026-11-22T22:26:55.105Z" },
+    { url = "https://files.pythonhosted.org/packages/c1/4a/fd81a948f60a95dd9defb8fba032e6593010025ee49d15d4e19fa9414fa3/zizmor-1.33.1-py3-none-manylinux_2_28_armv7l.whl", hash = "sha256:807b7f8b86fe23ad6431f1663c37f707467f3996887c6cf91dfc378621a89fa0", size = 9769416, upload-time = "2026-11-22T22:26:56.994Z" },
+    { url = "https://files.pythonhosted.org/packages/49/bf/89961bcb9034e7c25af39f6e9d65d37eff9314b49034c2e2bb70ae42d818/zizmor-1.33.1-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:49eb92a95347e7da58c3123e4d5b297dbb6fe8ecc328e9db68df14c08e25e151", size = 10623554, upload-time = "2026-11-22T22:26:59.065Z" },
+    { url = "https://files.pythonhosted.org/packages/d6/20/2f658100b457113e61851df63f736531e62a2803cb7a1bb271a1239e6430/zizmor-1.33.1-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:3ed1dba4e9bbe590515a35359abbbe926c9cbd5f5fe52eb2f7e791250bdc536f", size = 10184773, upload-time = "2026-11-22T22:27:01.341Z" },
+    { url = "https://files.pythonhosted.org/packages/df/62/3003fd15f3fa44f6b05014b74a3e16e84d9aa430b91580ecfe2652123abd/zizmor-1.33.1-py3-none-musllinux_1_2_armv7l.whl", hash = "sha256:e31d5e0950fbbabd7b499a63950f10565c30c50ca8a1937a1121f547e2ce3c94", size = 9741213, upload-time = "2026-11-22T22:27:03.27Z" },
+    { url = "https://files.pythonhosted.org/packages/da/a7/de6527426732bf3bb701fdbddb31e124dec00b861b98a9f5d39d0c735c9a/zizmor-1.33.1-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:05d49c0ba1ba20531b1abe24d839dac3a6d5600d81944547015195d7cfccf336", size = 10719283, upload-time = "2026-11-22T22:27:05.311Z" },
+    { url = "https://files.pythonhosted.org/packages/3b/10/a0c765a7ceaa47a801863e98ce5ef611b0bd053fc42b1eb43659b4d930c1/zizmor-1.33.1-py3-none-win32.whl", hash = "sha256:17d3f0f563943493711cd94312ac5ba9ade0bd97d21a91c5d3a617a43cae5c78", size = 8862311, upload-time = "2026-11-22T22:27:08.335Z" },
+    { url = "https://files.pythonhosted.org/packages/35/ee/24f1d8f12ea4df22658978dfbe3d6cdfb01b5420f17a56c1735130f6342f/zizmor-1.33.1-py3-none-win_amd64.whl", hash = "sha256:1ebbb1111f5d98e6d0a3643afed1d808f880c7b7cbe671b0d08f37a26f0b7b0b", size = 9996007, upload-time = "2026-11-22T22:27:10.168Z" },
+    { url = "https://files.pythonhosted.org/packages/43/be/ea9d911d4116244b828c12e330237d9244b305b7560ac82be81350cddfa0/zizmor-1.33.1-py3-none-win_arm64.whl", hash = "sha256:9ad301363e4f7df39d6924ed5b3aabf09958817ef891c740c26680b5f9656851", size = 9508760, upload-time = "2026-11-22T22:27:12.27Z" },
 ]

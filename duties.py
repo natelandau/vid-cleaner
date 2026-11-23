@@ -109,16 +109,31 @@ def typos(ctx: Context) -> None:
     )
 
 
+@duty
+def actionlint(ctx: Context) -> None:
+    """Check GitHub Actions workflows for errors with actionlint."""
+    # actionlint checks `run:` scripts only when shellcheck, from shellcheck-py, is on PATH
+    ctx.run(["actionlint"], title=pyprefix("actionlint check"))
+
+
+@duty
+def zizmor(ctx: Context) -> None:
+    """Check GitHub Actions workflows for security problems with zizmor."""
+    # Offline keeps the check free of network access and a GitHub token
+    output_format = ["--format", "github"] if CI else []
+    ctx.run(["zizmor", "--offline", *output_format, ".github"], title=pyprefix("zizmor check"))
+
+
 @duty(skip_if=CI, skip_reason="skip prek in CI environments")
 def precommit(ctx: Context) -> None:
     """Run prek hooks."""
     ctx.run(
-        "PREK_SKIP=ruff,format,ty,typos,pytest gate-cache --name prek -- prek run --all-files",
+        "PREK_SKIP=ruff,format,ty,typos,actionlint,zizmor,pytest gate-cache --name prek -- prek run --all-files",
         title=pyprefix("prek hooks"),
     )
 
 
-@duty(pre=[ruff, format, ty, typos, precommit], capture=CI)
+@duty(pre=[ruff, format, ty, typos, actionlint, zizmor, precommit], capture=CI)
 def lint(ctx: Context) -> None:
     """Run all linting duties."""
 

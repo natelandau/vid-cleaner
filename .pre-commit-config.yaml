@@ -113,6 +113,22 @@ repos:
         pass_filenames: false
         stages: [pre-commit, pre-push, manual]
 
+      - id: actionlint
+        name: actionlint
+        entry: uv run duty actionlint
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, pre-push, manual]
+        files: ^\.github/
+
+      - id: zizmor
+        name: zizmor
+        entry: uv run duty zizmor
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, pre-push, manual]
+        files: ^\.github/
+
       - id: pytest
         name: pytest
         entry: uv run duty test

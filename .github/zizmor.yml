@@ -1,0 +1,6 @@
+---
+# https://docs.zizmor.sh/configuration/
+rules:
+  # Keep the `./` form for local actions and workflows until actionlint accepts `$/`.
+  self-repository:
+    disable: true
