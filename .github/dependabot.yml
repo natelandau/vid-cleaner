@@ -2,14 +2,21 @@
 version: 2
 
 updates:
+  # The composite actions under .github/actions/ pin their own actions, and the
+  # root directory alone never scans them.
   - package-ecosystem: github-actions
-    directory: /
+    directories:
+      - /
+      - /.github/actions/*
     schedule:
       interval: monthly
     commit-message:
       prefix: "ci"
       prefix-development: "ci"
       include: scope
+    # Wait a week so a compromised release is caught before it reaches this repo
+    cooldown:
+      default-days: 7
     groups:
       ci-deps:
         patterns:
@@ -22,6 +29,9 @@ updates:
       prefix: "build"
       prefix-development: "build"
       include: scope
+    # Wait a week so a compromised release is caught before it reaches this repo
+    cooldown:
+      default-days: 7
     versioning-strategy: increase
     allow:
       - dependency-type: production
