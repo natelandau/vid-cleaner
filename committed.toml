@@ -1,14 +1,12 @@
 allowed_types = [
     "build",
     "bump",
-    "chore",
     "ci",
     "docs",
     "feat",
     "fix",
     "perf",
     "refactor",
-    "revert",
     "style",
     "test",
 ]
