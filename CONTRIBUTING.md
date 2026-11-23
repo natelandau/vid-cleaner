@@ -1,48 +1,72 @@
 # Contributing to vid-cleaner
 
-## Prerequisites
+This guide shows you how to set up a development environment, run the checks, and commit a change.
 
-This project uses [uv](https://docs.astral.sh/uv/). To start developing, install uv using the recommended method for your operating system.
+## Set up the environment
 
-Once uv is installed, follow these steps to start developing.
+You need these programs:
 
-1. Clone this repository. `git clone https://github.com/natelandau/vid-cleaner`
-2. `cd` into the repository `cd vid-cleaner`
-3. Install the venv with uv `uv sync`
-4. Activate your virtual environment with `source .venv/bin/activate`
-5. Install the [prek](https://github.com/j178/prek) hooks with `prek install`.
+-   [uv](https://docs.astral.sh/uv/), to manage Python and the project dependencies
+-   [ffmpeg](https://ffmpeg.org/) and [ffprobe](https://ffmpeg.org/ffprobe.html), to run `vidcleaner` and `duty dev_setup` by hand. The test suite does not need them.
 
-Confirm everything is installed by running `which vidcleaner`. The output must reference your virtual environment, for example `/Users/your-username/vid-cleaner/.venv/bin/vidcleaner`.
+To install the project, do these steps:
 
-## Developing
+1. Clone the repository:
 
-Some things to consider when developing:
+    ```bash
+    git clone https://github.com/natelandau/vid-cleaner
+    cd vid-cleaner
+    ```
 
--   Ensure all code is documented in docstrings
--   Ensure all code is typed
--   Write unit tests for all new functions
--   Write integration tests for all new features
+2. Install Python, the project, and the development tools into `.venv`:
 
-### Before committing
+    ```bash
+    uv sync
+    ```
 
--   Ensure all the code passes linting with `duty lint`
--   Ensure all the code passes tests with `duty test`
+3. Install the [prek](https://github.com/j178/prek) git hooks:
 
-### Committing
+    ```bash
+    uv run prek install
+    ```
 
-Confirm you have installed the [prek hooks](https://github.com/j178/prek) included in the repository. These automatically run some of the checks described earlier each time you run git commit, and over time can reduce development overhead quite considerably.
+To make sure that the installation works, run `uv run vidcleaner --help`. The command prints the list of `vidcleaner` commands.
 
-We use [Commitizen](https://github.com/commitizen-tools/commitizen) to manage commits and [Semantic Versioning](https://semver.org/) to manage version numbers.
+The commands in this guide start with `uv run`. If you activate the virtual environment with `source .venv/bin/activate`, you can omit `uv run`.
 
-Commit your code by running `cz c`.
+## Run the checks
 
-## Running tasks
+We use [duty](https://pawamoy.github.io/duty/) as the task runner. Run `uv run duty --list` to see every task.
 
-We use [Duty](https://pawamoy.github.io/duty/) as a task runner. Run `duty --list` to see a list of available tasks.
+| Task                    | What it does                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------ |
+| `uv run duty lint`      | Runs ruff, the ty type checker, typos, actionlint, zizmor, and the prek hooks        |
+| `uv run duty test`      | Runs the test suite with coverage. The run fails if coverage is less than 90%.       |
+| `uv run duty dev_setup` | Creates sample `.mkv` files in `.dev/` with ffmpeg, for manual tests of `vidcleaner` |
 
-## Development Configuration
+To run only some tests, give pytest options to `duty test`. For example, `uv run duty test -k downmix` runs the tests with "downmix" in their names. Locally, `duty test` stops at the first failure and runs the tests that failed last time first.
 
-To override your configuration during development, create `.development/dev-config.toml` in the project root. Settings in this file override both the packaged defaults and your user configuration file. Create it with these commands, from the root of the project:
+Some checks run through [gate-cache](https://github.com/natelandau/gate-cache). If a check already passed on the same files, it prints `already passed on tree ..., skipping` and exits 0. To force a full run, set `GATE_CACHE_DISABLE=1`.
+
+CI runs `duty lint` and `duty test` on every pull request and every push to `main`. The tests run on each supported Python version. Run both tasks before you open a pull request.
+
+## Write the code
+
+The project uses these conventions:
+
+-   Every public function, class, and method has a Google-style docstring.
+-   Every function signature has type annotations. ty checks `src/` and `tests/`.
+-   Every change in behavior has a test. Tests run the real command line with `invoke` from `cappa.base`, not the internal functions. `tests/conftest.py` has the shared fixtures.
+
+## Commit a change
+
+Commit messages use the [Conventional Commits](https://www.conventionalcommits.org/) format, and [Commitizen](https://github.com/commitizen-tools/commitizen) checks each message. To write a commit message with prompts, run `uv run cz c`.
+
+Each commit runs the prek hooks. The hooks run the linters and the full test suite against the staged changes, so each commit must pass on its own. Version numbers follow [Semantic Versioning](https://semver.org/).
+
+## Use a development configuration
+
+To override your user configuration during development, create `.development/dev-config.toml` in the project root. Settings in this file override the packaged defaults and your user configuration file. To start from the defaults, run these commands from the project root:
 
 ```bash
 mkdir -p .development
