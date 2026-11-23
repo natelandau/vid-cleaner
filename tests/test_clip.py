@@ -4,6 +4,7 @@ from pathlib import Path
 
 import cappa
 import pytest
+from cappa.base import invoke
 
 from vid_cleaner import settings
 from vid_cleaner.controllers import TempFile
@@ -25,7 +26,7 @@ def test_clip_option_errors(debug, tmp_path, capsys, mock_video_path, args, expe
 
     # When: Running clip command with invalid arguments
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Error message is displayed
     output = capsys.readouterr().err
@@ -71,7 +72,7 @@ def test_clipping_video(
 
     # When: Running clip command
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
     # debug(output, "output")
@@ -123,7 +124,7 @@ def test_clipping_video_dryrun(
 
     # When: Running clip command in dry-run mode
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
     # debug(output, "output")
@@ -158,7 +159,7 @@ def test_clip_cleanup_failure_still_reports_the_save(
 
     # When: Running clip
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
 
@@ -186,7 +187,7 @@ def test_clip_rejects_file_without_video_streams(
 
     # When: Running clip
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     captured = capsys.readouterr()
 
@@ -224,7 +225,7 @@ def test_clip_continues_past_a_bad_file(
 
     # When: Running clip over both
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     captured = capsys.readouterr()
 

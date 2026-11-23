@@ -1,26 +1,28 @@
 [project]
     authors = [{ name = "Nate Landau", email = "github@natenate.org" }]
     classifiers = [
+        "Environment :: Console",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "Programming Language :: Python :: 3.13",
         "Programming Language :: Python :: 3.14",
         "Programming Language :: Python :: 3.15",
+        "Topic :: Multimedia :: Video :: Conversion",
     ]
     dependencies = [
         "cappa>=0.33.0,<1.0.0",
         "dynaconf>=3.3.5,<4.0.0",
         "ffmpeg-progress-yield>=1.1.4",
-        "ffmpeg-progress>=0.0.6",
         "ffmpeg-python>=0.2.0",
         "httpx>=0.28.1",
         "iso639-lang>=2.6.3",
         "nclutils>=4.0.0,<5.0.0",
-        "python-box>=7.4.1, <8.0.0",
+        "python-box>=7.4.1,<8.0.0",
         "rich>=15.0.0",
         "validators>=0.36.0",
     ]
     description = "Tools to transcode, inspect and convert videos."
+    keywords = ["ffmpeg", "transcode", "video"]
     license = { file = "LICENSE" }
     name = "vid-cleaner"
     readme = "README.md"
@@ -28,7 +30,9 @@
     version = "0.14.0"
 
     [project.urls]
+        Changelog  = "https://github.com/natelandau/vid-cleaner/blob/main/CHANGELOG.md"
         Homepage   = "https://github.com/natelandau/vid-cleaner"
+        Issues     = "https://github.com/natelandau/vid-cleaner/issues"
         Repository = "https://github.com/natelandau/vid-cleaner"
 
     [project.scripts]
@@ -40,24 +44,24 @@
 
 [dependency-groups]
     dev = [
+        "actionlint-py>=1.7.12.25",
         "commitizen>=4.19.3",
         "coverage>=7.17.0",
         "duty>=1.10.1",
-        "gate-cache>=0.6.0",
-        "mypy>=2.4.1",
+        "gate-cache>=0.12.0",
         "prek>=0.5.9",
         "pytest-clarity>=1.0.1",
         "pytest-cov>=7.1.0",
         "pytest-devtools>=1.3.0",
-        "pytest-env>=1.8.4",
         "pytest-mock>=3.17.0",
-        "pytest-pretty-terminal>=1.1.0",
         "pytest-sugar>=1.1.1",
-        "pytest-xdist>=3.8.0",
         "pytest>=9.2.0",
         "ruff>=0.17.3",
+        "shellcheck-py>=0.11.0.1",
+        "ty>=0.0.108",
         "typos>=1.51.1",
         "yamllint>=1.38.0",
+        "zizmor>=1.33.1",
     ]
 
 [tool.commitizen]
@@ -69,98 +73,74 @@
     version_provider           = "uv"
 
 [tool.coverage.report] # https://coverage.readthedocs.io/en/latest/config.html#report
-    exclude_lines = [
-        'def __repr__',
-        'except [\w\s\._]+ as .*:',
-        'pragma: no cover',
-        'raise Abort',
-        'raise Exit',
-        'raise cappa\.Exit',
-    ]
-    fail_under = 60
-    precision = 1
+    exclude_also = ['def __repr__', 'raise cappa\.Exit']
+    fail_under   = 90
+    precision    = 1
     show_missing = true
     skip_covered = true
 
 [tool.coverage.run]
-    branch       = true
-    command_line = "--module pytest"
-    data_file    = ".cache/coverage"
-    source       = ["src"]
+    branch    = true
+    data_file = ".cache/coverage"
+    source    = ["src"]
 
 [tool.coverage.xml]
     output = ".cache/coverage.xml"
 
-[tool.mypy] # https://mypy.readthedocs.io/en/latest/config_file.html
-    cache_dir                   = ".cache/mypy"
-    disallow_any_unimported     = false
-    disallow_subclassing_any    = false
-    disallow_untyped_decorators = false
-    disallow_untyped_defs       = true
-    exclude                     = ['duties.py', 'tests/']
-    follow_imports              = "normal"
-    ignore_missing_imports      = true
-    junit_xml                   = ".cache/mypy.xml"
-    no_implicit_optional        = true
-    pretty                      = false
-    show_column_numbers         = true
-    show_error_codes            = true
-    show_error_context          = true
-    strict_optional             = false
-    warn_redundant_casts        = true
-    warn_unreachable            = true
-    warn_unused_ignores         = true
+[tool.ty.src] # https://docs.astral.sh/ty/reference/configuration/
+    include = ["src", "tests"]
 
-[tool.pytest.ini_options]
-    addopts        = "--color=yes --doctest-modules --exitfirst --failed-first --strict-config --strict-markers --junitxml=.cache/pytest.xml"
+[tool.ty.rules] # Rules ty leaves off by default
+    disjoint-cast                 = "error"
+    missing-type-argument         = "error"
+    possibly-unresolved-reference = "error"
+
+[tool.ty.terminal]
+    error-on-warning = true
+
+[tool.pytest] # https://docs.pytest.org/en/stable/reference/reference.html#configuration-options
+    addopts        = ["--color=yes", "--doctest-modules", "--junitxml=.cache/pytest.xml"]
     cache_dir      = ".cache/pytest"
-    filterwarnings = ["error", "ignore::DeprecationWarning"]
+    filterwarnings = [
+        "error",
+        # cappa enters every parsed value that is a context manager, and on Python 3.11
+        # and 3.12 a Path is one, so each Path-typed option warns. Python 3.13 removed it.
+        'ignore:pathlib.Path.__enter__:DeprecationWarning',
+    ]
+    minversion     = "9.0"
+    strict         = true
     testpaths      = ["src", "tests"]
-    xfail_strict   = true
 
 [tool.ruff] # https://github.com/charliermarsh/ruff
-    exclude        = [".cache", ".git", ".venv", "__pypackages__", "dist"]
-    fix            = true
-    line-length    = 100
-    output-format  = "grouped"
-    src            = ["src", "tests"]
-    target-version = "py311"
+    fix           = true
+    line-length   = 100
+    output-format = "grouped"
+    src           = ["src", "tests"]
 
     [tool.ruff.lint]
         ignore = [
-            "ANN204", # missing return type annotation for special method `__init__`
-            "B006",   # mutable-argument-default
-            "COM812", # Trailing comma missing
+            "COM812", # Trailing comma missing; conflicts with the formatter
             "CPY001", # Missing copyright notice at top of file
-            "D213",   # multi-line-summary-second-line
-            "E501",   # line-too-long
+            "E501",   # line-too-long; the formatter owns line length
             "FIX002", # Line contains TODO, consider resolving the issue
             "S311",   # suspicious-non-cryptographic-random-usage
             "TD002",  # Missing author in TODO
             "TD003",  # Missing issue link on the line following this TODO
         ]
-        per-file-ignores = { "tests/*.py" = [
-            "A002",
-            "A003",
+        per-file-ignores = { "tests/**/*.py" = [
             "ANN001",
             "ANN003",
             "ANN201",
             "ANN202",
             "ARG001",
-            "ARG002",
             "ARG005",
-            "D102",
             "DOC201",
-            "DOC501",  # Raised exception missing from docstring
             "ERA001",
-            "F403",
-            "PGH003",
             "PLR0913",
             "PLR0917",
             "PLR2004",
-            "PLR6301",
             "S101",
-        ], "duties.py" = ["ANN001"] }
+        ] }
         select = ["ALL"]
         unfixable = [
             "ERA001", # Commented out code
@@ -177,7 +157,4 @@
             max-args = 6
 
     [tool.ruff.format]
-        indent-style              = "space"
-        line-ending               = "auto"
-        quote-style               = "double"
-        skip-magic-trailing-comma = false
+        docstring-code-format = true

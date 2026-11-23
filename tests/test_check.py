@@ -1,10 +1,10 @@
-# type: ignore
 """Test the vidcleaner check subcommand."""
 
 from pathlib import Path
 
 import cappa
 import pytest
+from cappa.base import invoke
 
 from vid_cleaner import settings
 from vid_cleaner.cli.check_video import display_path
@@ -36,7 +36,7 @@ def test_check_valid_file_exits_zero(capsys, mock_video_path, mocker, mock_ffpro
     # When: Checking it
     args = ["check", str(mock_video_path)]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     captured = capsys.readouterr()
 
@@ -57,7 +57,7 @@ def test_check_invalid_file_exits_one(capsys, mock_video_path, mocker):
     # When: Checking it
     args = ["check", str(mock_video_path)]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     captured = capsys.readouterr()
 
@@ -90,7 +90,7 @@ def test_check_reports_every_file_in_a_mixed_batch(capsys, tmp_path, mocker, moc
     # When: Checking all four at once
     args = ["check", str(good), str(broken), str(notes), str(missing)]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     captured = capsys.readouterr()
     output = captured.out + captured.err
@@ -115,7 +115,7 @@ def test_check_audio_only_file_fails(capsys, mock_video_path, mocker, mock_ffpro
     # When: Checking it
     args = ["check", str(mock_video_path)]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     captured = capsys.readouterr()
 
@@ -139,7 +139,7 @@ def test_check_deep_decodes_every_file(capsys, mock_video_path, mocker, mock_ffp
     # When: Checking it deeply
     args = ["check", "--deep", str(mock_video_path)]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     captured = capsys.readouterr()
 
@@ -161,7 +161,7 @@ def test_check_without_deep_does_not_decode(capsys, mock_video_path, mocker, moc
     # When: Checking it without `--deep`
     args = ["check", str(mock_video_path)]
     with pytest.raises(cappa.Exit):
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: No decode was attempted
     decode.assert_not_called()
@@ -190,7 +190,7 @@ def test_check_from_directory_reports_unreadable_files(capsys, tmp_path, mocker,
     # When: Checking the directory
     args = ["check", "--from", str(library)]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     captured = capsys.readouterr()
 
@@ -229,7 +229,7 @@ def test_check_from_reports_unreadable_files_despite_a_filter(
     # When: Checking with a filter the readable file does not match
     args = ["check", "--from", str(library), "--filters", "vp9"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     captured = capsys.readouterr()
 
@@ -248,7 +248,7 @@ def test_check_from_empty_directory_exits_zero(capsys, tmp_path):
     # When: Checking it
     args = ["check", "--from", str(library)]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     captured = capsys.readouterr()
 
@@ -265,7 +265,7 @@ def test_check_from_nonexistent_directory_errors(capsys, tmp_path):
     # When: Checking it
     args = ["check", "--from", str(missing)]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     captured = capsys.readouterr()
 
@@ -281,7 +281,7 @@ def test_check_rejects_from_combined_with_files(capsys, tmp_path, mock_video_pat
 
     # When: Checking
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     captured = capsys.readouterr()
 
@@ -297,7 +297,7 @@ def test_check_rejects_discovery_flags_without_from(capsys, mock_video_path):
 
     # When: Checking
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     captured = capsys.readouterr()
 
@@ -313,7 +313,7 @@ def test_check_with_no_arguments_errors(capsys):
 
     # When: Checking
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     captured = capsys.readouterr()
 
@@ -329,7 +329,7 @@ def test_check_does_not_accept_limit(capsys, mock_video_path):
 
     # When: Checking
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: The flag is rejected at parse time
     assert exc_info.value.code == 2
@@ -354,7 +354,7 @@ def test_check_prints_square_brackets_verbatim(capsys, tmp_path, mocker):
     # When: Checking it
     args = ["check", str(movie)]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     captured = capsys.readouterr()
 

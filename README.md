@@ -2,7 +2,7 @@
 
 [![Changelog](https://img.shields.io/github/v/release/natelandau/vid-cleaner?include_prereleases&label=changelog)](https://github.com/natelandau/vid-cleaner/releases) [![PyPI version](https://badge.fury.io/py/vid-cleaner.svg)](https://badge.fury.io/py/vid-cleaner) ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/vid-cleaner) [![Tests](https://github.com/natelandau/vid-cleaner/actions/workflows/automated-tests.yml/badge.svg)](https://github.com/natelandau/vid-cleaner/actions/workflows/automated-tests.yml) [![codecov](https://codecov.io/gh/natelandau/vid-cleaner/graph/badge.svg?token=NHBKL0B6CL)](https://codecov.io/gh/natelandau/vid-cleaner)
 
-Tools to transcode, inspect and convert videos. This package provides convenience wrappers around [ffmpeg](https://ffmpeg.org/) and [ffprobe](https://ffmpeg.org/ffprobe.html) to make it easier to work with video files. The functionality is highly customized to my personal workflows and needs. I am sharing it in case it is useful to others.
+Tools to transcode, inspect, and convert videos. vid-cleaner is a command-line wrapper around [ffmpeg](https://ffmpeg.org/) and [ffprobe](https://ffmpeg.org/ffprobe.html) that removes unwanted tracks, converts codecs, and finds or checks video files in a library. It is built for my own workflows, and I share it in case it is useful to others.
 
 ## Features
 
@@ -11,7 +11,7 @@ Tools to transcode, inspect and convert videos. This package provides convenienc
 -   Determine a video's original language from its filename, its container metadata, or the TMDb, Radarr, and Sonarr APIs
 -   Convert to H.265 or VP9
 -   Convert 4k to 1080p
--   Downmix any surround layout (5.1, 7.1, and Atmos above 7.1) into a stereo track when one is missing, or recreate an existing stereo track with `--force`, using a dialogue-forward filter that keeps speech clear
+-   Add a stereo track to a surround file (5.1, 7.1, or Atmos), with a mix that keeps dialogue clear
 -   Inspect the streams in a video file
 -   Create clips from a video file
 -   Search for video files under a directory that match specific criteria
@@ -19,15 +19,14 @@ Tools to transcode, inspect and convert videos. This package provides convenienc
 
 ## Install
 
-Before installing vid-cleaner, the following dependencies must be installed:
+vid-cleaner needs these programs:
 
--   [ffmpeg](https://ffmpeg.org/)
--   [ffprobe](https://ffmpeg.org/ffprobe.html)
--   python 3.11+
+-   Python 3.11 or later
+-   [ffmpeg](https://ffmpeg.org/) and [ffprobe](https://ffmpeg.org/ffprobe.html), on your `PATH`
 
-Every command except `cache` needs ffmpeg and ffprobe. If either program is absent from PATH, the command stops before it reads any file.
+Every command except `cache` needs ffmpeg and ffprobe. If either program is not on `PATH`, the command stops before it reads a file.
 
-To install vid-cleaner, run:
+To install vid-cleaner, run one of these commands:
 
 ```bash
 # With uv
@@ -39,27 +38,72 @@ python -m pip install --user vid-cleaner
 
 ## Usage
 
-Run `vidcleaner --help` to see the available commands and options.
+Run `vidcleaner --help` to see the commands, and `vidcleaner COMMAND --help` to see the options of one command. Every command accepts `--dryrun` (`-n`), which shows what the command will do without a change to a file.
 
 ### Inspecting a video file
 
-`vidcleaner inspect FILE` prints a table of the video, audio, and subtitle streams in a file, with the codec, language, and channel layout of each one. Use `--json` to print the raw ffprobe output instead.
+`vidcleaner inspect FILES` prints a table of the video, audio, and subtitle streams in each file, with the codec, language, and channel layout of each stream. Use `--json` to print the raw ffprobe output instead.
 
 ```shell
 vidcleaner inspect movie.mkv
 vidcleaner inspect --json movie.mkv
 ```
 
+### Cleaning a video file
+
+`vidcleaner clean FILES` removes the audio and subtitle tracks you do not want, and can convert the video in the same pass. With no options, it keeps the audio tracks in the languages that `langs_to_keep` names in the [configuration file](#configuration), plus the original language of the video.
+
+```shell
+# Keep only English audio and convert to H.265
+vidcleaner clean --langs=en --h265 movie.mkv
+
+# Add a stereo track and keep every subtitle track
+vidcleaner clean --downmix --keep-subs movie.mkv
+
+# Convert a 4k file to 1080p
+vidcleaner clean --1080p movie.mkv
+```
+
+These are the options you use most:
+
+| Option                     | Effect                                                                     |
+| -------------------------- | -------------------------------------------------------------------------- |
+| `-l`, `--langs`            | Languages to keep, as comma-separated ISO 639-1 codes (`en,es`)            |
+| `-H`, `--h265`             | Convert the video to H.265                                                 |
+| `-V`, `--vp9`              | Convert the video to VP9, in a WebM container                              |
+| `-p`, `--1080p`            | Convert a 4k video to 1080p                                                |
+| `-d`, `--downmix`          | Add a stereo track if the file has none. Add `--force` to recreate one.    |
+| `-s`, `--keep-subs`        | Keep every subtitle track                                                  |
+| `-c`, `--keep-commentary`  | Keep commentary audio tracks                                               |
+| `-f`, `--force`            | Process the file even if it is already in the requested format             |
+
+Run `vidcleaner clean --help` for the full list. To act on every file that matches a query, see [Cleaning what you searched for](#cleaning-what-you-searched-for).
+
+### Making a clip
+
+`vidcleaner clip FILES` cuts a section out of a video without a new encode. Set the start time with `--start` and the length with `--duration`, both in `HH:MM:SS` format. The defaults are `00:00:00` and one minute.
+
+```shell
+# A 90-second clip that starts ten minutes in
+vidcleaner clip --start=00:10:00 --duration=00:01:30 movie.mkv
+```
+
 ### Searching for video files
 
-`vidcleaner search DIRECTORY` finds video files under a directory and prints a table of matches. The directory defaults to the current directory. Narrow the search with `--filters`, control how deep it recurses with `--depth`, and change the order with `--sort` and `--reverse`. Use `--limit` to keep only the top results on the active sort key:
+`vidcleaner search DIRECTORY` finds video files under a directory and prints a table of matches. The directory defaults to the current directory. These options control the search:
+
+-   `--filters` keeps only files with the traits you name. Run `vidcleaner search --help` for the list of traits.
+-   `--depth` sets how many levels of subdirectories to search. The default, 0, searches only the directory itself.
+-   `--sort` orders the results by `alpha`, `size`, or `bitrate`, and `--reverse` flips the order.
+-   `--limit` keeps only the first N results after the sort.
+
 
 ```shell
 # The five largest 4k files, two directories deep
 vidcleaner search /media --filters=4k --sort=size --depth=2 --limit=5
 ```
 
-Listing several filters narrows the search rather than widening it: a file must have every trait you name to be returned.
+If you name several filters, a file must have every trait to match. More filters give fewer results.
 
 ```shell
 # Only 4k files that also have a 5.1 track and no stereo track to go with it
@@ -68,7 +112,7 @@ vidcleaner search /media --filters=4k,surround5,needs_stereo
 
 ### Cleaning what you searched for
 
-`clean` accepts the same query flags as `search`, so a `search` command is a preview of the `clean` command that acts on it. Swap the positional directory for `--from`:
+`clean` accepts the same query options as `search`, so a `search` command is a preview of the `clean` command that acts on the same files. To change a `search` command into a `clean` command, replace the directory with `--from DIRECTORY`:
 
 ```shell
 # Preview
@@ -78,21 +122,28 @@ vidcleaner search /media --filters=4k --sort=size --limit=5
 vidcleaner clean --from /media --filters=4k --sort=size --limit=5 --h265
 ```
 
-`clean` renders the same table `search` does, then asks for confirmation before transcoding anything. The prompt states whether each original will be backed up or overwritten in place. Pass `--yes` to skip the prompt in scripts and cron jobs, or `--dryrun` to preview without being asked. Running without a terminal and without `--yes` is an error rather than a hang.
+`clean` shows the same table as `search`, then asks you to confirm before it changes a file. The prompt tells you if each original gets a backup or is replaced in place. In scripts and cron jobs, use `--yes` to skip the prompt. If there is no terminal and you do not give `--yes`, the command stops with an error.
 
-`--from` cannot be combined with explicit file paths or with `--out`, and must name an existing directory. `--yes` and the query flags (`--filters`, `--sort`, `--reverse`, `--depth`, `--limit`) are only meaningful with `--from` and are refused without it. `--limit` must be 1 or greater.
+These rules apply to `--from`:
+
+-   `--from` must name a directory that exists.
+-   You cannot use `--from` together with file paths or with `--out`.
+-   `--yes` and the query options (`--filters`, `--sort`, `--reverse`, `--depth`, `--limit`) work only with `--from`.
+-   `--limit` must be 1 or more.
 
 ### Where the output goes
 
-`clean` and `clip` replace the file they were given. The original is not deleted: it is renamed alongside the result as a timestamped `.bak` copy. Pass `--overwrite` to skip the backup and rewrite the file in place with no way back, or `--out PATH` (single input file only) to write somewhere else and leave the input untouched.
+`clean` and `clip` replace the file you give them. The original file gets a new name with a timestamp and a `.bak` extension, in the same directory. To write the result to a different location and keep the input unchanged, use `--out PATH`. `--out` works only with one input file.
 
-`--vp9` is the exception, because VP9 has to go in a WebM container. `vidcleaner clean --vp9 movie.mkv` writes `movie.webm` next to the input. Without `--overwrite` the original `movie.mkv` is left where it is. With `--overwrite` it is removed, so the container change does not leave two copies of the same film on disk.
+> **CAUTION:** Do not use `--overwrite` unless you have a copy of the original. `--overwrite` replaces the original with no backup.
 
-When you clean or clip several files, a failure on one file does not stop the run. Every remaining file is still processed, failures are listed at the end, and the command exits with a non-zero status. `clean` and `clip` refuse a file that has no video stream, so an audio-only file with a video extension does not produce an output.
+`--vp9` writes a new file, because VP9 must go in a WebM container. `vidcleaner clean --vp9 movie.mkv` writes `movie.webm` in the same directory and keeps `movie.mkv`. With `--overwrite`, the command deletes `movie.mkv`.
+
+If one file fails when you clean or clip several files, the command continues with the other files. At the end, it lists the failures and exits with a non-zero status. `clean` and `clip` refuse a file that has no video stream.
 
 ### Checking that files are valid
 
-`vidcleaner check` reports whether each video file is valid. If any file is not valid, the command exits `1`. Use it to find damaged and mislabeled files in a library.
+`vidcleaner check` reports if each video file is valid. If a file is not valid, the command exits `1`. Use it to find damaged and mislabeled files in a library.
 
 ```shell
 # Two files named directly
@@ -124,28 +175,30 @@ Cover art does not count as a video stream. An audio-only file with an embedded 
 
 The command prints valid files to stdout and invalid files to stderr. To hide the invalid files, run `vidcleaner check FILES 2>/dev/null`.
 
-By default the command reads only the metadata of each file, which takes milliseconds. To decode every frame instead, use `--deep`. A deep check finds damage in the body of a file whose header is intact. It costs minutes for each file.
+By default, the command reads only the metadata of each file, which takes milliseconds. To decode every frame instead, use `--deep`. A deep check finds damage in the body of a file that has a correct header. It takes minutes for each file.
 
 ```shell
 # Fully decode every 4k file to find damage that ffprobe cannot see
 vidcleaner check --from /media --filters=4k --deep
 ```
 
-`check` accepts the same query flags as `search`, but it refuses `--limit`. A truncated selection can exit `0` while files stay unchecked. A trait filter never hides an invalid file, because a file that ffprobe cannot read has no traits.
+`check` accepts the same query options as `search`, except `--limit`. A limit can leave files unchecked while the command exits `0`. A trait filter never hides an invalid file, because the filter applies only to files that ffprobe can read.
 
 ### Configuration
 
-Defaults for vid-cleaner are set in the configuration file located at `~/.config/vid-cleaner/config.toml`. When vid-cleaner is run, it will create this file if it does not exist. All options can be overridden on the command line.
+The configuration file `~/.config/vid-cleaner/config.toml` sets the defaults for `clean`. If the file does not exist, vid-cleaner creates it with the defaults below the first time it runs.
 
-If you've updated your user config file, the flags for the cli will work in reverse order. For example, if you've set `downmix_stereo = true` in your user config file, the flag `--downmix` will actually disable downmixing.
+Each track option in the file (`langs_to_keep`, `keep_*`, `drop_*`, and `downmix_stereo`) has a `clean` flag. A flag reverses a `true` setting. For example, if you set `downmix_stereo = true`, then `--downmix` turns downmixing off for that run.
 
-**Important:** Vid-cleaner makes decisions about which audio and subtitle tracks to keep based on the original language of the video. To find that language, it looks for an IMDb or TMDB id in three places, stopping at the first one that resolves:
+To set a value without a change to the file, use an environment variable with the `VIDCLEANER_` prefix and the key in uppercase. For example, `VIDCLEANER_TMDB_API_KEY` sets `tmdb_api_key`. An environment variable overrides the file.
+
+vid-cleaner uses the original language of a video to select the audio and subtitle tracks to keep. To find that language, it looks for an IMDb or TMDB ID in three places, and stops at the first one that it finds:
 
 1. The filename, matching either a bare `tt0245712` or the `{tmdb-55}` naming convention.
-2. The container's own `IMDB` and `TMDB` metadata tags, as written by tools like mkvmerge.
+2. The `IMDB` and `TMDB` metadata tags in the container, as tools such as mkvmerge write them.
 3. A Radarr or Sonarr title search.
 
-The first two need only `tmdb_api_key` in the configuration file. Set the `radarr_` and `sonarr_` keys if you want the title search as a fallback.
+The first two places need only `tmdb_api_key`. To use the Radarr or Sonarr title search when the first two places have no ID, set the `radarr_` or `sonarr_` keys.
 
 ```toml
 # Languages to keep (list of ISO 639-1 codes)
@@ -177,15 +230,15 @@ sonarr_url     = ""
 tmdb_api_key   = ""
 ```
 
-### File Locations
+### File locations
 
-Vid-cleaner uses the [XDG specification](https://specifications.freedesktop.org/basedir-spec/latest/) for determining the locations of configuration files, logs, and caches.
+vid-cleaner keeps its files in the locations that the [XDG Base Directory specification](https://specifications.freedesktop.org/basedir-spec/latest/) defines:
 
--   Configuration file: `~/.config/vid-cleaner/config.toml`
--   Cache: `~/.cache/vid-cleaner`
+-   Configuration file: `~/.config/vid-cleaner/config.toml`, or `$XDG_CONFIG_HOME/vid-cleaner/config.toml` if `XDG_CONFIG_HOME` is set
+-   Cache: `~/.cache/vid-cleaner`, or `$XDG_CACHE_HOME/vid-cleaner` if `XDG_CACHE_HOME` is set
 
-Run `vidcleaner cache` to print the contents of the cache, and `vidcleaner cache --clear` to empty it.
+To print the contents of the cache, run `vidcleaner cache`. To empty the cache, run `vidcleaner cache --clear`.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for more information.
+To set up a development environment and run the checks, read [CONTRIBUTING.md](CONTRIBUTING.md).

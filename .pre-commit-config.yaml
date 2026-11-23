@@ -5,7 +5,7 @@ default_stages: [pre-commit, manual]
 fail_fast: true
 repos:
   - repo: "https://github.com/commitizen-tools/commitizen"
-    rev: v4.19.3
+    rev: ace110dad65751d559e9ffd239752f6f5e8f6f1e  # frozen: v4.20.0
     hooks:
       - id: commitizen
       - id: commitizen-branch
@@ -13,19 +13,16 @@ repos:
           - pre-push
 
   - repo: "https://github.com/pre-commit/pygrep-hooks"
-    rev: v1.10.0
+    rev: 3a6eb0fadf60b3cccfd80bad9dbb6fae7e47b316  # frozen: v1.10.0
     hooks:
       - id: python-check-mock-methods
       - id: python-no-eval
       - id: python-no-log-warn
       - id: python-use-type-annotations
-      - id: rst-backticks
-      - id: rst-directive-colons
-      - id: rst-inline-touching-normal
       - id: text-unicode-replacement-char
 
   - repo: "https://github.com/pre-commit/pre-commit-hooks"
-    rev: v6.0.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
       - id: check-added-large-files
       - id: check-ast
@@ -33,7 +30,7 @@ repos:
       - id: check-case-conflict
       - id: check-docstring-first
       - id: check-json
-        exclude: .devcontainer/|.vscode/|tests/
+        exclude: ^tests/
       - id: check-merge-conflict
       - id: check-shebang-scripts-are-executable
       - id: check-symlinks
@@ -46,25 +43,23 @@ repos:
       - id: fix-byte-order-marker
       - id: mixed-line-ending
       - id: trailing-whitespace
-        types: [python]
         args: [--markdown-linebreak-ext=md]
       - id: end-of-file-fixer
-        types: [python]
 
   - repo: "https://github.com/adrienverge/yamllint.git"
-    rev: v1.38.0
+    rev: cba56bcde1fdd01c1deb3f945e69764c291a6530  # frozen: v1.38.0
     hooks:
       - id: yamllint
         files: ^.*\.(yaml|yml)$
         entry: yamllint --strict --config-file .yamllint.yml
 
   - repo: "https://github.com/gitleaks/gitleaks"
-    rev: v8.30.1
+    rev: 83d9cd684c87d95d656c1458ef04895a7f1cbd8e  # frozen: v8.30.1
     hooks:
       - id: gitleaks
 
   - repo: "https://github.com/crate-ci/committed"
-    rev: v1.1.11
+    rev: 02af07ed1d11ad69a96ab75f08c9831a4e2c00da  # frozen: v1.1.12
     hooks:
       - id: committed
         stages: [commit-msg]
@@ -72,13 +67,13 @@ repos:
   # mirrors-typos is a fork of typos that removes the v.1 mutable tag.
   # Commit messages only; the duty typos hook below checks files.
   - repo: "https://github.com/adhtruong/mirrors-typos"
-    rev: v1.51.1
+    rev: 0c917027d64779efad4ad67fa85d47c666e33343  # frozen: v1.52.2
     hooks:
       - id: typos
         args: ["--force-exclude"]
         stages: [commit-msg]
 
-  # Gates run through duty so they share gate-cache markers with `duty lint` and `duty test`.
+  # Checks run through duty so they share gate-cache markers with `duty lint` and `duty test`.
   # Each id matches a name in PREK_SKIP of the precommit duty.
   - repo: local
     hooks:
@@ -98,13 +93,13 @@ repos:
         stages: [pre-commit, pre-push, manual]
         files: ^(.*\.py|pyproject\.toml|uv\.lock)$
 
-      - id: mypy
-        name: mypy
-        entry: uv run duty mypy
+      - id: ty
+        name: ty
+        entry: uv run duty ty
         language: system
         pass_filenames: false
         stages: [pre-commit, pre-push, manual]
-        files: ^(src/.*\.py|pyproject\.toml|uv\.lock)$
+        files: ^((src|tests)/.*\.py|pyproject\.toml|uv\.lock)$
 
       - id: typos
         name: typos
@@ -112,6 +107,22 @@ repos:
         language: system
         pass_filenames: false
         stages: [pre-commit, pre-push, manual]
+
+      - id: actionlint
+        name: actionlint
+        entry: uv run duty actionlint
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, pre-push, manual]
+        files: ^\.github/
+
+      - id: zizmor
+        name: zizmor
+        entry: uv run duty zizmor
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, pre-push, manual]
+        files: ^\.github/
 
       - id: pytest
         name: pytest
@@ -135,5 +146,5 @@ repos:
 #   autofix_prs: true
 #   autoupdate_commit_msg: "build: pre-commit autoupdate"
 #   autoupdate_schedule: quarterly
-#   skip: [pytest, mypy]
+#   skip: [pytest, ty]
 #   submodules: false

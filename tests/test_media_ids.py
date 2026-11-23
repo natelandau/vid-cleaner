@@ -1,4 +1,3 @@
-# type: ignore
 """Test media ID discovery from filenames and container tags."""
 
 from box import Box

@@ -48,7 +48,7 @@ def find_media_ids(stem: str, format_tags: Box) -> list[MediaId]:
         candidates.append(MediaId(source="imdb", value=match.group(1)))
 
     if (tmdb_tag := tags.get("tmdb")) and (match := TMDB_TAG_REGEX.search(tmdb_tag)):
-        # The regex only ever captures "movie", "tv", or nothing, but mypy can't see that.
+        # The regex only ever captures "movie", "tv", or nothing, but the type checker can't see that.
         media_type = (
             cast("Literal['movie', 'tv']", match.group(1).lower()) if match.group(1) else None
         )

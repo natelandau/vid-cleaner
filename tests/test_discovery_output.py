@@ -1,6 +1,6 @@
-# type: ignore
 """Test the shared discovery presenter."""
 
+import dataclasses
 from pathlib import Path
 
 import cappa
@@ -19,17 +19,17 @@ def make_report(**overrides) -> DiscoveryReport:
     Returns:
         DiscoveryReport: A report with every field defaulted unless overridden.
     """
-    defaults = {
-        "results": [],
-        "total": 0,
-        "skipped": [],
-        "truncated": 0,
-        "sort": SortOrder.ALPHA,
-        "descending": False,
-        "filters": set(),
-        "depth": 0,
-    }
-    return DiscoveryReport(**{**defaults, **overrides})
+    defaults = DiscoveryReport(
+        results=[],
+        total=0,
+        skipped=[],
+        truncated=0,
+        sort=SortOrder.ALPHA,
+        descending=False,
+        filters=set(),
+        depth=0,
+    )
+    return dataclasses.replace(defaults, **overrides)
 
 
 def test_present_exits_zero_when_nothing_found(capsys, tmp_path):

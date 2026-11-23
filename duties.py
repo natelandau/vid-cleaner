@@ -18,6 +18,7 @@ PY_SRC_PATHS = (Path(_) for _ in ("src/", "tests/", "duties.py", "scripts/") if 
 PY_SRC_LIST = tuple(str(_) for _ in PY_SRC_PATHS)
 CI = os.environ.get("CI", "").strip().lower() in {"1", "true", "yes"}
 DEV_DIR = Path(__file__).parent.absolute() / ".dev"
+PYTEST_JUNIT_REPORT = ".cache/pytest.xml"  # Written by the --junitxml in pytest addopts
 
 
 def strip_ansi(text: str) -> str:
@@ -35,17 +36,19 @@ def strip_ansi(text: str) -> str:
     return ansi_chars.sub("", text).replace("[", r"\[")
 
 
-def gated(name: str, cmd: list[str]) -> list[str]:
+def gated(name: str, cmd: list[str], junit: str | None = None) -> list[str]:
     """Wrap a gate command in gate-cache so it skips on a tree where it already passed.
 
     Args:
         name (str): Marker name for the gate.
         cmd (list[str]): Command to run.
+        junit (str | None): JUnit XML report the command writes, recorded in gate-cache stats.
 
     Returns:
         list[str]: The command prefixed with the gate-cache invocation.
     """
-    return ["gate-cache", "--name", name, "--", *cmd]
+    junit_args = ["--junit", junit] if junit else []
+    return ["gate-cache", "--name", name, *junit_args, "--", *cmd]
 
 
 def pyprefix(title: str) -> str:
@@ -75,7 +78,7 @@ def clean(ctx: Context) -> None:
 def ruff(ctx: Context) -> None:
     """Check the code quality with ruff."""
     ctx.run(
-        gated("ruff", ["ruff", "check", "--config", "pyproject.toml", "--no-fix", *PY_SRC_LIST]),
+        ["ruff", "check", "--config", "pyproject.toml", "--no-fix", *PY_SRC_LIST],
         title=pyprefix("code quality check"),
     )
 
@@ -84,19 +87,17 @@ def ruff(ctx: Context) -> None:
 def format(ctx: Context) -> None:  # noqa: A001
     """Format the code with ruff."""
     ctx.run(
-        gated("format", ["ruff", "format", "--check", "--config", "pyproject.toml", *PY_SRC_LIST]),
+        ["ruff", "format", "--check", "--config", "pyproject.toml", *PY_SRC_LIST],
         title=pyprefix("code formatting"),
     )
 
 
 @duty
-def mypy(ctx: Context) -> None:
-    """Check the code with mypy."""
-    os.environ["FORCE_COLOR"] = "1"
-    ctx.run(
-        gated("mypy", ["mypy", "--config-file", "pyproject.toml", "src/"]),
-        title=pyprefix("mypy check"),
-    )
+def ty(ctx: Context) -> None:
+    """Check types in src/ and tests/ with ty."""
+    # GitHub output turns each diagnostic into an annotation on the pull request
+    output_format = ["--output-format", "github"] if CI else []
+    ctx.run(["ty", "check", *output_format], title=pyprefix("ty check"))
 
 
 @duty
@@ -108,16 +109,31 @@ def typos(ctx: Context) -> None:
     )
 
 
+@duty
+def actionlint(ctx: Context) -> None:
+    """Check GitHub Actions workflows for errors with actionlint."""
+    # actionlint checks `run:` scripts only when shellcheck, from shellcheck-py, is on PATH
+    ctx.run(["actionlint"], title=pyprefix("actionlint check"))
+
+
+@duty
+def zizmor(ctx: Context) -> None:
+    """Check GitHub Actions workflows for security problems with zizmor."""
+    # Offline keeps the check free of network access and a GitHub token
+    output_format = ["--format", "github"] if CI else []
+    ctx.run(["zizmor", "--offline", *output_format, ".github"], title=pyprefix("zizmor check"))
+
+
 @duty(skip_if=CI, skip_reason="skip prek in CI environments")
 def precommit(ctx: Context) -> None:
     """Run prek hooks."""
     ctx.run(
-        "PREK_SKIP=ruff,format,mypy,typos,pytest gate-cache --name prek -- prek run --all-files",
+        "PREK_SKIP=ruff,format,ty,typos,actionlint,zizmor,pytest gate-cache --name prek -- prek run --all-files",
         title=pyprefix("prek hooks"),
     )
 
 
-@duty(pre=[ruff, format, mypy, typos, precommit], capture=CI)
+@duty(pre=[ruff, format, ty, typos, actionlint, zizmor, precommit], capture=CI)
 def lint(ctx: Context) -> None:
     """Run all linting duties."""
 
@@ -127,27 +143,20 @@ def update(ctx: Context) -> None:
     """Update the project."""
     ctx.run(["uv", "lock", "--upgrade"], title="update uv lock")
     ctx.run(["uv", "sync"], title="sync uv")
-    ctx.run(["prek", "autoupdate"], title="prek autoupdate")
+    # Pin hooks to commit hashes so a moved tag cannot change what runs on commit
+    ctx.run(["prek", "autoupdate", "--freeze"], title="prek autoupdate")
 
 
 @duty()
 def test(ctx: Context, *cli_args: str) -> None:
     """Test package and generate coverage reports."""
-    cmd = [
-        "pytest",
-        "tests",
-        "-c",
-        "pyproject.toml",
-        "--color=yes",
-        "--cov",
-        "--cov-config=pyproject.toml",
-        "--cov-report=xml",
-        "--cov-report=term",
-        *cli_args,
-    ]
-    # Arguments go in the marker name so a filtered pass never skips the full suite
+    # Locally, stop at the first failure and rerun earlier failures first. CI runs
+    # every test so one push reports every failure.
+    fail_fast = [] if CI else ["--exitfirst", "--failed-first"]
+    cmd = ["pytest", "--cov", "--cov-report=xml", "--cov-report=term", *fail_fast, *cli_args]
+    # A filtered run is not gated: its pass must never skip the full suite
     ctx.run(
-        gated(" ".join(("test", *cli_args)), cmd),
+        cmd if cli_args else gated("test", cmd, junit=PYTEST_JUNIT_REPORT),
         title=pyprefix("Running tests"),
         capture=CI,
     )

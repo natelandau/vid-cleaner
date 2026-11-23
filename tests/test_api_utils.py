@@ -1,4 +1,3 @@
-# type: ignore
 """Test API utilities."""
 
 import httpx
@@ -28,7 +27,7 @@ def tmdb_no_key():
     settings.set("TMDB_API_KEY", previous)
 
 
-def _response(status_code: int, payload: dict) -> httpx.Response:
+def _response(status_code: int, payload: dict[str, object]) -> httpx.Response:
     """Build an httpx response bound to a request, as raise_for_status requires."""
     return httpx.Response(
         status_code=status_code,

@@ -50,13 +50,14 @@ def check_from_directory(check_cmd: CheckCommand) -> list[CheckResult]:
     Raises:
         cappa.Exit: If `--from` does not name an existing directory.
     """
-    if not check_cmd.from_.is_dir():
-        pp.error(f"`--from` must be an existing directory: {check_cmd.from_}")
+    from_dir = check_cmd.from_
+    if from_dir is None or not from_dir.is_dir():
+        pp.error(f"`--from` must be an existing directory: {from_dir}")
         raise cappa.Exit(code=1)
 
     discovery = check_cmd.discovery
     report = discover_video_files(
-        check_cmd.from_,
+        from_dir,
         depth=discovery.depth,
         filters=set(settings.filters),
         sort=discovery.sort,

@@ -19,7 +19,7 @@ from vid_cleaner.utils.ffmpeg_utils import decode_check
         pytest.param({"index": 0, "codec_type": 12}, id="non_string_codec_type"),
     ],
 )
-def test_get_probe_as_box_rejects_undescribable_streams(mocker, stream: dict) -> None:
+def test_get_probe_as_box_rejects_undescribable_streams(mocker, stream: dict[str, object]) -> None:
     """Verify a stream this model cannot describe raises VideoProbeError rather than crashing."""
     # Given: ffprobe succeeds but reports a stream with no usable codec type
     mocker.patch(

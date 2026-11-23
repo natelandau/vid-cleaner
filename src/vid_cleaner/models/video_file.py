@@ -2,6 +2,7 @@
 
 import re
 from pathlib import Path
+from typing import Any
 
 import cappa
 from box import Box
@@ -1015,7 +1016,7 @@ class VideoFile:
 
         return self._run_ffmpeg(ffmpeg_command, title="Clip video", step="clip")
 
-    def ffprobe_json(self) -> dict:
+    def ffprobe_json(self) -> dict[str, Any]:
         """Run ffprobe on the video file and return the JSON response.
 
         Returns:

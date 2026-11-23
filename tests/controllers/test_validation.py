@@ -1,4 +1,3 @@
-# type: ignore
 """Test the video file validator behind the `check` subcommand."""
 
 from pathlib import Path
@@ -98,6 +97,7 @@ def test_unlaunchable_ffprobe_fails_the_file_not_the_run(mock_video_path, mocker
 
     # Then: The batch gets a verdict naming the missing binary
     assert result.ok is False
+    assert result.reason is not None
     assert "ffprobe" in result.reason
 
 
