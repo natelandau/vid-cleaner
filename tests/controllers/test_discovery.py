@@ -9,7 +9,13 @@ from vid_cleaner.exceptions import VideoProbeError
 
 @pytest.mark.parametrize(
     ("raw", "expected"),
-    [("5000000", 5_000_000), (5_000_000, 5_000_000), (None, 0), ("", 0), ("abc", 0)],
+    [
+        pytest.param("5000000", 5_000_000, id="numeric_string"),
+        pytest.param(5_000_000, 5_000_000, id="integer"),
+        pytest.param(None, 0, id="missing"),
+        pytest.param("", 0, id="empty_string"),
+        pytest.param("abc", 0, id="unparsable"),
+    ],
 )
 def test_coerce_bitrate(raw, expected):
     """Verify ffprobe's string, integer, missing, and unparsable bitrates all yield an int."""

@@ -12,7 +12,7 @@ uv run duty test -k downmix   # extra args are passed through to pytest
 uv run duty dev_setup         # generate sample .mkv files under .dev/ with ffmpeg
 ```
 
-`addopts` includes `--exitfirst` and `--failed-first`, so a run stops at the first failure and reruns previous failures first. `testpaths` includes `src`, so a bare `uv run pytest` also runs `--doctest-modules` over the package; `duty test` passes `tests` explicitly and skips those doctests.
+Locally, `duty test` adds `--exitfirst` and `--failed-first`, so a run stops at the first failure and reruns previous failures first. In CI it runs every test. `testpaths` covers `src` and `tests`, so doctests in the package run with the suite. pytest runs in strict mode with every warning as an error, so an unregistered marker, a duplicate parametrize ID, or a new deprecation warning fails the run. Coverage below 90% fails it too.
 
 Run checks only through `duty lint` and `duty test`, never by calling ruff, ty, typos, or pytest directly. The typos, prek, and test duties run through gate-cache, so a gate that already passed on the same non-ignored file content prints `already passed on tree ..., skipping` and exits 0, and a direct run neither reads nor records those passes. The prek hooks call the same duties and share the markers. ruff and ty are not gated because each runs faster than a gate-cache skip saves. `duty test` with pytest arguments runs ungated, so a filtered pass never skips the full suite. `uv run gate-cache status` shows what passed; `GATE_CACHE_DISABLE=1` forces a real run. CI sets `CI=true`, which turns caching off. Run `uv run gate-cache --skill` before adding or changing a gate.
 

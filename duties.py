@@ -134,18 +134,10 @@ def update(ctx: Context) -> None:
 @duty()
 def test(ctx: Context, *cli_args: str) -> None:
     """Test package and generate coverage reports."""
-    cmd = [
-        "pytest",
-        "tests",
-        "-c",
-        "pyproject.toml",
-        "--color=yes",
-        "--cov",
-        "--cov-config=pyproject.toml",
-        "--cov-report=xml",
-        "--cov-report=term",
-        *cli_args,
-    ]
+    # Locally, stop at the first failure and rerun earlier failures first. CI runs
+    # every test so one push reports every failure.
+    fail_fast = [] if CI else ["--exitfirst", "--failed-first"]
+    cmd = ["pytest", "--cov", "--cov-report=xml", "--cov-report=term", *fail_fast, *cli_args]
     # A filtered run is not gated: its pass must never skip the full suite
     ctx.run(
         cmd if cli_args else gated("test", cmd, junit=PYTEST_JUNIT_REPORT),
