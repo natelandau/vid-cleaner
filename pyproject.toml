@@ -101,7 +101,12 @@
 [tool.pytest] # https://docs.pytest.org/en/stable/reference/reference.html#configuration-options
     addopts        = ["--color=yes", "--doctest-modules", "--junitxml=.cache/pytest.xml"]
     cache_dir      = ".cache/pytest"
-    filterwarnings = ["error"]
+    filterwarnings = [
+        "error",
+        # cappa enters every parsed value that is a context manager, and on Python 3.11
+        # and 3.12 a Path is one, so each Path-typed option warns. Python 3.13 removed it.
+        'ignore:pathlib.Path.__enter__:DeprecationWarning',
+    ]
     minversion     = "9.0"
     strict         = true
     testpaths      = ["src", "tests"]
