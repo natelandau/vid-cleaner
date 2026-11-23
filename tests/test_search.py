@@ -1,10 +1,10 @@
-# type: ignore
 """Test the search command."""
 
 from pathlib import Path
 
 import cappa
 import pytest
+from cappa.base import invoke
 
 from vid_cleaner import settings
 from vid_cleaner.exceptions import VideoProbeError
@@ -40,7 +40,7 @@ def test_search_no_video_files(tmp_path, capsys, mocker, debug):
     args = ["search", str(directory)]
 
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().err
     # Then: The command should return no results
@@ -69,7 +69,7 @@ def test_search_with_results(
     )
 
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
     # Then: The command should return results
@@ -101,7 +101,7 @@ def test_search_with_no_results(
     )
 
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output, error = capsys.readouterr()
     # Then: The command should return results
@@ -124,7 +124,7 @@ def test_search_filters_combine_with_and(capsys, mocker, mock_video_path, mock_f
     # When: Searching for a trait it has together with one it lacks
     args = ["search", str(mock_video_path.parent), "--filters", "h264,reorder"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     _, error = capsys.readouterr()
 
@@ -151,7 +151,7 @@ def test_search_no_results_reports_skipped_count(capsys, mock_video_path, mocker
     # success-path table caption (the usual home for the skipped count) never renders
     args = ["search", str(mock_video_path.parent), "--filters", "reorder"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     _, error = capsys.readouterr()
 
@@ -195,7 +195,7 @@ def test_search_skips_unreadable_files(
 
     # When: Running the search command
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output, error = capsys.readouterr()
     debug(output + error, "output")
@@ -231,7 +231,7 @@ def test_search_skips_files_that_vanish_before_stat(
     # When: Running the search command
     args = ["search", str(mock_video_path.parent), "--filters", "h264"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
 
@@ -268,7 +268,7 @@ def test_search_sort_orders_results(capsys, video_library, sort_args, expected_o
     # When: Running the search command with the given sort arguments
     args = ["search", str(directory), "--filters", "h264", *sort_args]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
 
@@ -286,7 +286,7 @@ def test_search_sort_alpha_uses_full_path(capsys, video_library):
     # When: Running a recursive search with the default sort
     args = ["search", str(directory), "--depth", "1", "--filters", "h264"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
 
@@ -303,7 +303,7 @@ def test_search_table_shows_relative_directory_when_recursive(capsys, video_libr
     # When: Running a recursive search
     args = ["search", str(directory), "--depth", "1", "--filters", "h264"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
 
@@ -320,7 +320,7 @@ def test_search_table_omits_directory_when_not_recursive(capsys, video_library):
     # When: Running a non-recursive search (the default depth)
     args = ["search", str(directory), "--filters", "h264"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
 
@@ -338,7 +338,7 @@ def test_search_sort_bitrate_handles_missing_bitrate(capsys, video_library):
     # When: Sorting by bitrate
     args = ["search", str(directory), "--filters", "h264", "--sort", "bitrate"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
 
@@ -361,7 +361,7 @@ def test_search_sort_ties_are_deterministic(capsys, video_library, mocker):
     # When: Sorting by size
     args = ["search", str(directory), "--filters", "h264", "--sort", "size"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
 
@@ -377,7 +377,7 @@ def test_search_rejects_unknown_sort_key(capsys):
 
     # When: Running the search command
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: The command exits with an error
     assert exc_info.value.code != 0
@@ -391,7 +391,7 @@ def test_search_table_shows_size_and_bitrate(capsys, video_library):
     # When: Running the search command
     args = ["search", str(directory), "--filters", "h264"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
 
@@ -411,12 +411,12 @@ def test_search_table_marks_the_active_sort_column(capsys, video_library):
     # When: Sorting by size
     args = ["search", str(directory), "--filters", "h264", "--sort", "size"]
     with pytest.raises(cappa.Exit):
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
     forward = capsys.readouterr().out
 
     # When: Sorting by size in reverse
     with pytest.raises(cappa.Exit):
-        cappa.invoke(obj=VidCleaner, argv=[*args, "--reverse"], deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=[*args, "--reverse"], deps=[config_subcommand])
     reversed_output = capsys.readouterr().out
 
     # Then: The arrow marks the size column and flips with --reverse
@@ -432,12 +432,12 @@ def test_search_table_arrow_reports_the_direction_rows_run(capsys, video_library
     # When: Sorting alphabetically, which ascends by default
     args = ["search", str(directory), "--filters", "h264"]
     with pytest.raises(cappa.Exit):
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
     forward = capsys.readouterr().out
 
     # When: Reversing that order
     with pytest.raises(cappa.Exit):
-        cappa.invoke(obj=VidCleaner, argv=[*args, "--reverse"], deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=[*args, "--reverse"], deps=[config_subcommand])
     reversed_output = capsys.readouterr().out
 
     # Then: A→Z rows carry the up arrow and Z→A rows the down arrow, matching the
@@ -456,7 +456,7 @@ def test_search_table_caption_reports_counts(capsys, video_library):
     # When: Running a search whose filter matches both
     args = ["search", str(directory), "--filters", "h264"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
 
@@ -479,7 +479,7 @@ def test_search_limit_keeps_top_results(capsys, video_library):
     # When: Asking for the two largest
     args = ["search", str(directory), "--filters", "h264", "--sort", "size", "--limit", "2"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
 
@@ -504,7 +504,7 @@ def test_search_limit_caption_reports_truncation(capsys, video_library):
     # When: Limiting to two
     args = ["search", str(directory), "--filters", "h264", "--sort", "size", "--limit", "2"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
 
@@ -522,7 +522,7 @@ def test_search_without_limit_caption_omits_truncation(capsys, video_library):
     # When: Searching with no limit
     args = ["search", str(directory), "--filters", "h264"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
 
@@ -551,7 +551,7 @@ def test_search_table_caption_reports_skipped_files(
     # When: Running the search command
     args = ["search", str(mock_video_path.parent), "--filters", "h264"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
 

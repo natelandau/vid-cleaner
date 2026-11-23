@@ -1,4 +1,3 @@
-# type: ignore
 """Test VideoFile single-pass conversion planning."""
 
 from pathlib import Path

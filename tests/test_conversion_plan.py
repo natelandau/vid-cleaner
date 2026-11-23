@@ -1,4 +1,3 @@
-# type: ignore
 """Test the ConversionPlan model."""
 
 from vid_cleaner.constants import CodecTypes

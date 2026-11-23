@@ -4,6 +4,7 @@ from pathlib import Path
 
 import cappa
 import pytest
+from cappa.base import invoke
 
 from vid_cleaner import settings
 from vid_cleaner.utils import copy_to_output
@@ -21,7 +22,7 @@ def test_vidcleaner_cli_help(capsys, subcommand: str) -> None:
 
     # When: Invoking CLI with help flag
     with pytest.raises(cappa.Exit):
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Help output contains expected information
     output = capsys.readouterr().out
@@ -43,7 +44,7 @@ def test_config_subcommand_persists_verbosity(
 
     # When: invoking the CLI with config_subcommand as a dependency
     with pytest.raises(cappa.Exit):
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: the computed verbosity from the CLI flag is persisted onto settings
     capsys.readouterr()
@@ -216,7 +217,7 @@ def test_missing_binaries_stops_the_run(capsys, mocker, missing, expected) -> No
     # When: Running a command that needs them
     args = ["check", "movie.mkv"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[verify_required_binaries])
+        invoke(obj=VidCleaner, argv=args, deps=[verify_required_binaries])
 
     captured = capsys.readouterr()
 
@@ -233,7 +234,7 @@ def test_present_binaries_allow_the_run(mocker) -> None:
     # When: Running the preflight for a command that needs them
     args = ["check", "movie.mkv"]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[verify_required_binaries])
+        invoke(obj=VidCleaner, argv=args, deps=[verify_required_binaries])
 
     # Then: The run reaches the command itself rather than stopping at the preflight
     assert exc_info.value.code == 1  # `movie.mkv` does not exist
@@ -250,7 +251,7 @@ def test_cache_runs_without_ffmpeg(capsys, mocker, tmp_path) -> None:
 
     # When: Running the cache command
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=["cache"], deps=[verify_required_binaries])
+        invoke(obj=VidCleaner, argv=["cache"], deps=[verify_required_binaries])
 
     captured = capsys.readouterr()
 
@@ -272,7 +273,7 @@ def test_invalid_filter_is_a_usage_error(capsys, args):
     """Verify a bad `--filters` value fails at parse time like every other discovery flag."""
     # When: Parsing a filter that names no trait
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: The usage-error exit code and message name the flag and the bad value
     _, error = capsys.readouterr()

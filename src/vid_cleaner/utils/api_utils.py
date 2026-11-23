@@ -1,6 +1,6 @@
 """API utilities."""
 
-from typing import Literal
+from typing import Any, Literal
 
 import httpx
 from nclutils import pp
@@ -9,7 +9,7 @@ from rich.json import JSON
 from vid_cleaner import settings
 
 
-def query_tmdb(search: str) -> dict:  # pragma: no cover
+def query_tmdb(search: str) -> dict[str, Any]:  # pragma: no cover
     """Query The Movie Database API for a movie title.
 
     Args:
@@ -46,7 +46,9 @@ def query_tmdb(search: str) -> dict:  # pragma: no cover
     return response.json()
 
 
-def query_tmdb_by_id(tmdb_id: str, media_type: Literal["movie", "tv"] | None = None) -> dict:
+def query_tmdb_by_id(
+    tmdb_id: str, media_type: Literal["movie", "tv"] | None = None
+) -> dict[str, Any]:
     """Query The Movie Database API by its own ID rather than an external ID.
 
     Args:
@@ -87,7 +89,7 @@ def query_tmdb_by_id(tmdb_id: str, media_type: Literal["movie", "tv"] | None = N
     return {}
 
 
-def query_radarr(search: str) -> dict:  # pragma: no cover
+def query_radarr(search: str) -> dict[str, Any]:  # pragma: no cover
     """Query Radarr API for a movie title.
 
     Args:
@@ -121,7 +123,7 @@ def query_radarr(search: str) -> dict:  # pragma: no cover
     return response.json()
 
 
-def query_sonarr(search: str) -> dict:  # pragma: no cover
+def query_sonarr(search: str) -> dict[str, Any]:  # pragma: no cover
     """Query Sonarr API for a movie title.
 
     Args:

@@ -1,4 +1,3 @@
-# type: ignore
 """Test the vidcleaner settings configuration."""
 
 from vid_cleaner.config import SettingsManager

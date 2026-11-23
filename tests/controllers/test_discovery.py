@@ -1,4 +1,3 @@
-# type: ignore
 """Test the discovery controller."""
 
 import pytest

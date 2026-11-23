@@ -1,8 +1,8 @@
-# type: ignore
 """Test cache subcommand."""
 
 import cappa
 import pytest
+from cappa.base import invoke
 
 from vid_cleaner import settings
 from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
@@ -36,7 +36,7 @@ def test_cache_list(tmp_cache_dir, capsys, debug):
 
     # When: Invoking cache list command
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Output contains expected tree structure
     output = capsys.readouterr().out
@@ -54,7 +54,7 @@ def test_cache_clean(tmp_cache_dir, capsys, debug):
 
     # When: Invoking cache clean command
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Success message is displayed
     output = capsys.readouterr().out

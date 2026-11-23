@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Annotated
 
 import cappa
+from cappa.base import command, invoke
 from nclutils import pp
 from rich.traceback import install
 
@@ -167,7 +168,7 @@ class DiscoveryOptions(SelectionOptions):
     ] = None
 
 
-@cappa.command(
+@command(
     name="vidcleaner",
     description=f"""Transcode video files to different formats or configurations using ffmpeg. This script provides a simple CLI for common video transcoding tasks.
 
@@ -229,7 +230,7 @@ class VidCleaner:
     ] = False
 
 
-@cappa.command(
+@command(
     name="clean",
     invoke="vid_cleaner.cli.clean_video.main",
     help="Clean a video file",
@@ -422,7 +423,7 @@ class CleanCommand:
     discovery: cappa.Destructured[DiscoveryOptions] = field(default_factory=DiscoveryOptions)
 
 
-@cappa.command(
+@command(
     name="inspect",
     invoke="vid_cleaner.cli.inspect_video.main",
     help="Inspect a video file",
@@ -450,7 +451,7 @@ class InspectCommand:
     ] = False
 
 
-@cappa.command(
+@command(
     name="clip",
     invoke="vid_cleaner.cli.clip_video.main",
     help="Clip a video file",
@@ -510,7 +511,7 @@ class ClipCommand:
     ] = False
 
 
-@cappa.command(
+@command(
     name="check",
     invoke="vid_cleaner.cli.check_video.main",
     help="Check that video files are valid",
@@ -579,7 +580,7 @@ class CheckCommand:
     discovery: cappa.Destructured[SelectionOptions] = field(default_factory=SelectionOptions)
 
 
-@cappa.command(
+@command(
     name="cache",
     help="View and clear the vidcleaner cache",
     invoke="vid_cleaner.cli.cache.main",
@@ -593,7 +594,7 @@ class CacheCommand:
     ] = False
 
 
-@cappa.command(
+@command(
     name="search",
     help="Search for video files under a directory",
     description="""\
@@ -635,7 +636,7 @@ def main() -> None:  # pragma: no cover
     install(show_locals=False)
 
     try:
-        cappa.invoke(
+        invoke(
             obj=VidCleaner,
             deps=[create_default_config, verify_required_binaries, config_subcommand],
             completion=False,

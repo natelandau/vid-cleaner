@@ -75,9 +75,11 @@ def coerce_bitrate(raw: str | int | None) -> int:
     Returns:
         int: The bitrate in bits per second, or 0 when it is missing or unparsable.
     """
+    if raw is None:
+        return 0
     try:
         return int(raw)
-    except (TypeError, ValueError):
+    except ValueError:
         return 0
 
 
@@ -130,7 +132,7 @@ def discover_video_files(
             )
 
         live.update(
-            f"[dim]Found {len(video_files)} video files in {i + 1}/{len(directories_to_search)} directories[/dim]"
+            f"[dim]Found {len(video_files)} video files in {len(directories_to_search)}/{len(directories_to_search)} directories[/dim]"
         )
         live.stop()
 

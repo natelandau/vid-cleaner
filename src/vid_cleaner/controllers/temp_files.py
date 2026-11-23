@@ -68,7 +68,7 @@ class TempFile:
         """
         return self.created_tmp_files[-1] if self.created_tmp_files else self.path
 
-    def new_tmp_path(self, suffix: str = "", step_name: str = "") -> Path:
+    def new_tmp_path(self, suffix: str | None = None, step_name: str | None = None) -> Path:
         """Generate a new tmp path for the creation of a new temporary file.
 
         Creates a new unique path for a temporary file in the temp directory. The path

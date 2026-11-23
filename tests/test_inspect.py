@@ -1,4 +1,3 @@
-# type: ignore
 """Test the vidcleaner inspect subcommand."""
 
 import re
@@ -6,6 +5,7 @@ from pathlib import Path
 
 import cappa
 import pytest
+from cappa.base import invoke
 
 from vid_cleaner import settings
 from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
@@ -23,7 +23,7 @@ def test_inspect_table(tmp_path, capsys, debug, mock_video_path, mock_ffprobe_bo
 
     # When: Running inspect command
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Output contains expected table data
     output = capsys.readouterr().out
@@ -51,7 +51,7 @@ def test_inspect_title_shows_file_size(capsys, mock_video_path, mocker, mock_ffp
     # When: Inspecting the file
     args = ["inspect", str(mock_video_path)]
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     output = capsys.readouterr().out
 
@@ -72,7 +72,7 @@ def test_inspect_json(tmp_path, capsys, debug, mock_video_path, mock_ffprobe, mo
 
     # When: Running inspect command with JSON flag
     with pytest.raises(cappa.Exit) as exc_info:
-        cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
 
     # Then: Output contains expected JSON data
     output = capsys.readouterr().out

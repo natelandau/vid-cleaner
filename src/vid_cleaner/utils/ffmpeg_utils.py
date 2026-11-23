@@ -1,6 +1,7 @@
 """Helper utilities."""
 
 from pathlib import Path
+from typing import Any
 
 import ffmpeg as python_ffmpeg
 from box import Box
@@ -43,7 +44,7 @@ def channels_to_layout(channels: int) -> AudioLayout | None:
     return None
 
 
-def run_ffprobe(path: Path) -> dict:  # pragma: no cover
+def run_ffprobe(path: Path) -> dict[str, Any]:  # pragma: no cover
     """Probe video file and return a dict.
 
     Args:

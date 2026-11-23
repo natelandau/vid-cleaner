@@ -93,13 +93,11 @@ def format(ctx: Context) -> None:  # noqa: A001
 
 
 @duty
-def mypy(ctx: Context) -> None:
-    """Check the code with mypy."""
-    os.environ["FORCE_COLOR"] = "1"
-    ctx.run(
-        gated("mypy", ["mypy", "--config-file", "pyproject.toml", "src/"]),
-        title=pyprefix("mypy check"),
-    )
+def ty(ctx: Context) -> None:
+    """Check types in src/ and tests/ with ty."""
+    # GitHub output turns each diagnostic into an annotation on the pull request
+    output_format = ["--output-format", "github"] if CI else []
+    ctx.run(["ty", "check", *output_format], title=pyprefix("ty check"))
 
 
 @duty
@@ -115,12 +113,12 @@ def typos(ctx: Context) -> None:
 def precommit(ctx: Context) -> None:
     """Run prek hooks."""
     ctx.run(
-        "PREK_SKIP=ruff,format,mypy,typos,pytest gate-cache --name prek -- prek run --all-files",
+        "PREK_SKIP=ruff,format,ty,typos,pytest gate-cache --name prek -- prek run --all-files",
         title=pyprefix("prek hooks"),
     )
 
 
-@duty(pre=[ruff, format, mypy, typos, precommit], capture=CI)
+@duty(pre=[ruff, format, ty, typos, precommit], capture=CI)
 def lint(ctx: Context) -> None:
     """Run all linting duties."""
 

@@ -98,13 +98,13 @@ repos:
         stages: [pre-commit, pre-push, manual]
         files: ^(.*\.py|pyproject\.toml|uv\.lock)$
 
-      - id: mypy
-        name: mypy
-        entry: uv run duty mypy
+      - id: ty
+        name: ty
+        entry: uv run duty ty
         language: system
         pass_filenames: false
         stages: [pre-commit, pre-push, manual]
-        files: ^(src/.*\.py|pyproject\.toml|uv\.lock)$
+        files: ^((src|tests)/.*\.py|pyproject\.toml|uv\.lock)$
 
       - id: typos
         name: typos
@@ -135,5 +135,5 @@ repos:
 #   autofix_prs: true
 #   autoupdate_commit_msg: "build: pre-commit autoupdate"
 #   autoupdate_schedule: quarterly
-#   skip: [pytest, mypy]
+#   skip: [pytest, ty]
 #   submodules: false

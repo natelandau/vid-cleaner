@@ -44,7 +44,6 @@
         "coverage>=7.17.0",
         "duty>=1.10.1",
         "gate-cache>=0.12.0",
-        "mypy>=2.4.1",
         "prek>=0.5.9",
         "pytest-clarity>=1.0.1",
         "pytest-cov>=7.1.0",
@@ -56,6 +55,7 @@
         "pytest-xdist>=3.8.0",
         "pytest>=9.2.0",
         "ruff>=0.17.3",
+        "ty>=0.0.108",
         "typos>=1.51.1",
         "yamllint>=1.38.0",
     ]
@@ -91,25 +91,16 @@
 [tool.coverage.xml]
     output = ".cache/coverage.xml"
 
-[tool.mypy] # https://mypy.readthedocs.io/en/latest/config_file.html
-    cache_dir                   = ".cache/mypy"
-    disallow_any_unimported     = false
-    disallow_subclassing_any    = false
-    disallow_untyped_decorators = false
-    disallow_untyped_defs       = true
-    exclude                     = ['duties.py', 'tests/']
-    follow_imports              = "normal"
-    ignore_missing_imports      = true
-    junit_xml                   = ".cache/mypy.xml"
-    no_implicit_optional        = true
-    pretty                      = false
-    show_column_numbers         = true
-    show_error_codes            = true
-    show_error_context          = true
-    strict_optional             = false
-    warn_redundant_casts        = true
-    warn_unreachable            = true
-    warn_unused_ignores         = true
+[tool.ty.src] # https://docs.astral.sh/ty/reference/configuration/
+    include = ["src", "tests"]
+
+[tool.ty.rules] # Rules ty leaves off by default
+    disjoint-cast                 = "error"
+    missing-type-argument         = "error"
+    possibly-unresolved-reference = "error"
+
+[tool.ty.terminal]
+    error-on-warning = true
 
 [tool.pytest.ini_options]
     addopts        = "--color=yes --doctest-modules --exitfirst --failed-first --strict-config --strict-markers --junitxml=.cache/pytest.xml"

@@ -1,4 +1,3 @@
-# type: ignore
 """Test VideoFile trait derivation."""
 
 from pathlib import Path

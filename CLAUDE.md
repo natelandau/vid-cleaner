@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 uv run duty --list            # all task runner targets
-uv run duty lint              # ruff check + ruff format --check + mypy + typos + prek hooks
+uv run duty lint              # ruff check + ruff format --check + ty + typos + prek hooks
 uv run duty test              # pytest with coverage (fails under 60%)
 uv run duty test -k downmix   # extra args are passed through to pytest
 uv run duty dev_setup         # generate sample .mkv files under .dev/ with ffmpeg
@@ -14,7 +14,7 @@ uv run duty dev_setup         # generate sample .mkv files under .dev/ with ffmp
 
 `addopts` includes `--exitfirst` and `--failed-first`, so a run stops at the first failure and reruns previous failures first. `testpaths` includes `src`, so a bare `uv run pytest` also runs `--doctest-modules` over the package; `duty test` passes `tests` explicitly and skips those doctests.
 
-Run checks only through `duty lint` and `duty test`, never by calling ruff, mypy, typos, or pytest directly. The mypy, typos, prek, and test duties run through gate-cache, so a gate that already passed on the same non-ignored file content prints `already passed on tree ..., skipping` and exits 0, and a direct run neither reads nor records those passes. The prek hooks call the same duties and share the markers. ruff is not gated because its own cache is faster than a gate-cache skip. `duty test` with pytest arguments runs ungated, so a filtered pass never skips the full suite. `uv run gate-cache status` shows what passed; `GATE_CACHE_DISABLE=1` forces a real run. CI sets `CI=true`, which turns caching off. Run `uv run gate-cache --skill` before adding or changing a gate.
+Run checks only through `duty lint` and `duty test`, never by calling ruff, ty, typos, or pytest directly. The typos, prek, and test duties run through gate-cache, so a gate that already passed on the same non-ignored file content prints `already passed on tree ..., skipping` and exits 0, and a direct run neither reads nor records those passes. The prek hooks call the same duties and share the markers. ruff and ty are not gated because each runs faster than a gate-cache skip saves. `duty test` with pytest arguments runs ungated, so a filtered pass never skips the full suite. `uv run gate-cache status` shows what passed; `GATE_CACHE_DISABLE=1` forces a real run. CI sets `CI=true`, which turns caching off. Run `uv run gate-cache --skill` before adding or changing a gate.
 
 Commit with `cz c` (commitizen). The prek `pytest` hook runs `duty test` on every commit, against that commit's staged state with unstaged changes stashed, so each commit must be green on its own.
 
@@ -54,6 +54,7 @@ Each `_plan_*` method on `VideoFile` contributes `OutputStream` and `PlanAction`
 - `VideoCleanError` and `VideoProbeError` mean "skip this file and keep going"; `cappa.Exit` means "stop the run", and the batch loops must not catch it. A batch with any failure exits 1 after processing every remaining file.
 - Models return message strings; the CLI layer renders them.
 - Print through nclutils `pp` rather than `Console.print`: `pp.success` and `pp.error` default to `markup=False`, which is what keeps bracketed filenames such as `Movie [x265].mkv` intact.
+- Import `command`, `invoke`, and `parse` from `cappa.base`, never as `cappa.invoke(...)`: ty resolves those three names on the `cappa` package to its same-named submodules (astral-sh/ty#4553).
 - The `# isort: skip` comments and function-local imports around `utils/`, `models/video_file.py`, and `controllers/` are load-bearing. Tidying them makes subpackages unimportable on their own.
 
 ## Testing

@@ -1,4 +1,3 @@
-# type: ignore
 """Test the table render helpers."""
 
 import pytest
