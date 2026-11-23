@@ -1,69 +1,59 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Commands
+## Checks
 
 ```bash
-uv run duty --list            # all task runner targets
-uv run duty lint              # ruff, ty, typos, actionlint, zizmor, and prek hooks
-uv run duty test              # pytest with coverage (fails under 60%)
-uv run duty test -k downmix   # extra args are passed through to pytest
-uv run duty dev_setup         # generate sample .mkv files under .dev/ with ffmpeg
+uv run duty lint              # ruff, ty, typos, actionlint, zizmor, prek hooks
+uv run duty test              # full suite with coverage
+uv run duty test -k downmix   # extra args pass through to pytest
 ```
 
-Locally, `duty test` adds `--exitfirst` and `--failed-first`, so a run stops at the first failure and reruns previous failures first. In CI it runs every test. `testpaths` covers `src` and `tests`, so doctests in the package run with the suite. pytest runs in strict mode with every warning as an error, so an unregistered marker, a duplicate parametrize ID, or a new deprecation warning fails the run. Coverage below 90% fails it too.
+- Run checks only through these duties, never ruff, ty, typos, actionlint, zizmor, or pytest directly. Several duties run through gate-cache, and a direct run neither reads nor records its passes.
+- `already passed on tree ..., skipping` means the check passed on this content. Do not rerun it another way. `GATE_CACHE_DISABLE=1` forces a real run.
+- Run `uv run gate-cache --skill` before adding or changing a gate.
+- Locally `duty test` stops at the first failure. Fix it and rerun to see the next one.
+- Doctests in `src/` run with the suite.
+- ffmpeg and ffprobe are needed to run `vidcleaner` by hand and for `duty dev_setup`, not for tests.
+- `.dev/`: sample media from `duty dev_setup`. `.development/dev-config.toml`: local settings override. Unrelated.
 
-Run checks only through `duty lint` and `duty test`, never by calling ruff, ty, typos, actionlint, zizmor, or pytest directly. The typos, prek, and test duties run through gate-cache, so a gate that already passed on the same non-ignored file content prints `already passed on tree ..., skipping` and exits 0, and a direct run neither reads nor records those passes. The prek hooks call the same duties and share the markers. ruff, ty, actionlint, and zizmor are not gated because each runs faster than a gate-cache skip saves. `duty test` with pytest arguments runs ungated, so a filtered pass never skips the full suite. `uv run gate-cache status` shows what passed; `GATE_CACHE_DISABLE=1` forces a real run. CI sets `CI=true`, which turns caching off. Run `uv run gate-cache --skill` before adding or changing a gate.
+## Commits
 
-Commit with `cz c` (commitizen). The prek `pytest` hook runs `duty test` on every commit, against that commit's staged state with unstaged changes stashed, so each commit must be green on its own.
-
-ffmpeg and ffprobe must be on PATH for anything except the `cache` command.
-
-Two unrelated dev directories: `.dev/` holds the sample media `duty dev_setup` generates, `.development/dev-config.toml` is the local settings override layer.
+- Conventional Commits format. A commitizen hook rejects other messages.
+- The commit hook runs `duty test` against the staged state with unstaged changes stashed, so each commit must pass on its own.
 
 ## Settings
 
-`config.py` exports a process-wide dynaconf singleton as `vid_cleaner.settings`, and business logic reads `settings.*` directly instead of taking arguments. Anything a run mutates therefore leaks between tests; `tests/conftest.py` has an autouse fixture for the two worst offenders (`verbosity` and `out_path`), and a new leaky setting belongs there too.
-
-Several flag defaults are `settings.*` values, and cappa infers `store_false` for a bool whose default is truthy. A user config with `keep_commentary = true` thus turns `--keep-commentary` into a switch that turns it off. This is documented behavior, not a bug.
+- `vid_cleaner.settings` is a process-wide dynaconf singleton that business logic reads directly. A setting a run mutates leaks between tests. Add each leaky setting to the autouse `_reset_leaky_settings` fixture in `tests/conftest.py`.
+- Several `clean` flag defaults are `settings.*` values, and cappa makes a bool flag with a truthy default `store_false`. With `keep_commentary = true` in config, `--keep-commentary` turns it off. Intended and documented, not a bug.
 
 ## Command layer
 
-`src/vid_cleaner/vidcleaner.py` is the whole CLI surface: one cappa dataclass per subcommand, each naming its implementation with `invoke="vid_cleaner.cli.<module>.main"`.
+- Attach destructured discovery options under the attribute name `discovery`. `config_subcommand` reads trait filters from every command through that name.
+- Import `command`, `invoke`, and `parse` from `cappa.base`, never as `cappa.invoke(...)`. ty resolves those names on the `cappa` package to same-named submodules (astral-sh/ty#4553).
 
-Destructured discovery options must always be attached under the attribute name `discovery`, because `config_subcommand` reads trait filters off every command through that one name.
+## Conversion planners
 
-`--from` is what puts a command in discovery mode. Explicit paths and discovery are mutually exclusive and never merge.
+Each `_plan_*` method on `VideoFile` adds `OutputStream` and `PlanAction` entries to one `ConversionPlan`, and `build_command()` emits one ffmpeg command. When adding or changing a planner:
 
-`discover_video_files` presorts alphabetically before applying the requested sort, so ties are deterministic. Unreadable files are collected and reported, never fatal.
-
-## Writing a conversion planner
-
-Each `_plan_*` method on `VideoFile` contributes `OutputStream` and `PlanAction` entries to one `ConversionPlan`, and `build_command()` emits a single ffmpeg command so the file is decoded and written exactly once. When adding or changing a planner:
-
-- Never compute output stream indexes. Write `{n}` into `extra_args` (`"-b:a:{n}"`); `build_command()` owns the substitution.
-- An ffmpeg option with no stream index applies to every stream of that type, so a planner that changes a codec or filter must iterate all kept streams of that type, not just the first.
-- Mapping order is output order, so stream reordering is free.
-- A planner that overrides an earlier decision, such as VP9 dropping image subtitles, must correct the earlier `PlanAction`. Those records are the user-facing report, not bookkeeping.
-
-`VideoFile.probe_box` re-probes whenever the cached box's `path_to_file` no longer matches `latest_temp_path()`, so every ffmpeg step invalidates it implicitly.
+- Never compute output stream indexes. Write `{n}` into `extra_args` (`"-b:a:{n}"`). `build_command()` substitutes it.
+- An ffmpeg option with no stream index applies to every stream of that type. A planner that changes a codec or filter must cover every kept stream of that type.
+- Mapping order is output order.
+- A planner that overrides an earlier decision, such as VP9 dropping image subtitles, must correct the earlier `PlanAction`. Those records are the user-facing report.
 
 ## Conventions
 
-- `VideoCleanError` and `VideoProbeError` mean "skip this file and keep going"; `cappa.Exit` means "stop the run", and the batch loops must not catch it. A batch with any failure exits 1 after processing every remaining file.
-- Models return message strings; the CLI layer renders them.
-- Print through nclutils `pp` rather than `Console.print`: `pp.success` and `pp.error` default to `markup=False`, which is what keeps bracketed filenames such as `Movie [x265].mkv` intact.
-- Import `command`, `invoke`, and `parse` from `cappa.base`, never as `cappa.invoke(...)`: ty resolves those three names on the `cappa` package to its same-named submodules (astral-sh/ty#4553).
-- The `# isort: skip` comments and function-local imports around `utils/`, `models/video_file.py`, and `controllers/` are load-bearing. Tidying them makes subpackages unimportable on their own.
+- `VideoCleanError` and `VideoProbeError` mean skip this file and continue. `cappa.Exit` means stop the run, and batch loops must not catch it. A batch with any failure exits 1 after processing every remaining file.
+- Models return message strings. The CLI layer prints them.
+- Print through nclutils `pp`, not `Console.print`. `pp.success` and `pp.error` default to `markup=False`, which keeps bracketed filenames such as `Movie [x265].mkv` intact.
+- Keep the `# isort: skip` comments and function-local imports in `utils/`, `models/video_file.py`, and `controllers/`. Without them, subpackages fail to import on their own.
 
-## Testing
+## Tests
 
-Tests drive the real CLI rather than calling `main()`:
+- Drive the real CLI, not `main()`:
 
-```python
-with pytest.raises(cappa.Exit) as exc_info:
-    cappa.invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
-```
+    ```python
+    with pytest.raises(cappa.Exit) as exc_info:
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+    ```
 
-Fixtures live in `tests/conftest.py`. A `get_probe_as_box` mock is called more than once per file because of the re-probe rule above, so call-count assertions on it are fragile.
+- `VideoFile.probe_box` re-probes whenever the cached box's `path_to_file` differs from `latest_temp_path()`, so a `get_probe_as_box` mock fires more than once per file. A call-count assertion on it must count those re-probes.
