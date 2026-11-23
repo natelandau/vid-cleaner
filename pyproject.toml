@@ -43,7 +43,7 @@
         "commitizen>=4.19.3",
         "coverage>=7.17.0",
         "duty>=1.10.1",
-        "gate-cache>=0.6.0",
+        "gate-cache>=0.12.0",
         "mypy>=2.4.1",
         "prek>=0.5.9",
         "pytest-clarity>=1.0.1",

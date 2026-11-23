@@ -18,6 +18,7 @@ PY_SRC_PATHS = (Path(_) for _ in ("src/", "tests/", "duties.py", "scripts/") if 
 PY_SRC_LIST = tuple(str(_) for _ in PY_SRC_PATHS)
 CI = os.environ.get("CI", "").strip().lower() in {"1", "true", "yes"}
 DEV_DIR = Path(__file__).parent.absolute() / ".dev"
+PYTEST_JUNIT_REPORT = ".cache/pytest.xml"  # Written by the --junitxml in pytest addopts
 
 
 def strip_ansi(text: str) -> str:
@@ -35,17 +36,19 @@ def strip_ansi(text: str) -> str:
     return ansi_chars.sub("", text).replace("[", r"\[")
 
 
-def gated(name: str, cmd: list[str]) -> list[str]:
+def gated(name: str, cmd: list[str], junit: str | None = None) -> list[str]:
     """Wrap a gate command in gate-cache so it skips on a tree where it already passed.
 
     Args:
         name (str): Marker name for the gate.
         cmd (list[str]): Command to run.
+        junit (str | None): JUnit XML report the command writes, recorded in gate-cache stats.
 
     Returns:
         list[str]: The command prefixed with the gate-cache invocation.
     """
-    return ["gate-cache", "--name", name, "--", *cmd]
+    junit_args = ["--junit", junit] if junit else []
+    return ["gate-cache", "--name", name, *junit_args, "--", *cmd]
 
 
 def pyprefix(title: str) -> str:
@@ -75,7 +78,7 @@ def clean(ctx: Context) -> None:
 def ruff(ctx: Context) -> None:
     """Check the code quality with ruff."""
     ctx.run(
-        gated("ruff", ["ruff", "check", "--config", "pyproject.toml", "--no-fix", *PY_SRC_LIST]),
+        ["ruff", "check", "--config", "pyproject.toml", "--no-fix", *PY_SRC_LIST],
         title=pyprefix("code quality check"),
     )
 
@@ -84,7 +87,7 @@ def ruff(ctx: Context) -> None:
 def format(ctx: Context) -> None:  # noqa: A001
     """Format the code with ruff."""
     ctx.run(
-        gated("format", ["ruff", "format", "--check", "--config", "pyproject.toml", *PY_SRC_LIST]),
+        ["ruff", "format", "--check", "--config", "pyproject.toml", *PY_SRC_LIST],
         title=pyprefix("code formatting"),
     )
 
@@ -145,9 +148,9 @@ def test(ctx: Context, *cli_args: str) -> None:
         "--cov-report=term",
         *cli_args,
     ]
-    # Arguments go in the marker name so a filtered pass never skips the full suite
+    # A filtered run is not gated: its pass must never skip the full suite
     ctx.run(
-        gated(" ".join(("test", *cli_args)), cmd),
+        cmd if cli_args else gated("test", cmd, junit=PYTEST_JUNIT_REPORT),
         title=pyprefix("Running tests"),
         capture=CI,
     )

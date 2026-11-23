@@ -78,7 +78,7 @@ repos:
         args: ["--force-exclude"]
         stages: [commit-msg]
 
-  # Gates run through duty so they share gate-cache markers with `duty lint` and `duty test`.
+  # Checks run through duty so they share gate-cache markers with `duty lint` and `duty test`.
   # Each id matches a name in PREK_SKIP of the precommit duty.
   - repo: local
     hooks:
