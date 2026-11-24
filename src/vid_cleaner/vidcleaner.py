@@ -627,7 +627,7 @@ class SearchCommand:
     directory: Annotated[
         Path,
         cappa.Arg(help="Directory to search for video files", show_default=False),
-    ] = Path.cwd()
+    ] = Path()
     discovery: cappa.Destructured[DiscoveryOptions] = field(default_factory=DiscoveryOptions)
 
 

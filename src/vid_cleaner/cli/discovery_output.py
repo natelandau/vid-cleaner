@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
     from vid_cleaner.controllers.discovery import DiscoveryReport
 
+NOT_AN_EXISTING_DIRECTORY_ERROR = "must be an existing directory"
+
 
 def resolve_discovery_root(path: Path, *, argument_name: str) -> Path:
     """Normalize a user-supplied discovery directory, or stop the run if it is not one.
@@ -41,9 +43,17 @@ def resolve_discovery_root(path: Path, *, argument_name: str) -> Path:
     Raises:
         cappa.Exit: With code 1 when `path` is not an existing directory.
     """
-    resolved = path.expanduser().resolve()
-    if not resolved.is_dir():
-        pp.error(f"{argument_name} must be an existing directory: {path}")
+    try:
+        resolved = path.expanduser().resolve()
+        is_directory = resolved.is_dir()
+    # `~name` for an unknown user raises RuntimeError, and before Python 3.14 `is_dir()`
+    # raises PermissionError for a path inside a directory the user cannot search.
+    except (RuntimeError, OSError) as e:
+        pp.error(f"{argument_name} {NOT_AN_EXISTING_DIRECTORY_ERROR}: {path} ({e})")
+        raise cappa.Exit(code=1) from e
+
+    if not is_directory:
+        pp.error(f"{argument_name} {NOT_AN_EXISTING_DIRECTORY_ERROR}: {path}")
         raise cappa.Exit(code=1)
     return resolved
 

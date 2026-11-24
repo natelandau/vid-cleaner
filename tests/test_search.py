@@ -7,6 +7,7 @@ import pytest
 from cappa.base import invoke
 
 from vid_cleaner import settings
+from vid_cleaner.cli.discovery_output import NOT_AN_EXISTING_DIRECTORY_ERROR
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 
@@ -560,10 +561,17 @@ def test_search_table_caption_reports_skipped_files(
     assert "1 skipped" in output
 
 
-def test_search_rejects_directory_that_does_not_exist(capsys, tmp_path):
+@pytest.mark.parametrize(
+    "build_search_path",
+    [
+        pytest.param(lambda tmp_path: str(tmp_path / "does-not-exist"), id="missing_directory"),
+        pytest.param(lambda _: "~vidcleaner-no-such-user/movies", id="unknown_user_home"),
+    ],
+)
+def test_search_rejects_directory_that_does_not_exist(capsys, tmp_path, build_search_path):
     """Verify a mistyped search path fails instead of reporting an empty library."""
     # Given: A search path that does not exist
-    args = ["search", str(tmp_path / "does-not-exist")]
+    args = ["search", build_search_path(tmp_path)]
 
     # When: Running search
     with pytest.raises(cappa.Exit) as exc_info:
@@ -571,7 +579,7 @@ def test_search_rejects_directory_that_does_not_exist(capsys, tmp_path):
 
     # Then: The command errors rather than exiting 0
     assert exc_info.value.code == 1
-    assert "must be an existing directory" in capsys.readouterr().err
+    assert NOT_AN_EXISTING_DIRECTORY_ERROR in capsys.readouterr().err
 
 
 def test_search_expands_a_literal_tilde(capsys, video_library, monkeypatch):

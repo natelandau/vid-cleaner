@@ -8,6 +8,7 @@ from cappa.base import invoke
 
 from vid_cleaner import settings
 from vid_cleaner.cli.check_video import display_path
+from vid_cleaner.cli.discovery_output import NOT_AN_EXISTING_DIRECTORY_ERROR
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 
@@ -271,7 +272,7 @@ def test_check_from_nonexistent_directory_errors(capsys, tmp_path):
 
     # Then: The bad path is named
     assert exc_info.value.code == 1
-    assert "must be an existing directory" in captured.err
+    assert NOT_AN_EXISTING_DIRECTORY_ERROR in captured.err
 
 
 def test_check_rejects_from_combined_with_files(capsys, tmp_path, mock_video_path):

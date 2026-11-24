@@ -7,6 +7,7 @@ import pytest
 from cappa.base import invoke, parse
 from iso639 import Lang
 
+from vid_cleaner.cli.discovery_output import NOT_AN_EXISTING_DIRECTORY_ERROR
 from vid_cleaner.constants import TREE_LAST
 from vid_cleaner.exceptions import VideoCleanError
 from vid_cleaner.models import video_file as video_file_module
@@ -1514,7 +1515,7 @@ def test_clean_rejects_from_that_does_not_exist(capsys, tmp_path):
 
     # Then: The command errors rather than exiting 0
     assert exc_info.value.code == 1
-    assert "`--from` must be an existing directory" in capsys.readouterr().err
+    assert f"`--from` {NOT_AN_EXISTING_DIRECTORY_ERROR}" in capsys.readouterr().err
 
 
 def test_clean_rejects_from_that_is_a_file(capsys, tmp_path):
@@ -1530,7 +1531,7 @@ def test_clean_rejects_from_that_is_a_file(capsys, tmp_path):
 
     # Then: The command errors rather than exiting 0
     assert exc_info.value.code == 1
-    assert "`--from` must be an existing directory" in capsys.readouterr().err
+    assert f"`--from` {NOT_AN_EXISTING_DIRECTORY_ERROR}" in capsys.readouterr().err
 
 
 def test_clean_from_empty_directory_still_exits_zero(capsys, tmp_path):
