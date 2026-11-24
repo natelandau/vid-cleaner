@@ -6,48 +6,84 @@ import httpx
 from nclutils import pp
 from rich.json import JSON
 
-from vid_cleaner import settings
+_TIMEOUT_SECONDS = 15
 
 
-def query_tmdb(search: str) -> dict[str, Any]:  # pragma: no cover
-    """Query The Movie Database API for a movie title.
+def describe_http_error(service: str, error: httpx.HTTPError) -> str:
+    """Describe a failed request without its URL, which can carry an API key.
 
     Args:
-        search (str): IMDB id (tt____) to search for
+        service (str): The service name to show, such as `TMDB`.
+        error (httpx.HTTPError): The error httpx raised.
 
     Returns:
-        dict: The Movie Database API response
+        str: A one-line description naming the service and the status or error type.
     """
-    tmdb_api_key = settings.TMDB_API_KEY
+    if isinstance(error, httpx.HTTPStatusError):
+        response = error.response
+        return f"{service} request failed: {response.status_code} {response.reason_phrase}"
+    return f"{service} request failed: {type(error).__name__}"
 
-    if not tmdb_api_key:
-        return {}
 
-    url = f"https://api.themoviedb.org/3/find/{search}"
+def _get_json(
+    service: str,
+    url: str,
+    *,
+    params: dict[str, str],
+    headers: dict[str, str] | None = None,
+    missing_ok: bool = False,
+) -> dict[str, Any] | None:
+    """Fetch JSON from a service, reporting a failure without the URL that can carry a key.
 
-    params = {
-        "api_key": tmdb_api_key,
-        "language": "en-US",
-        "external_source": "imdb_id",
-    }
-
-    args = "&".join([f"{k}={v}" for k, v in params.items()])
-    pp.trace(f"TMDB: Query {url}?{args}")
-
+    Returns:
+        dict[str, Any] | None: The response body, an empty dict after a reported failure, or
+            None for a 404 when `missing_ok` is set.
+    """
+    pp.trace(f"{service}: Query {url}")
     try:
-        response = httpx.get(url, params=params, timeout=15)
+        response = httpx.get(url, params=params, headers=headers, timeout=_TIMEOUT_SECONDS)
         response.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        if missing_ok and e.response.status_code == httpx.codes.NOT_FOUND:
+            return None
+        pp.error(describe_http_error(service=service, error=e))
+        return {}
     except httpx.HTTPError as e:
-        pp.error(str(e))
+        pp.error(describe_http_error(service=service, error=e))
         return {}
 
-    pp.trace("TMDB: Response received", details=[JSON(response.text)])
+    # A proxy login page or a wrong base URL answers 200 with HTML, which must not abort the run
+    try:
+        body = response.json()
+    except ValueError:
+        pp.error(
+            f"{service} request failed: expected a JSON response, got "
+            f"{response.headers.get('content-type', 'no content type')}"
+        )
+        return {}
+    pp.trace(f"{service}: Response received", details=[JSON.from_data(body)])
+    return body
 
-    return response.json()
+
+def query_tmdb(search: str, *, api_key: str) -> dict[str, Any]:
+    """Query The Movie Database API for a movie title by its IMDb ID.
+
+    Args:
+        search (str): IMDb ID (tt____) to search for.
+        api_key (str): The TMDB API key. An empty key skips the request.
+
+    Returns:
+        dict: The Movie Database API response, or an empty dict when unavailable.
+    """
+    if not api_key:
+        return {}
+
+    params = {"api_key": api_key, "language": "en-US", "external_source": "imdb_id"}
+    return _get_json("TMDB", f"https://api.themoviedb.org/3/find/{search}", params=params) or {}
 
 
 def query_tmdb_by_id(
-    tmdb_id: str, media_type: Literal["movie", "tv"] | None = None
+    tmdb_id: str, media_type: Literal["movie", "tv"] | None = None, *, api_key: str
 ) -> dict[str, Any]:
     """Query The Movie Database API by its own ID rather than an external ID.
 
@@ -55,103 +91,67 @@ def query_tmdb_by_id(
         tmdb_id (str): The TMDB numeric ID to look up.
         media_type (Literal["movie", "tv"] | None): The record type. When None, try
             movie first and fall back to tv.
+        api_key (str): The TMDB API key. An empty key skips the request.
 
     Returns:
         dict: The Movie Database API response, or an empty dict when not found.
     """
-    tmdb_api_key = settings.TMDB_API_KEY
-
-    if not tmdb_api_key:
+    if not api_key:
         return {}
 
     for candidate_type in [media_type] if media_type else ["movie", "tv"]:
-        url = f"https://api.themoviedb.org/3/{candidate_type}/{tmdb_id}"
-        params = {"api_key": tmdb_api_key, "language": "en-US"}
-
-        pp.trace(f"TMDB: Query {url}")
-
-        try:
-            response = httpx.get(url, params=params, timeout=15)
-            response.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            # A 404 only means this was the wrong record type, so try the next one
-            if e.response.status_code == httpx.codes.NOT_FOUND:
-                continue
-            pp.error(str(e))
-            return {}
-        except httpx.HTTPError as e:
-            pp.error(str(e))
-            return {}
-
-        pp.trace("TMDB: Response received", details=[JSON(response.text)])
-        return response.json()
+        # A 404 only means this was the wrong record type, so try the next one
+        result = _get_json(
+            "TMDB",
+            f"https://api.themoviedb.org/3/{candidate_type}/{tmdb_id}",
+            params={"api_key": api_key, "language": "en-US"},
+            missing_ok=True,
+        )
+        if result is not None:
+            return result
 
     return {}
 
 
-def query_radarr(search: str) -> dict[str, Any]:  # pragma: no cover
-    """Query Radarr API for a movie title.
+def _query_arr_parse(service: str, search: str, *, url: str, api_key: str) -> dict[str, Any]:
+    if not api_key or not url:
+        return {}
+
+    # The *arr v3 API accepts the key as a header, which keeps it out of URLs and error text
+    return (
+        _get_json(
+            service,
+            f"{url}/api/v3/parse",
+            params={"title": search},
+            headers={"X-Api-Key": api_key},
+        )
+        or {}
+    )
+
+
+def query_radarr(search: str, *, url: str, api_key: str) -> dict[str, Any]:
+    """Ask Radarr to parse a movie title, to find the movie's IMDb ID.
 
     Args:
-        search (str): Movie title to search for
-        api_key (str): Radarr API key
+        search (str): Movie title to search for.
+        url (str): The Radarr base URL. An empty URL skips the request.
+        api_key (str): The Radarr API key. An empty key skips the request.
 
     Returns:
-        dict: Radarr API response
+        dict: Radarr API response, or an empty dict when unavailable.
     """
-    radarr_url = settings.RADARR_URL
-    radarr_api_key = settings.RADARR_API_KEY
-
-    if not radarr_api_key or not radarr_url:
-        return {}
-
-    url = f"{radarr_url}/api/v3/parse"
-    params = {
-        "apikey": radarr_api_key,
-        "title": search,
-    }
-
-    try:
-        response = httpx.get(url, params=params, timeout=15)
-        response.raise_for_status()
-    except httpx.HTTPError as e:
-        pp.error(str(e))
-        return {}
-
-    pp.trace("RADARR: Response received", details=[JSON(response.text)])
-
-    return response.json()
+    return _query_arr_parse(service="Radarr", search=search, url=url, api_key=api_key)
 
 
-def query_sonarr(search: str) -> dict[str, Any]:  # pragma: no cover
-    """Query Sonarr API for a movie title.
+def query_sonarr(search: str, *, url: str, api_key: str) -> dict[str, Any]:
+    """Ask Sonarr to parse a series title, to find the series' IMDb ID.
 
     Args:
-        search (str): Movie title to search for
-        api_key (str): Radarr API key
+        search (str): Series title to search for.
+        url (str): The Sonarr base URL. An empty URL skips the request.
+        api_key (str): The Sonarr API key. An empty key skips the request.
 
     Returns:
-        dict: Sonarr API response
+        dict: Sonarr API response, or an empty dict when unavailable.
     """
-    sonarr_url = settings.SONARR_URL
-    sonarr_api_key = settings.SONARR_API_KEY
-
-    if not sonarr_api_key or not sonarr_url:
-        return {}
-
-    url = f"{sonarr_url}/api/v3/parse"
-    params = {
-        "apikey": sonarr_api_key,
-        "title": search,
-    }
-
-    try:
-        response = httpx.get(url, params=params, timeout=15)
-        response.raise_for_status()
-    except httpx.HTTPError as e:
-        pp.error(str(e))
-        return {}
-
-    pp.trace("SONARR: Response received", details=[JSON(response.text)])
-
-    return response.json()
+    return _query_arr_parse(service="Sonarr", search=search, url=url, api_key=api_key)

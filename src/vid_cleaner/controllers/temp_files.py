@@ -6,8 +6,6 @@ from pathlib import Path
 
 from nclutils import pp
 
-from vid_cleaner import settings
-
 
 def cleanup_on_exit(temp_file: "TempFile") -> None:  # pragma: no cover
     """Remove a temp directory when the interpreter exits.
@@ -39,7 +37,7 @@ class TempFile:
     Attributes:
         path (Path): The resolved path to the original video file
         suffix (str): The file extension of the original video file
-        tmp_dir (Path): Path to the unique temporary directory for this instance
+        tmp_dir (Path | None): The unique temporary directory, set by the first `new_tmp_path` call
         created_tmp_files (list[Path]): List tracking all temporary files created
         tmp_file_number (int): Counter for naming temporary files
     """
@@ -52,7 +50,8 @@ class TempFile:
         """
         self.path = path.expanduser().resolve()
         self.suffix = path.suffix
-        self.tmp_dir = settings.CACHE_DIR / uuid.uuid4().hex
+        # Chosen on first write, so code that only probes files never needs the cache directory
+        self.tmp_dir: Path | None = None
         self.created_tmp_files: list[Path] = []
         self.tmp_file_number = 1
         self._cleanup_registered = False
@@ -68,7 +67,9 @@ class TempFile:
         """
         return self.created_tmp_files[-1] if self.created_tmp_files else self.path
 
-    def new_tmp_path(self, suffix: str | None = None, step_name: str | None = None) -> Path:
+    def new_tmp_path(
+        self, suffix: str | None = None, step_name: str | None = None, *, cache_dir: Path
+    ) -> Path:
         """Generate a new tmp path for the creation of a new temporary file.
 
         Creates a new unique path for a temporary file in the temp directory. The path
@@ -78,12 +79,16 @@ class TempFile:
         Args:
             suffix (str | None, optional): File extension to use. Defaults to original file's suffix.
             step_name (str | None, optional): Name of processing step to include in filename. Defaults to None.
+            cache_dir (Path): Directory that holds this instance's temporary directory. Only
+                the first call's value is used.
 
         Returns:
             Path: Path object for the new temporary file
         """
         # Get the output file name
         suffix = suffix or self.suffix
+        if self.tmp_dir is None:
+            self.tmp_dir = cache_dir / uuid.uuid4().hex
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
 
         # Register only once there is something to clean up. A discovery run builds a
@@ -121,7 +126,7 @@ class TempFile:
 
         Deletes all temporary files except the most recent one to conserve disk space. Files are identified as "old" if their number is less than the current counter.
         """
-        if self.tmp_dir.exists():
+        if self.tmp_dir is not None and self.tmp_dir.exists():
             for file in self.tmp_dir.iterdir():
                 tmp_file_number = int(file.stem.split("_")[0])
                 if tmp_file_number < self.tmp_file_number:
@@ -134,7 +139,7 @@ class TempFile:
         Performs complete cleanup by removing all temporary files created during
         processing and the temporary directory itself.
         """
-        if self.tmp_dir.exists():
+        if self.tmp_dir is not None and self.tmp_dir.exists():
             pp.debug("Clean up temporary files")
 
             for file in self.tmp_dir.iterdir():

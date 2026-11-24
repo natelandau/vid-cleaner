@@ -441,15 +441,6 @@ wheels = [
 ]
 
 [[package]]
-name = "dynaconf"
-version = "3.3.5"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/71/e4/723ba469856bb493c948985e5bd562c8a65f2b93e70c896e9764ab76de00/dynaconf-3.3.5.tar.gz", hash = "sha256:a08f6ab44025034ef3c9f86b32548ab01efd4039094a74bd9f028a43c63d016f", size = 333426, upload-time = "2026-08-05T19:50:25.16Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/95/41/b38501c34c40c3261868a2af8ed5fffe3e6d889c680638708de27eb57788/dynaconf-3.3.5-py3-none-any.whl", hash = "sha256:b3b4a753d5c866fc85466b65fc58d4954f6ed7dc8aa67f2b15bcbfd85d184687", size = 271426, upload-time = "2026-08-05T19:50:23.802Z" },
-]
-
-[[package]]
 name = "failprint"
 version = "1.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1179,21 +1170,11 @@ wheels = [
 ]
 
 [[package]]
-name = "validators"
-version = "0.36.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/7b/3f/4fe7905f73ba0e768baa102a09ba9458f2f0bb4a676102e1fd7a3cb55c2b/validators-0.36.0.tar.gz", hash = "sha256:92ad9ed00bbed320b784cec0ea90b213cf08904cf605b3d0852cfa4108e32a2c", size = 79234, upload-time = "2026-10-11T11:01:31.682Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d5/ce/fc5090ea3789bdfd22e90f2515b237194c5dacfc8f26d2082a0b50b2ca86/validators-0.36.0-py3-none-any.whl", hash = "sha256:c52ad00435e385b95fa4d6dd3081cb20c0660e7fd07b214523c8584dd2edba34", size = 46040, upload-time = "2026-10-11T11:01:30.269Z" },
-]
-
-[[package]]
 name = "vid-cleaner"
 version = "0.14.0"
 source = { editable = "." }
 dependencies = [
     { name = "cappa" },
-    { name = "dynaconf" },
     { name = "ffmpeg-progress-yield" },
     { name = "ffmpeg-python" },
     { name = "httpx" },
@@ -1201,7 +1182,6 @@ dependencies = [
     { name = "nclutils" },
     { name = "python-box" },
     { name = "rich" },
-    { name = "validators" },
 ]
 
 [package.dev-dependencies]
@@ -1229,7 +1209,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "cappa", specifier = ">=0.33.0,<1.0.0" },
-    { name = "dynaconf", specifier = ">=3.3.5,<4.0.0" },
     { name = "ffmpeg-progress-yield", specifier = ">=1.1.4" },
     { name = "ffmpeg-python", specifier = ">=0.2.0" },
     { name = "httpx", specifier = ">=0.28.1" },
@@ -1237,7 +1216,6 @@ requires-dist = [
     { name = "nclutils", specifier = ">=4.0.0,<5.0.0" },
     { name = "python-box", specifier = ">=7.4.1,<8.0.0" },
     { name = "rich", specifier = ">=15.0.0" },
-    { name = "validators", specifier = ">=0.36.0" },
 ]
 
 [package.metadata.requires-dev]

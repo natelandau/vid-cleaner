@@ -13,7 +13,6 @@ from nclutils import pp
 from rich.filesize import decimal
 from rich.prompt import Confirm
 
-from vid_cleaner import settings
 from vid_cleaner.controllers.discovery import discover_video_files
 from vid_cleaner.views import search_table
 
@@ -87,7 +86,7 @@ def discover_from_directory(
     return discover_video_files(
         _resolve_discovery_root(directory, argument_name=argument_name),
         depth=options.depth,
-        filters=set(settings.filters),
+        filters=set(options.filters or ()),
         sort=options.sort,
         reverse=options.reverse,
         limit=limit,
@@ -149,7 +148,7 @@ def _no_prompt_available() -> cappa.Exit:
     return cappa.Exit(code=1)
 
 
-def confirm_selection(report: DiscoveryReport, *, assume_yes: bool) -> None:
+def confirm_selection(report: DiscoveryReport, *, assume_yes: bool, overwrite: bool) -> None:
     """Ask the user to approve a discovered selection before acting on it.
 
     Guard the expensive, file-rewriting half of a discovery run, and refuse to act on a
@@ -158,6 +157,8 @@ def confirm_selection(report: DiscoveryReport, *, assume_yes: bool) -> None:
     Args:
         report (DiscoveryReport): The selection awaiting approval.
         assume_yes (bool): Skip the prompt and proceed.
+        overwrite (bool): Whether originals are replaced without a backup, which the
+            prompt states.
 
     Raises:
         cappa.Exit: With code 1 when the terminal is not interactive and `assume_yes`
@@ -173,9 +174,7 @@ def confirm_selection(report: DiscoveryReport, *, assume_yes: bool) -> None:
     # This prompt is the only gate on a whole library, and `--overwrite` leaves no backup
     # to restore from, so it has to say which of the two it is about to do.
     recovery = (
-        "in place with no backup"
-        if settings.overwrite
-        else "keeping a timestamped backup of each original"
+        "in place with no backup" if overwrite else "keeping a timestamped backup of each original"
     )
     prompt = f"Clean these {len(report.results)} files ({total_size}) {recovery}?"
     try:

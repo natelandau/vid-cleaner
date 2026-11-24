@@ -1,6 +1,5 @@
 """Utilities for CLI."""
 
-import shutil
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -11,12 +10,10 @@ from nclutils import pp
 from nclutils.fs import copy_file
 from nclutils.sh import which
 
-from vid_cleaner import settings
+from vid_cleaner import constants
 from vid_cleaner.constants import (
-    DEFAULT_CONFIG_PATH,
     REQUIRED_BINARIES,
     SYMBOL_CHECK,
-    USER_CONFIG_PATH,
     VIDEO_SUFFIXES,
     VideoTrait,
 )
@@ -58,14 +55,15 @@ def coerce_video_files(files: list[Path]) -> list["VideoFile"]:
 
 
 def resolve_out_path_override(
-    files: list[Path], *, from_directory: Path | None = None
+    files: list[Path], *, out: Path | None, from_directory: Path | None = None
 ) -> Path | None:
-    """Capture the explicit `--out` override before per-file processing mutates it.
+    """Validate the explicit `--out` override against the selection it would apply to.
 
-    Read `settings.out_path` once up front so the first file's resolved path can't leak into later files and overwrite them all with the first file's name. Reject a single `--out` paired with a multi-file selection, since one path cannot name many outputs.
+    Reject a single `--out` paired with a multi-file selection, since one path cannot name many outputs.
 
     Args:
         files (list[Path]): The input files the command will process.
+        out (Path | None): The `--out` value, or None when not given.
         from_directory (Path | None): The `--from` discovery root, when discovery mode is active.
 
     Returns:
@@ -74,7 +72,7 @@ def resolve_out_path_override(
     Raises:
         cappa.Exit: If `--out` is combined with more than one input file or with `--from`.
     """
-    override = settings.out_path
+    override = out
     if override and from_directory is not None:
         pp.error("`--out` cannot be used with `--from`")
         raise cappa.Exit(code=1)
@@ -156,15 +154,25 @@ def find_missing_binaries() -> list[str]:
 
 
 def create_default_config() -> None:
-    """Create a default configuration file.
+    """Create the user configuration file from the default template when it is missing.
 
-    Create a new configuration file at the default user location if one does not already exist. Copy the default configuration template to initialize the file.
+    Create the file readable only by its owner, because it can hold API keys.
     """
-    if not USER_CONFIG_PATH.exists():
-        USER_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        USER_CONFIG_PATH.touch(exist_ok=True)
-        shutil.copy(DEFAULT_CONFIG_PATH, USER_CONFIG_PATH)
-        pp.info(f"Default configuration file created: `{USER_CONFIG_PATH}`")
+    user_config_path = constants.USER_CONFIG_PATH
+    if user_config_path.exists():
+        return
+    user_config_path.parent.mkdir(parents=True, exist_ok=True)
+    template = constants.DEFAULT_CONFIG_PATH.read_bytes()
+    # Write beside the target with the final mode and rename into place, so the file is
+    # never briefly readable by others and a failed write never leaves an empty config
+    staged = user_config_path.with_name(f".{user_config_path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        staged.touch(mode=0o600, exist_ok=False)
+        staged.write_bytes(template)
+        staged.replace(user_config_path)
+    finally:
+        staged.unlink(missing_ok=True)
+    pp.info(f"Default configuration file created: `{user_config_path}`")
 
 
 def parse_limit(raw: str) -> int:

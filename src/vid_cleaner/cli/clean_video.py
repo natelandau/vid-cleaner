@@ -1,16 +1,18 @@
 """Clean subcommand."""
 
 from pathlib import Path
+from typing import Annotated
 
 import cappa
+from cappa import Dep
 from nclutils import pp
 
-from vid_cleaner import settings
 from vid_cleaner.cli.discovery_output import (
     confirm_selection,
     discover_from_directory,
     present_discovery,
 )
+from vid_cleaner.config import Config, RunOptions
 from vid_cleaner.constants import SYMBOL_CROSS, SortOrder
 from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
 from vid_cleaner.utils import (
@@ -19,17 +21,26 @@ from vid_cleaner.utils import (
     render_substeps,
     resolve_out_path_override,
 )
-from vid_cleaner.vidcleaner import CleanCommand
+from vid_cleaner.vidcleaner import CleanCommand, build_config, build_run_options
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
-def write_output(video_file: VideoFile, *, out_override: Path | None = None) -> list[str]:
+def write_output(
+    video_file: VideoFile,
+    *,
+    destination: Path,
+    overwrite: bool,
+    keep_original: bool,
+) -> list[str]:
     """Copy the processed result to the output path and return the closing substep messages.
 
     Args:
         video_file (VideoFile): The processed video file to write out.
-        out_override (Path | None): The user's explicit `--out` destination, when given.
+        destination (Path): Where the result is written.
+        overwrite (bool): Replace the destination without keeping a backup.
+        keep_original (bool): Never remove the input file, because the user chose the
+            destination with `--out`.
 
     Returns:
         list[str]: Substep messages describing the backup and save, or a single note when nothing changed.
@@ -39,8 +50,8 @@ def write_output(video_file: VideoFile, *, out_override: Path | None = None) -> 
 
     out_file, messages = copy_to_output(
         video_file.temp_file.latest_temp_path(),
-        Path(settings.out_path),
-        overwrite=settings.overwrite,
+        destination,
+        overwrite=overwrite,
     )
 
     # The write above already landed and swapped the result into place, so a failure past
@@ -57,7 +68,7 @@ def write_output(video_file: VideoFile, *, out_override: Path | None = None) -> 
     # `.webm`), where `--overwrite` means "do not leave two copies of the same film".
     # `--out` writes to a destination the user chose, so the input is not a leftover copy
     # of the output and must survive.
-    if settings.overwrite and out_override is None and out_file != video_file.path:
+    if overwrite and not keep_original and out_file != video_file.path:
         pp.debug(f"Delete: {video_file.path}")
         try:
             video_file.path.unlink()
@@ -69,7 +80,9 @@ def write_output(video_file: VideoFile, *, out_override: Path | None = None) -> 
     return messages
 
 
-def select_video_files(clean_cmd: CleanCommand) -> list[VideoFile]:
+def select_video_files(
+    clean_cmd: CleanCommand, config: Config, options: RunOptions
+) -> list[VideoFile]:
     """Resolve the files to clean from either explicit paths or a `--from` discovery run.
 
     Keep the two modes strictly separate so a query and a path list can never disagree
@@ -77,6 +90,8 @@ def select_video_files(clean_cmd: CleanCommand) -> list[VideoFile]:
 
     Args:
         clean_cmd (CleanCommand): The parsed clean command.
+        config (Config): The settings for this run.
+        options (RunOptions): The CLI-only values for this run.
 
     Returns:
         list[VideoFile]: The files to process, in the order they should be processed.
@@ -124,15 +139,19 @@ def select_video_files(clean_cmd: CleanCommand) -> list[VideoFile]:
     present_discovery(report)
 
     # A dry run previews rather than acts, so there is nothing to approve.
-    if not settings.dryrun:
-        confirm_selection(report, assume_yes=clean_cmd.yes)
+    if not options.dryrun:
+        confirm_selection(report, assume_yes=clean_cmd.yes, overwrite=config.overwrite)
 
     # Discovery already probed every file and `VideoFile` caches its probe, so reusing
     # these instances skips a second ffprobe per file.
     return [result.video_file for result in report.results]
 
 
-def main(clean_cmd: CleanCommand) -> None:
+def main(
+    clean_cmd: CleanCommand,
+    config: Annotated[Config, Dep(build_config)],
+    options: Annotated[RunOptions, Dep(build_run_options)],
+) -> None:
     """Process video files according to specified cleaning options.
 
     Compose stream reordering, audio/subtitle filtering, downmixing, scaling, and codec
@@ -140,25 +159,27 @@ def main(clean_cmd: CleanCommand) -> None:
 
     Args:
         clean_cmd (CleanCommand): Clean-specific command options
+        config (Config): The settings for this run
+        options (RunOptions): The CLI-only values for this run
 
     Raises:
         cappa.Exit: If incompatible options are specified (e.g., both H265 and VP9), or
             if one or more files failed to process.
     """
-    if settings.h265 and settings.vp9:
+    if options.h265 and options.vp9:
         pp.error("Cannot convert to both H265 and VP9")
         raise cappa.Exit(code=1)
 
     # Check the `--out`/`--from` conflict before discovery runs, so an empty `--from`
     # directory can't short-circuit the command with "no files found" ahead of this error.
-    out_path_override = resolve_out_path_override(clean_cmd.files, from_directory=clean_cmd.from_)
-    video_files = select_video_files(clean_cmd)
+    out_path_override = resolve_out_path_override(
+        clean_cmd.files, out=options.out, from_directory=clean_cmd.from_
+    )
+    video_files = select_video_files(clean_cmd=clean_cmd, config=config, options=options)
 
     failures: list[str] = []
 
     for video_file in video_files:
-        settings.out_path = out_path_override or video_file.path
-
         # Print the video name first so live progress bars and clean()'s up-front operation
         # tree render beneath it. Only the write-output messages are collected here and
         # rendered in `finally`, so they still show if `write_output()` raises.
@@ -166,9 +187,19 @@ def main(clean_cmd: CleanCommand) -> None:
         substeps: list[str] = []
 
         try:
-            video_file.clean()
-            if not settings.dryrun:
-                substeps.extend(write_output(video_file, out_override=out_path_override))
+            plan = video_file.clean(config=config, options=options)
+            destination = out_path_override or video_file.path
+            if plan.output_suffix:
+                destination = destination.with_suffix(plan.output_suffix)
+            if not options.dryrun:
+                substeps.extend(
+                    write_output(
+                        video_file,
+                        destination=destination,
+                        overwrite=config.overwrite,
+                        keep_original=out_path_override is not None,
+                    )
+                )
         # One unusable or failing file must not discard the files queued behind it.
         # `cappa.Exit` is deliberately not caught: it carries KeyboardInterrupt, which
         # means stop the whole run.

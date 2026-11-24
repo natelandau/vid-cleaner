@@ -11,8 +11,7 @@ from cappa.base import command, invoke
 from nclutils import pp
 from rich.traceback import install
 
-from vid_cleaner import settings
-from vid_cleaner.config import SettingsManager
+from vid_cleaner.config import SETTING_NAMES, Config, ConfigError, RunOptions, load_config
 from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel, SortOrder, VideoTrait
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.utils import (
@@ -48,56 +47,75 @@ def verify_required_binaries(vidcleaner: VidCleaner) -> None:
         raise cappa.Exit(code=1)
 
 
-def config_subcommand(vidcleaner: VidCleaner) -> None:
-    """Configure settings based on the provided command and arguments.
+_PRINT_LEVEL_VERBOSITY: dict[PrintLevel, int] = {PrintLevel.DEBUG: 1, PrintLevel.TRACE: 2}
 
-    Update the global settings object with values from the command line arguments and configuration file. Handle project-specific settings if a project is specified.
+
+def _output_verbosity(vidcleaner: VidCleaner) -> int:
+    return _PRINT_LEVEL_VERBOSITY.get(vidcleaner.verbosity, 0)
+
+
+def configure_output(vidcleaner: VidCleaner) -> None:
+    """Set the output verbosity from the `-v` flags before any command prints.
 
     Args:
-        vidcleaner (VidCleaner): The main CLI application object containing command and configuration options.
+        vidcleaner (VidCleaner): The parsed CLI arguments.
     """
-    nllog_level = (
-        1
-        if vidcleaner.verbosity == PrintLevel.DEBUG
-        else 2
-        if vidcleaner.verbosity == PrintLevel.TRACE
-        else 0
-    )
-    pp.configure(verbosity=nllog_level)
+    pp.configure(verbosity=_output_verbosity(vidcleaner))
 
-    langs_to_keep = getattr(vidcleaner.command, "langs_to_keep", None)
-    if langs_to_keep and isinstance(langs_to_keep, str):
-        langs_to_keep = langs_to_keep.split(",")
 
-    # Discovery options are destructured onto a nested object shared by `search`,
-    # `check`, and `clean`, so the filters sit one level down from the command itself.
-    discovery = getattr(vidcleaner.command, "discovery", None)
-    filters = getattr(discovery, "filters", None) or set()
+def build_config(vidcleaner: VidCleaner) -> Config:
+    """Load the settings for this run, with the CLI flags that map to settings applied last.
 
-    # Apply command-specific settings
-    cli_settings = {
-        "downmix_stereo": getattr(vidcleaner.command, "downmix_stereo", False),
-        "drop_local_subs": getattr(vidcleaner.command, "drop_local_subs", False),
-        "drop_original_audio": getattr(vidcleaner.command, "drop_original_audio", False),
-        "dryrun": getattr(vidcleaner, "dryrun", False),
-        "filters": filters,
-        "force": getattr(vidcleaner.command, "force", False),
-        "h265": getattr(vidcleaner.command, "h265", False),
-        "keep_all_subtitles": getattr(vidcleaner.command, "keep_all_subtitles", False),
-        "keep_commentary": getattr(vidcleaner.command, "keep_commentary", False),
-        "keep_local_subtitles": getattr(vidcleaner.command, "keep_local_subtitles", False),
-        "langs_to_keep": langs_to_keep,
-        "out_path": getattr(vidcleaner.command, "out", None),
-        "overwrite": getattr(vidcleaner.command, "overwrite", False),
-        "subcommand": vidcleaner.command.__class__.__name__.lower(),
-        "verbosity": nllog_level,
-        "video_1080": getattr(vidcleaner.command, "video_1080", False),
-        "vp9": getattr(vidcleaner.command, "vp9", False),
+    Only commands that read settings ask for this, so a broken config file cannot stop
+    `check`, `search`, `inspect`, or `--help`.
+
+    Args:
+        vidcleaner (VidCleaner): The parsed CLI arguments.
+
+    Returns:
+        Config: The validated settings.
+
+    Raises:
+        cappa.Exit: If any setting is invalid.
+    """
+    command = vidcleaner.command
+    cli_overrides = {
+        key: value for key in SETTING_NAMES if (value := getattr(command, key, None)) is not None
     }
 
-    SettingsManager.apply_cli_settings(cli_settings)
+    try:
+        loaded = load_config(cli_overrides=cli_overrides)
+    except ConfigError as e:
+        for error in e.errors:
+            pp.error(error)
+        raise cappa.Exit(code=1) from e
 
-    pp.trace("Settings", details=[settings.to_dict(), vidcleaner.__dict__])
+    for warning in loaded.warnings:
+        pp.warning(warning)
+
+    pp.trace("Settings", details=[loaded.config.redacted()])
+    return loaded.config
+
+
+def build_run_options(vidcleaner: VidCleaner) -> RunOptions:
+    """Collect the CLI-only values for this run that are not settings.
+
+    Args:
+        vidcleaner (VidCleaner): The parsed CLI arguments.
+
+    Returns:
+        RunOptions: The values from the command line, with defaults for flags the command lacks.
+    """
+    command = vidcleaner.command
+    return RunOptions(
+        dryrun=vidcleaner.dryrun,
+        verbosity=_output_verbosity(vidcleaner),
+        h265=getattr(command, "h265", False),
+        vp9=getattr(command, "vp9", False),
+        video_1080=getattr(command, "video_1080", False),
+        force=getattr(command, "force", False),
+        out=getattr(command, "out", None),
+    )
 
 
 @dataclass
@@ -249,7 +267,7 @@ The defaults for this command will:
 
 Defaults for vid-cleaner are set in the configuration file located at `{USER_CONFIG_PATH}`. When vid-cleaner is run, it will create this file if it does not exist. All options can be overridden on the command line.
 
-**NOTE:** If you've updated your user config file, the flags for the cli will work in reverse order. For example, if you've set `downmix_stereo = true` in your user config file, the flag `--downmix` will actually disable downmixing.
+Each on-or-off option in `Configuration` also has a `--no-` form, such as `--no-downmix`. A flag overrides the matching `VIDCLEANER_*` environment variable and the configuration file.
 
 **Important:** Vid-cleaner makes decisions about which audio and subtitle tracks to keep based on the original language of the video. This is determined by querying the TMDb, Radarr, andSonarr APIs. To use this functionality, you must add the appropriate API keys to the configuration file.
 
@@ -292,86 +310,99 @@ class CleanCommand:
         ),
     ] = None
     overwrite: Annotated[
-        bool,
+        bool | None,
         cappa.Arg(
             help="Do not create a backup of the original file if it would be overwritten",
-            long=True,
+            long="--overwrite",
             short="-w",
-            show_default=True,
+            action=cappa.ArgAction.store_true,
         ),
-    ] = False
+        cappa.Arg(long="--no-overwrite", action=cappa.ArgAction.store_false),
+    ] = None
     downmix_stereo: Annotated[
-        bool,
+        bool | None,
         cappa.Arg(
             help="Create a stereo track if none exists (add --force to recreate an existing one)",
             long="--downmix",
             short="-d",
-            show_default=True,
+            action=cappa.ArgAction.store_true,
             group="Configuration",
         ),
-    ] = settings.downmix_stereo
+        cappa.Arg(long="--no-downmix", action=cappa.ArgAction.store_false, group="Configuration"),
+    ] = None
     drop_original_audio: Annotated[
-        bool,
+        bool | None,
         cappa.Arg(
             help="Drop original language audio if not specified in langs_to_keep",
             long="--drop-original",
             short="-D",
-            show_default=True,
+            action=cappa.ArgAction.store_true,
             group="Configuration",
         ),
-    ] = settings.drop_original_audio
+        cappa.Arg(
+            long="--no-drop-original", action=cappa.ArgAction.store_false, group="Configuration"
+        ),
+    ] = None
     keep_all_subtitles: Annotated[
-        bool,
+        bool | None,
         cappa.Arg(
             help="Keep all subtitles",
             long="--keep-subs",
             short="-s",
-            show_default=True,
+            action=cappa.ArgAction.store_true,
             group="Configuration",
         ),
-    ] = settings.keep_all_subtitles
+        cappa.Arg(long="--no-keep-subs", action=cappa.ArgAction.store_false, group="Configuration"),
+    ] = None
     keep_commentary: Annotated[
-        bool,
+        bool | None,
         cappa.Arg(
             help="Keep commentary audio",
             long="--keep-commentary",
             short="-c",
-            show_default=True,
+            action=cappa.ArgAction.store_true,
             group="Configuration",
         ),
-    ] = settings.keep_commentary
+        cappa.Arg(
+            long="--no-keep-commentary", action=cappa.ArgAction.store_false, group="Configuration"
+        ),
+    ] = None
     keep_local_subtitles: Annotated[
-        bool,
+        bool | None,
         cappa.Arg(
             help="Keep subtitles matching the local language(s)",
             long="--keep-local-subs",
             short="-S",
-            show_default=True,
+            action=cappa.ArgAction.store_true,
             group="Configuration",
         ),
-    ] = settings.keep_local_subtitles
+        cappa.Arg(
+            long="--no-keep-local-subs", action=cappa.ArgAction.store_false, group="Configuration"
+        ),
+    ] = None
     drop_local_subs: Annotated[
-        bool,
+        bool | None,
         cappa.Arg(
             help="Force dropping local subtitles even if audio is not default language",
             long="--drop-local-subs",
             short="-x",
-            show_default=True,
+            action=cappa.ArgAction.store_true,
             group="Configuration",
         ),
-    ] = settings.drop_local_subs
+        cappa.Arg(
+            long="--no-drop-local-subs", action=cappa.ArgAction.store_false, group="Configuration"
+        ),
+    ] = None
     langs_to_keep: Annotated[
-        str,
+        str | None,
         cappa.Arg(
             help="Languages to keep. Comma separated language ISO 639-1 codes (e.g. `en,es`)",
             long="--langs",
             short="-l",
-            show_default=True,
+            show_default=False,
             group="Configuration",
         ),
-        # Join to a string default so the dataclass field is hashable; dynaconf >=3.3 returns an
-        # unhashable DataList that cappa's @dataclass rejects as a mutable default.
-    ] = ",".join(settings.langs_to_keep)
+    ] = None
     h265: Annotated[
         bool,
         cappa.Arg(
@@ -502,13 +533,14 @@ class ClipCommand:
         ),
     ] = None
     overwrite: Annotated[
-        bool,
+        bool | None,
         cappa.Arg(
             help="Do not create a backup of the original file if it would be overwritten",
-            long=True,
-            show_default=True,
+            long="--overwrite",
+            action=cappa.ArgAction.store_true,
         ),
-    ] = False
+        cappa.Arg(long="--no-overwrite", action=cappa.ArgAction.store_false),
+    ] = None
 
 
 @command(
@@ -575,8 +607,6 @@ class CheckCommand:
             show_default=True,
         ),
     ] = False
-    # Named `discovery` to match `clean` and `search` so `config_subcommand` reads the
-    # trait filters off every command through one attribute.
     discovery: cappa.Destructured[SelectionOptions] = field(default_factory=SelectionOptions)
 
 
@@ -638,7 +668,7 @@ def main() -> None:  # pragma: no cover
     try:
         invoke(
             obj=VidCleaner,
-            deps=[create_default_config, verify_required_binaries, config_subcommand],
+            deps=[create_default_config, verify_required_binaries, configure_output],
             completion=False,
         )
     except KeyboardInterrupt as e:

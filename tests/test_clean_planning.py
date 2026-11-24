@@ -1,40 +1,42 @@
 """Test VideoFile single-pass conversion planning."""
 
-from pathlib import Path
+from dataclasses import fields
+from typing import Any
 
 import pytest
 from iso639 import Lang
 
-from vid_cleaner import settings
+from vid_cleaner.config import Config, RunOptions
 from vid_cleaner.constants import CodecTypes
 from vid_cleaner.exceptions import VideoCleanError
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
-@pytest.fixture(autouse=True)
-def set_default_settings(tmp_path, mocker):
-    """Set default settings for planner tests."""
-    cache_dir = Path(tmp_path) / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    settings.update(
-        {
-            "cache_dir": cache_dir,
-            "langs_to_keep": ["en"],
-            "out_path": None,
-            "downmix_stereo": False,
-            "keep_local_subtitles": False,
-            "keep_commentary": False,
-            "drop_local_subs": False,
-            "keep_all_subtitles": False,
-            "drop_original_audio": False,
-            "force": False,
-            "h265": False,
-            "vp9": False,
-            "video_1080": False,
-            "dryrun": False,
-        }
-    )
+@pytest.fixture
+def plan_settings(make_config):
+    """Collect per-test setting overrides and build the planner's inputs from them.
+
+    Returns:
+        PlanSettings: Call `update` with setting names, then pass `args()` to the planner.
+    """
+    config_fields = {field.name for field in fields(Config)}
+
+    class PlanSettings:
+        def __init__(self) -> None:
+            self.values: dict[str, Any] = {}
+
+        def update(self, values: dict[str, Any]) -> None:
+            self.values.update(values)
+
+        def args(self) -> tuple[Config, RunOptions]:
+            config_values = {k: v for k, v in self.values.items() if k in config_fields}
+            if "langs_to_keep" in config_values:
+                config_values["langs_to_keep"] = tuple(config_values["langs_to_keep"])
+            option_values = {k: v for k, v in self.values.items() if k not in config_fields}
+            return make_config(**config_values), RunOptions(**option_values)
+
+    return PlanSettings()
 
 
 @pytest.fixture
@@ -52,13 +54,13 @@ def make_video(mocker, mock_video_path, mock_ffprobe_box):
     return _inner
 
 
-def test_build_plan_selects_streams_with_copy_codecs(make_video):
+def test_build_plan_selects_streams_with_copy_codecs(make_video, plan_settings):
     """Verify the default plan maps kept streams in order with copy codecs."""
     # Given: reference.json (eng audio kept, French + commentary dropped, subs dropped)
     video = make_video("reference.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: kept streams are mapped video-first with copy codecs and no encodes
     assert [s.source_index for s in plan.streams] == [0, 1, 2, 4]
@@ -67,14 +69,14 @@ def test_build_plan_selects_streams_with_copy_codecs(make_video):
     assert plan.global_args == []
 
 
-def test_build_plan_downmix_appends_encoded_stream(make_video):
+def test_build_plan_downmix_appends_encoded_stream(make_video, plan_settings):
     """Verify --downmix adds an AAC downmix stream after the kept audio."""
     # Given: no_stereo.json (7.1 at index 1, 5.1 at index 2, stereo commentary at 3)
-    settings.update({"downmix_stereo": True})
+    plan_settings.update({"downmix_stereo": True})
     video = make_video("no_stereo.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the 5.1 bed is mapped a second time as an AAC downmix with the filter chain
     downmix = plan.streams[-1]
@@ -85,15 +87,15 @@ def test_build_plan_downmix_appends_encoded_stream(make_video):
     assert downmix.metadata == {"title": "2.0"}
 
 
-def test_build_plan_h265_sets_video_codec_and_bitrates(make_video, tmp_path):
+def test_build_plan_h265_sets_video_codec_and_bitrates(make_video, tmp_path, plan_settings):
     """Verify --h265 encodes the video stream with size-derived bitrate options."""
     # Given: a 1 MB input file and reference.json probe data
-    settings.update({"h265": True})
+    plan_settings.update({"h265": True})
     video = make_video("reference.json")
     video.temp_file.path.write_bytes(b"0" * 1_000_000)
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the video stream encodes to libx265 with bitrate args bound to it
     video_stream = plan.streams[0]
@@ -103,45 +105,45 @@ def test_build_plan_h265_sets_video_codec_and_bitrates(make_video, tmp_path):
     assert h265_action.applied is True
 
 
-def test_h265_records_applied_action(make_video):
+def test_h265_records_applied_action(make_video, plan_settings):
     """Verify --h265 records an applied action when the encode runs."""
     # Given: reference.json (h264 video) with --h265 and a 1 MB input file
-    settings.update({"h265": True})
+    plan_settings.update({"h265": True})
     video = make_video("reference.json")
     video.temp_file.path.write_bytes(b"0" * 1_000_000)
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the recorded action is applied
     h265_action = next(a for a in plan.actions if a.label == "Convert to H.265")
     assert h265_action.applied is True
 
 
-def test_build_plan_h265_skips_when_already_h265(make_video):
+def test_build_plan_h265_skips_when_already_h265(make_video, plan_settings):
     """Verify --h265 without --force leaves an already-H.265 video as a copy."""
     # Given: reference.json rewritten so the video codec is hevc
-    settings.update({"h265": True})
+    plan_settings.update({"h265": True})
     video = make_video("reference.json")
     video.probe_box.streams[0].codec_name = "hevc"
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the video stream stays a copy and no applied H.265 action is recorded
     assert plan.streams[0].codec == "copy"
     assert not any(a.label == "Convert to H.265" and a.applied for a in plan.actions)
 
 
-def test_h265_records_skip_reason_when_already_h265(make_video):
+def test_h265_records_skip_reason_when_already_h265(make_video, plan_settings):
     """Verify --h265 without --force records a skip reason pointing to --force."""
     # Given: reference.json rewritten so the video codec is hevc
-    settings.update({"h265": True})
+    plan_settings.update({"h265": True})
     video = make_video("reference.json")
     video.probe_box.streams[0].codec_name = "hevc"
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the recorded action is skipped with a reason pointing to --force
     h265_action = next(a for a in plan.actions if a.label == "Convert to H.265")
@@ -150,14 +152,14 @@ def test_h265_records_skip_reason_when_already_h265(make_video):
     assert "use --force" in h265_action.reason
 
 
-def test_build_plan_1080p_scales_and_forces_encode(make_video):
+def test_build_plan_1080p_scales_and_forces_encode(make_video, plan_settings):
     """Verify --1080p on a 4K source adds the scale filter and drops the copy codec."""
     # Given: a UHD source and --1080p
-    settings.update({"video_1080": True})
+    plan_settings.update({"video_1080": True})
     video = make_video("uhd.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the video stream is scaled and left to the container default encoder
     video_stream = plan.streams[0]
@@ -167,14 +169,14 @@ def test_build_plan_1080p_scales_and_forces_encode(make_video):
     assert scale_action.applied is True
 
 
-def test_scale_records_skip_reason_when_already_1080p(make_video):
+def test_scale_records_skip_reason_when_already_1080p(make_video, plan_settings):
     """Verify --1080p on an already-1080p source records a skip reason."""
     # Given: reference.json (1080p H264 video) and --1080p
-    settings.update({"video_1080": True})
+    plan_settings.update({"video_1080": True})
     video = make_video("reference.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the recorded action is skipped with a reason naming 1080p
     scale_action = next(a for a in plan.actions if a.label == "Convert to 1080p")
@@ -183,15 +185,15 @@ def test_scale_records_skip_reason_when_already_1080p(make_video):
     assert "1080" in scale_action.reason
 
 
-def test_build_plan_h265_encodes_every_video_stream(make_video):
+def test_build_plan_h265_encodes_every_video_stream(make_video, plan_settings):
     """Verify --h265 encodes all video streams, not just the first."""
     # Given: a file with two real (non-thumbnail) video streams and --h265
-    settings.update({"h265": True})
+    plan_settings.update({"h265": True})
     video = make_video("multi_video.json")
     video.temp_file.path.write_bytes(b"0" * 1_000_000)
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: both video streams are encoded to libx265 with bitrate args, none left as a copy
     video_streams = [s for s in plan.streams if s.codec_type == CodecTypes.VIDEO]
@@ -200,14 +202,14 @@ def test_build_plan_h265_encodes_every_video_stream(make_video):
     assert all(s.extra_args and s.extra_args[0] == "-b:v:{n}" for s in video_streams)
 
 
-def test_build_plan_1080p_scales_every_video_stream(make_video):
+def test_build_plan_1080p_scales_every_video_stream(make_video, plan_settings):
     """Verify --1080p scales all video streams, not just the first."""
     # Given: a file with two 4K video streams and --1080p
-    settings.update({"video_1080": True})
+    plan_settings.update({"video_1080": True})
     video = make_video("multi_video.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: both video streams carry the scale filter and drop the copy codec
     video_streams = [s for s in plan.streams if s.codec_type == CodecTypes.VIDEO]
@@ -216,15 +218,15 @@ def test_build_plan_1080p_scales_every_video_stream(make_video):
     assert all(s.codec is None for s in video_streams)
 
 
-def test_build_plan_1080p_and_h265_single_encode(make_video, tmp_path):
+def test_build_plan_1080p_and_h265_single_encode(make_video, tmp_path, plan_settings):
     """Verify --1080p --h265 yields one libx265 encode with the scale filter attached."""
     # Given: a UHD source with both conversion flags
-    settings.update({"video_1080": True, "h265": True})
+    plan_settings.update({"video_1080": True, "h265": True})
     video = make_video("uhd.json")
     video.temp_file.path.write_bytes(b"0" * 1_000_000)
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: one video stream carries both the codec and the filter
     video_stream = plan.streams[0]
@@ -232,15 +234,15 @@ def test_build_plan_1080p_and_h265_single_encode(make_video, tmp_path):
     assert video_stream.stream_filter == "scale=width=1920:height=-2"
 
 
-def test_build_plan_h265_bitrate_math(make_video):
+def test_build_plan_h265_bitrate_math(make_video, plan_settings):
     """Verify the H.265 bitrate targets are computed from the on-disk file size."""
     # Given: a 600 MB, 4K/600s source with only --h265 (no scale, kept video+audio)
-    settings.update({"h265": True})
+    plan_settings.update({"h265": True})
     video = make_video("uhd.json")
     video.temp_file.path.write_bytes(b"0" * 600_000_000)
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: bitrates follow the Frame.io formula with no pixel-ratio scaling
     video_stream = plan.streams[0]
@@ -257,15 +259,15 @@ def test_build_plan_h265_bitrate_math(make_video):
     ]
 
 
-def test_build_plan_h265_bitrate_math_scaled_for_1080p(make_video):
+def test_build_plan_h265_bitrate_math_scaled_for_1080p(make_video, plan_settings):
     """Verify --1080p shrinks the H.265 bitrate targets by the pixel ratio."""
     # Given: the same 600 MB, 4K/600s source, now also downscaling to 1080p
-    settings.update({"h265": True, "video_1080": True})
+    plan_settings.update({"h265": True, "video_1080": True})
     video = make_video("uhd.json")
     video.temp_file.path.write_bytes(b"0" * 600_000_000)
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the bitrates are quartered (scale_factor = (1920/3840)**2 = 0.25) and the
     # scale filter still lands on the same combined video stream
@@ -284,14 +286,14 @@ def test_build_plan_h265_bitrate_math_scaled_for_1080p(make_video):
     ]
 
 
-def test_build_plan_vp9_converts_audio_and_text_subs(make_video):
+def test_build_plan_vp9_converts_audio_and_text_subs(make_video, plan_settings):
     """Verify --vp9 encodes audio to libvorbis, converts text subs, and sets .webm."""
     # Given: a UHD source (subrip subtitle) with --vp9 and all subtitles kept
-    settings.update({"vp9": True, "keep_all_subtitles": True, "out_path": Path("out.mkv")})
+    plan_settings.update({"vp9": True, "keep_all_subtitles": True})
     video = make_video("uhd.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: video is VP9, audio is vorbis, the subrip sub becomes webvtt, container is webm
     assert plan.streams[0].codec == "libvpx-vp9"
@@ -303,14 +305,14 @@ def test_build_plan_vp9_converts_audio_and_text_subs(make_video):
     assert plan.global_args == ["-dn", "-map_chapters", "-1"]
 
 
-def test_build_plan_vp9_drops_bitmap_subtitles(make_video):
+def test_build_plan_vp9_drops_bitmap_subtitles(make_video, plan_settings):
     """Verify --vp9 drops image-based subtitles that WebM cannot carry."""
     # Given: reference.json (PGS subtitles) with --vp9 and all subtitles kept
-    settings.update({"vp9": True, "keep_all_subtitles": True, "out_path": Path("out.mkv")})
+    plan_settings.update({"vp9": True, "keep_all_subtitles": True})
     video = make_video("reference.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: no subtitle stream survives into the WebM plan, and the earlier
     # "Drop unwanted subtitles" action is corrected to reflect that a drop happened
@@ -320,14 +322,14 @@ def test_build_plan_vp9_drops_bitmap_subtitles(make_video):
     assert drop_subs.reason is None
 
 
-def test_build_plan_vp9_downmix_uses_vorbis(make_video):
+def test_build_plan_vp9_downmix_uses_vorbis(make_video, plan_settings):
     """Verify a downmix track targets libvorbis, not AAC, when --vp9 is active."""
     # Given: a surround-only file with --downmix and --vp9
-    settings.update({"vp9": True, "downmix_stereo": True, "out_path": Path("out.mkv")})
+    plan_settings.update({"vp9": True, "downmix_stereo": True})
     video = make_video("no_stereo.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the appended downmix stream encodes with vorbis for WebM compatibility
     downmix = plan.streams[-1]
@@ -354,7 +356,7 @@ def test_estimate_cleaned_size_subtracts_dropped_streams(make_video):
     assert size_mb == pytest.approx(5.2, rel=0.01)
 
 
-def test_clean_no_video_streams_raises(make_video):
+def test_clean_no_video_streams_raises(make_video, plan_settings):
     """Verify clean() rejects a file with no video streams before doing any work."""
     # Given: audio_only.json (one audio stream, zero video streams)
     video = make_video("audio_only.json")
@@ -363,12 +365,12 @@ def test_clean_no_video_streams_raises(make_video):
     # Then: VideoCleanError is raised, distinct from cappa.Exit, so a batch loop can
     # catch it and continue to the next file without swallowing a real interrupt
     with pytest.raises(VideoCleanError) as exc_info:
-        video.clean()
+        video.clean(*plan_settings.args())
     assert exc_info.value.path == video.path
     assert exc_info.value.reason == "no video streams found"
 
 
-def test_clean_no_audio_streams_raises(make_video):
+def test_clean_no_audio_streams_raises(make_video, plan_settings):
     """Verify clean() rejects a file with no audio streams before doing any work."""
     # Given: video_only.json (one video stream, zero audio streams)
     video = make_video("video_only.json")
@@ -377,32 +379,32 @@ def test_clean_no_audio_streams_raises(make_video):
     # Then: VideoCleanError is raised, distinct from cappa.Exit, so a batch loop can
     # catch it and continue to the next file without swallowing a real interrupt
     with pytest.raises(VideoCleanError) as exc_info:
-        video.clean()
+        video.clean(*plan_settings.args())
     assert exc_info.value.path == video.path
     assert exc_info.value.reason == "no audio streams found"
 
 
-def test_clean_noop_skips_ffmpeg(make_video, mock_ffmpeg):
+def test_clean_noop_skips_ffmpeg(make_video, mock_ffmpeg, plan_settings):
     """Verify a plan that changes nothing skips ffmpeg and reports no work."""
     # Given: a file whose only audio has an unmapped channel count and --downmix
-    settings.update({"downmix_stereo": True})
+    plan_settings.update({"downmix_stereo": True})
     video = make_video("unmapped_channels.json")
 
     # When: cleaning
-    result = video.clean()
+    result = video.clean(*plan_settings.args())
 
     # Then: ffmpeg never runs and no action was applied
     mock_ffmpeg.assert_not_called()
-    assert all(not action.applied for action in result)
+    assert all(not action.applied for action in result.actions)
 
 
-def test_drop_audio_records_applied_when_streams_dropped(make_video):
+def test_drop_audio_records_applied_when_streams_dropped(make_video, plan_settings):
     """Verify drop-audio is applied when language filtering drops audio streams."""
     # Given: reference.json (french and commentary audio dropped, english kept)
     video = make_video("reference.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the drop-audio action is applied with no skip reason
     drop = next(a for a in plan.actions if a.label == "Drop unwanted audio")
@@ -410,13 +412,13 @@ def test_drop_audio_records_applied_when_streams_dropped(make_video):
     assert drop.reason is None
 
 
-def test_drop_audio_records_reason_when_nothing_dropped(make_video):
+def test_drop_audio_records_reason_when_nothing_dropped(make_video, plan_settings):
     """Verify drop-audio records a reason when every audio stream matches the keep languages."""
     # Given: audio_only.json (single english audio stream, langs_to_keep=["en"])
     video = make_video("audio_only.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the drop-audio action is skipped with a matching-languages reason
     drop = next(a for a in plan.actions if a.label == "Drop unwanted audio")
@@ -424,15 +426,15 @@ def test_drop_audio_records_reason_when_nothing_dropped(make_video):
     assert drop.reason == "all audio matches keep languages"
 
 
-def test_drop_audio_records_fallback_reason_when_every_stream_filtered(make_video):
+def test_drop_audio_records_fallback_reason_when_every_stream_filtered(make_video, plan_settings):
     """Verify drop-audio records the fallback reason when language filtering drops everything."""
     # Given: audio_only.json (single english audio stream) with langs_to_keep=["fr"] and
     # drop_original_audio=True so nothing matches and the safety fallback keeps it anyway
-    settings.update({"langs_to_keep": ["fr"], "drop_original_audio": True})
+    plan_settings.update({"langs_to_keep": ["fr"], "drop_original_audio": True})
     video = make_video("audio_only.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the drop-audio action is truthfully unapplied with the fallback reason
     drop = next(a for a in plan.actions if a.label == "Drop unwanted audio")
@@ -440,14 +442,14 @@ def test_drop_audio_records_fallback_reason_when_every_stream_filtered(make_vide
     assert drop.reason == "kept all audio to avoid a silent file"
 
 
-def test_downmix_records_applied_when_planned(make_video):
+def test_downmix_records_applied_when_planned(make_video, plan_settings):
     """Verify downmix is applied when a surround source is downmixed to stereo."""
     # Given: no_stereo.json (no existing stereo mix, 5.1 surround source) with --downmix
-    settings.update({"downmix_stereo": True})
+    plan_settings.update({"downmix_stereo": True})
     video = make_video("no_stereo.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the downmix action is applied with no skip reason
     downmix = next(a for a in plan.actions if a.label == "Downmix to stereo")
@@ -455,14 +457,14 @@ def test_downmix_records_applied_when_planned(make_video):
     assert downmix.reason is None
 
 
-def test_downmix_records_skip_when_stereo_exists(make_video):
+def test_downmix_records_skip_when_stereo_exists(make_video, plan_settings):
     """Verify downmix records a skip reason pointing to --force when stereo already exists."""
     # Given: reference.json (existing non-commentary stereo track) with --downmix, no --force
-    settings.update({"downmix_stereo": True, "force": False})
+    plan_settings.update({"downmix_stereo": True, "force": False})
     video = make_video("reference.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the downmix action is skipped with a --force reason
     downmix = next(a for a in plan.actions if a.label == "Downmix to stereo")
@@ -470,14 +472,14 @@ def test_downmix_records_skip_when_stereo_exists(make_video):
     assert "use --force" in downmix.reason
 
 
-def test_downmix_records_skip_when_no_surround_source_after_force(make_video):
+def test_downmix_records_skip_when_no_surround_source_after_force(make_video, plan_settings):
     """Verify a forced downmix with no surround source records a no-surround reason."""
     # Given: stereo_no_surround.json (existing stereo, no surround bed) with --downmix --force
-    settings.update({"downmix_stereo": True, "force": True})
+    plan_settings.update({"downmix_stereo": True, "force": True})
     video = make_video("stereo_no_surround.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the downmix action is skipped with a no-surround-source reason
     downmix = next(a for a in plan.actions if a.label == "Downmix to stereo")
@@ -485,39 +487,39 @@ def test_downmix_records_skip_when_no_surround_source_after_force(make_video):
     assert downmix.reason == "no surround source to downmix"
 
 
-def test_downmix_absent_when_flag_not_set(make_video):
+def test_downmix_absent_when_flag_not_set(make_video, plan_settings):
     """Verify no downmix action is recorded when --downmix is not requested."""
     # Given: reference.json without --downmix
     video = make_video("reference.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: no downmix action appears in the plan
     assert all(a.label != "Downmix to stereo" for a in plan.actions)
 
 
-def test_actions_order_drop_audio_before_downmix(make_video):
+def test_actions_order_drop_audio_before_downmix(make_video, plan_settings):
     """Verify the drop-audio action is recorded before the downmix action."""
     # Given: no_stereo.json with --downmix
-    settings.update({"downmix_stereo": True})
+    plan_settings.update({"downmix_stereo": True})
     video = make_video("no_stereo.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: drop-audio precedes downmix in the recorded actions
     labels = [a.label for a in plan.actions]
     assert labels.index("Drop unwanted audio") < labels.index("Downmix to stereo")
 
 
-def test_drop_subtitles_records_applied_when_dropped(make_video):
+def test_drop_subtitles_records_applied_when_dropped(make_video, plan_settings):
     """Verify drop-subtitles is applied when default settings drop every local subtitle."""
     # Given: reference.json (all subtitles dropped under default settings)
     video = make_video("reference.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the drop-subtitles action is applied with no skip reason
     drop = next(a for a in plan.actions if a.label == "Drop unwanted subtitles")
@@ -525,14 +527,14 @@ def test_drop_subtitles_records_applied_when_dropped(make_video):
     assert drop.reason is None
 
 
-def test_drop_subtitles_records_applied_via_early_drop_all_path(make_video):
+def test_drop_subtitles_records_applied_via_early_drop_all_path(make_video, plan_settings):
     """Verify drop-subtitles is applied when settings drop local subs before evaluation."""
     # Given: reference.json with --drop-local-subs (skips per-stream evaluation entirely)
-    settings.update({"drop_local_subs": True})
+    plan_settings.update({"drop_local_subs": True})
     video = make_video("reference.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the drop-subtitles action is still recorded exactly once and applied
     drop_actions = [a for a in plan.actions if a.label == "Drop unwanted subtitles"]
@@ -540,13 +542,13 @@ def test_drop_subtitles_records_applied_via_early_drop_all_path(make_video):
     assert drop_actions[0].applied is True
 
 
-def test_drop_subtitles_records_reason_when_no_subtitles(make_video):
+def test_drop_subtitles_records_reason_when_no_subtitles(make_video, plan_settings):
     """Verify drop-subtitles records a reason when the file has no subtitle streams."""
     # Given: audio_only.json (no subtitle streams)
     video = make_video("audio_only.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the drop-subtitles action is skipped with a no-subtitles reason
     drop = next(a for a in plan.actions if a.label == "Drop unwanted subtitles")
@@ -554,14 +556,14 @@ def test_drop_subtitles_records_reason_when_no_subtitles(make_video):
     assert drop.reason == "no subtitles to drop"
 
 
-def test_drop_subtitles_records_reason_when_keep_all_subtitles(make_video):
+def test_drop_subtitles_records_reason_when_keep_all_subtitles(make_video, plan_settings):
     """Verify drop-subtitles records a --keep-all-subtitles reason when nothing is dropped."""
     # Given: reference.json with --keep-all-subtitles (every subtitle stream kept)
-    settings.update({"keep_all_subtitles": True})
+    plan_settings.update({"keep_all_subtitles": True})
     video = make_video("reference.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the drop-subtitles action is skipped with a --keep-all-subtitles reason
     drop = next(a for a in plan.actions if a.label == "Drop unwanted subtitles")
@@ -569,14 +571,14 @@ def test_drop_subtitles_records_reason_when_keep_all_subtitles(make_video):
     assert drop.reason == "--keep-all-subtitles set"
 
 
-def test_drop_subtitles_records_reason_when_no_unwanted(make_video):
+def test_drop_subtitles_records_reason_when_no_unwanted(make_video, plan_settings):
     """Verify drop-subtitles records a generic reason when every subtitle matches local prefs."""
     # Given: uhd.json (single english subtitle) with --keep-local-subtitles
-    settings.update({"keep_local_subtitles": True})
+    plan_settings.update({"keep_local_subtitles": True})
     video = make_video("uhd.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the drop-subtitles action is skipped with a no-unwanted-subtitles reason
     drop = next(a for a in plan.actions if a.label == "Drop unwanted subtitles")
@@ -584,42 +586,42 @@ def test_drop_subtitles_records_reason_when_no_unwanted(make_video):
     assert drop.reason == "no unwanted subtitles"
 
 
-def test_downmix_picks_one_source_per_file(make_video):
+def test_downmix_picks_one_source_per_file(make_video, plan_settings):
     """Verify a forced downmix builds exactly one stereo track when several 5.1 beds qualify."""
     # Given: reference.json keeps two 5.1 beds (English #2, French #3) with --downmix --force
-    settings.update({"downmix_stereo": True, "force": True, "langs_to_keep": ["en", "fr"]})
+    plan_settings.update({"downmix_stereo": True, "force": True, "langs_to_keep": ["en", "fr"]})
     video = make_video("reference.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: only one downmix stream is appended
     downmixes = [s for s in plan.streams if s.stream_filter is not None]
     assert len(downmixes) == 1
 
 
-def test_downmix_prefers_first_configured_language(make_video):
+def test_downmix_prefers_first_configured_language(make_video, plan_settings):
     """Verify the downmix source follows the order of the configured keep languages."""
     # Given: reference.json keeps two 5.1 beds (English #2, French #3) with French listed first
-    settings.update({"downmix_stereo": True, "force": True, "langs_to_keep": ["fr", "en"]})
+    plan_settings.update({"downmix_stereo": True, "force": True, "langs_to_keep": ["fr", "en"]})
     video = make_video("reference.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the French bed alone seeds the downmix even though the English bed comes first
     downmixes = [s for s in plan.streams if s.stream_filter is not None]
     assert [s.source_index for s in downmixes] == [3]
 
 
-def test_downmix_discounts_commentary_source(make_video):
+def test_downmix_discounts_commentary_source(make_video, plan_settings):
     """Verify a surround commentary track is not chosen as the downmix source."""
     # Given: an untagged-language 5.1 commentary bed (#1) ahead of the main 5.1 bed (#2)
-    settings.update({"downmix_stereo": True})
+    plan_settings.update({"downmix_stereo": True})
     video = make_video("surround_commentary_no_lang.json")
 
     # When: building the plan
-    plan = video._build_plan()  # noqa: SLF001
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the main bed alone seeds the downmix, not the commentary bed listed first
     downmixes = [s for s in plan.streams if s.stream_filter is not None]

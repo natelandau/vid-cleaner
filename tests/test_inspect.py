@@ -1,21 +1,18 @@
 """Test the vidcleaner inspect subcommand."""
 
 import re
-from pathlib import Path
 
 import cappa
 import pytest
 from cappa.base import invoke
 
-from vid_cleaner import settings
-from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
+from vid_cleaner.vidcleaner import VidCleaner, configure_output
 
 
 def test_inspect_table(tmp_path, capsys, debug, mock_video_path, mock_ffprobe_box, mocker):
     """Verify inspect command displays video information in table format."""
     # Given: Mock video file and ffprobe data
     args = ["inspect", str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
     mocker.patch(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
@@ -23,7 +20,7 @@ def test_inspect_table(tmp_path, capsys, debug, mock_video_path, mock_ffprobe_bo
 
     # When: Running inspect command
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: Output contains expected table data
     output = capsys.readouterr().out
@@ -51,7 +48,7 @@ def test_inspect_title_shows_file_size(capsys, mock_video_path, mocker, mock_ffp
     # When: Inspecting the file
     args = ["inspect", str(mock_video_path)]
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
 
@@ -64,7 +61,6 @@ def test_inspect_json(tmp_path, capsys, debug, mock_video_path, mock_ffprobe, mo
     """Verify inspect command displays video information in JSON format."""
     # Given: Mock video file and ffprobe data
     args = ["inspect", "--json", str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
     mocker.patch(
         "vid_cleaner.models.video_file.run_ffprobe",
         return_value=mock_ffprobe("reference.json"),
@@ -72,7 +68,7 @@ def test_inspect_json(tmp_path, capsys, debug, mock_video_path, mock_ffprobe, mo
 
     # When: Running inspect command with JSON flag
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: Output contains expected JSON data
     output = capsys.readouterr().out
