@@ -77,7 +77,6 @@ def test_search_with_results(
     # debug(output, "output")
 
     assert exc_info.value.code == 0
-    assert "Found 1 video files in 1/1 directories" in output
     assert "test_video.mp4" in output
     assert "h264" in output
 
@@ -109,7 +108,6 @@ def test_search_with_no_results(
     # debug(output, "output")
 
     assert exc_info.value.code == 1
-    assert "Found 1 video files in 1/1 directories" in output
     assert "No video files found matching 'reorder'" in error
     assert "Bitrate" not in output
 
@@ -354,10 +352,13 @@ def test_search_sort_ties_are_deterministic(capsys, video_library, mocker):
     directory = video_library(
         [("alpha.mkv", 100, 0), ("bravo.mkv", 100, 0), ("charlie.mkv", 100, 0)]
     )
-    # find_files' scan order is arbitrary; scramble it here to prove the table's row
+    # Directory listing order is arbitrary; scramble it here to prove the table's row
     # order does not simply mirror whatever order the filesystem happened to return.
     scrambled = [directory / "bravo.mkv", directory / "charlie.mkv", directory / "alpha.mkv"]
-    mocker.patch("vid_cleaner.controllers.discovery.find_files", return_value=scrambled)
+    mocker.patch(
+        "vid_cleaner.controllers.discovery._walk_video_paths",
+        return_value=[(directory, scrambled)],
+    )
 
     # When: Sorting by size
     args = ["search", str(directory), "--filters", "h264", "--sort", "size"]

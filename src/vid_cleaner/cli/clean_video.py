@@ -8,11 +8,10 @@ from nclutils import pp
 from vid_cleaner import settings
 from vid_cleaner.cli.discovery_output import (
     confirm_selection,
+    discover_from_directory,
     present_discovery,
-    resolve_discovery_root,
 )
 from vid_cleaner.constants import SYMBOL_CROSS, SortOrder
-from vid_cleaner.controllers.discovery import discover_video_files
 from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
 from vid_cleaner.utils import (
     coerce_video_files,
@@ -115,17 +114,11 @@ def select_video_files(clean_cmd: CleanCommand) -> list[VideoFile]:
             raise cappa.Exit(code=1)
         return coerce_video_files(clean_cmd.files)
 
-    root = resolve_discovery_root(clean_cmd.from_, argument_name="`--from`")
-    report = discover_video_files(
-        root,
-        depth=discovery.depth,
-        filters=set(settings.filters),
-        sort=discovery.sort,
-        reverse=discovery.reverse,
-        limit=discovery.limit,
+    report = discover_from_directory(
+        clean_cmd.from_, discovery, argument_name="`--from`", limit=discovery.limit
     )
 
-    present_discovery(report, root=root)
+    present_discovery(report)
 
     # A dry run previews rather than acts, so there is nothing to approve.
     if not settings.dryrun:

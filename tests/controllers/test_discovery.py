@@ -250,9 +250,12 @@ def test_discover_ties_break_alphabetically(video_library, mocker):
     directory = video_library(
         [("alpha.mkv", 100, 0), ("bravo.mkv", 100, 0), ("charlie.mkv", 100, 0)]
     )
-    # find_files' scan order is arbitrary; scramble it to prove the tiebreaker is real.
+    # Directory listing order is arbitrary; scramble it to prove the tiebreaker is real.
     scrambled = [directory / "bravo.mkv", directory / "charlie.mkv", directory / "alpha.mkv"]
-    mocker.patch("vid_cleaner.controllers.discovery.find_files", return_value=scrambled)
+    mocker.patch(
+        "vid_cleaner.controllers.discovery._walk_video_paths",
+        return_value=[(directory, scrambled)],
+    )
 
     # When: Sorting by a key that cannot break the tie
     report = discover_video_files(directory, sort=SortOrder.SIZE)

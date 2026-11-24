@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path  # noqa: TC003
 from typing import TYPE_CHECKING
 
-from vid_cleaner.constants import VideoContainerTypes
+from vid_cleaner.constants import VIDEO_SUFFIXES
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.utils.ffmpeg_utils import decode_check
 
@@ -70,7 +70,7 @@ def check_video_file(path: Path, *, deep: bool = False) -> CheckResult:
     if not resolved.is_file():
         return CheckResult(path=path, ok=False, reason="file does not exist")
 
-    if resolved.suffix.lower() not in {container.value for container in VideoContainerTypes}:
+    if resolved.suffix.lower() not in VIDEO_SUFFIXES:
         return CheckResult(path=path, ok=False, reason="not a video file")
 
     # `VideoFile` probes lazily, so the probe this catches happens inside the call below.

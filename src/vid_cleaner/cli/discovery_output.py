@@ -14,17 +14,19 @@ from rich.filesize import decimal
 from rich.prompt import Confirm
 
 from vid_cleaner import settings
+from vid_cleaner.controllers.discovery import discover_video_files
 from vid_cleaner.views import search_table
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from vid_cleaner.controllers.discovery import DiscoveryReport
+    from vid_cleaner.vidcleaner import SelectionOptions
 
 NOT_AN_EXISTING_DIRECTORY_ERROR = "must be an existing directory"
 
 
-def resolve_discovery_root(path: Path, *, argument_name: str) -> Path:
+def _resolve_discovery_root(path: Path, *, argument_name: str) -> Path:
     """Normalize a user-supplied discovery directory, or stop the run if it is not one.
 
     Call this before discovery so the directory searched, the directory shown, and the
@@ -58,7 +60,41 @@ def resolve_discovery_root(path: Path, *, argument_name: str) -> Path:
     return resolved
 
 
-def present_discovery(report: DiscoveryReport, *, root: Path) -> None:
+def discover_from_directory(
+    directory: Path,
+    options: SelectionOptions,
+    *,
+    argument_name: str,
+    limit: int | None = None,
+) -> DiscoveryReport:
+    """Run discovery on a directory the user named, the same way for every command.
+
+    Use this from any command that selects files by query, so `search`, `check --from`,
+    and `clean --from` validate the directory and apply the query identically.
+
+    Args:
+        directory (Path): The directory as the user typed it.
+        options (SelectionOptions): The command's depth, sort, and direction flags.
+        argument_name (str): How an error message names the argument, e.g. "`--from`".
+        limit (int | None): Keep only the first N results after sorting.
+
+    Returns:
+        DiscoveryReport: The ranked selection, carrying the resolved directory searched.
+
+    Raises:
+        cappa.Exit: With code 1 when `directory` is not an existing directory.
+    """
+    return discover_video_files(
+        _resolve_discovery_root(directory, argument_name=argument_name),
+        depth=options.depth,
+        filters=set(settings.filters),
+        sort=options.sort,
+        reverse=options.reverse,
+        limit=limit,
+    )
+
+
+def present_discovery(report: DiscoveryReport) -> None:
     """Render a discovery report, or exit with the message its emptiness calls for.
 
     Distinguish "the directory holds no video files" (not an error) from "files were
@@ -69,16 +105,13 @@ def present_discovery(report: DiscoveryReport, *, root: Path) -> None:
     Args:
         report (DiscoveryReport): The selection to present, carrying the query that
             produced it.
-        root (Path): The directory that was searched, as returned by
-            `resolve_discovery_root`. Named in the empty-directory warning, and the base
-            a recursive table lays out paths from.
 
     Raises:
-        cappa.Exit: With code 0 when no video files exist under `root`, or code 1 when
+        cappa.Exit: With code 0 when no video files exist under the searched directory, or code 1 when
             files were found but none survived the filters.
     """
     if report.total == 0:
-        pp.warning(f"No video files found in {root}")
+        pp.warning(f"No video files found in {report.root}")
         raise cappa.Exit(code=0)
 
     if report.skipped:
@@ -103,7 +136,7 @@ def present_discovery(report: DiscoveryReport, *, root: Path) -> None:
         pp.error(message)
         raise cappa.Exit(code=1)
 
-    pp.console().print(search_table(report, root=root if report.recursive else None))
+    pp.console().print(search_table(report))
 
 
 def _no_prompt_available() -> cappa.Exit:
