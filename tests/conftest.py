@@ -1,20 +1,20 @@
 """Shared fixtures for tests."""
 
 import copy
-import json
 import os
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from box import Box
-from rich.console import Console
+from iso639 import Lang
 
+from tests.helpers import FFPROBE_FIXTURES_DIR, load_ffprobe_json
 from vid_cleaner import constants
 from vid_cleaner.config import Config, load_config
 from vid_cleaner.utils import get_probe_as_box
 
-console = Console()
+from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
 @pytest.fixture(autouse=True)
@@ -63,59 +63,68 @@ def make_config(tmp_path):
 
 
 @pytest.fixture
-def mock_video_path(tmp_path):
-    """Fixture to return a VideoFile instance with a specified path.
+def video_path(tmp_path) -> Path:
+    """Create an empty video file to pass where the code needs a real path on disk.
 
     Returns:
-        VideoFile: A VideoFile instance with a specified path.
+        Path: The empty `test_video.mp4` under `tmp_path`.
     """
-    # GIVEN a VideoFile instance with a specified path
-    test_path = Path(tmp_path / "test_video.mp4")
-    test_path.touch()  # Create a dummy file
-    return test_path
+    path = tmp_path / "test_video.mp4"
+    path.touch()
+    return path
 
 
 @pytest.fixture
 def mock_ffprobe_box(mocker):
-    """Return mocked JSON response from ffprobe."""
+    """Build the probe box for a recorded ffprobe response.
 
-    def _inner(filename: str):
-        fixture = Path(__file__).resolve().parent / "fixtures/ffprobe" / filename
+    Also patches `run_ffprobe` to return that response, so code that probes through
+    `get_probe_as_box` sees the same data.
 
-        cleaned_content = []  # Remove comments from JSON
-        with fixture.open() as f:
-            for line in f.readlines():
-                # Remove comments
-                if "//" in line:
-                    continue
-                cleaned_content.append(line)
+    Returns:
+        Callable[[str], Box]: Call with a fixture file name to get its probe box.
+    """
 
+    def _inner(filename: str) -> Box:
         mocker.patch(
             "vid_cleaner.utils.ffmpeg_utils.run_ffprobe",
-            return_value=json.loads("".join(line for line in cleaned_content)),
+            return_value=load_ffprobe_json(filename),
         )
-
-        return get_probe_as_box(fixture)
+        return get_probe_as_box(FFPROBE_FIXTURES_DIR / filename)
 
     return _inner
 
 
 @pytest.fixture
-def mock_ffprobe():
-    """Return mocked JSON response from ffprobe."""
+def mock_video_probe(mocker, mock_ffprobe_box):
+    """Make every `VideoFile` probe return a recorded ffprobe response.
 
-    def _inner(filename: str):
-        fixture = Path(__file__).resolve().parent / "fixtures/ffprobe" / filename
+    Returns:
+        Callable[[str], Box]: Call with a fixture file name; returns the box the probe
+            now reports, so a test can adjust it.
+    """
 
-        cleaned_content = []  # Remove comments from JSON
-        with fixture.open() as f:
-            for line in f.readlines():
-                # Remove comments
-                if "//" in line:
-                    continue
-                cleaned_content.append(line)
+    def _inner(filename: str) -> Box:
+        box = mock_ffprobe_box(filename)
+        mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", return_value=box)
+        return box
 
-        return json.loads("".join(line for line in cleaned_content))
+    return _inner
+
+
+@pytest.fixture
+def make_video(mocker, video_path, mock_video_probe):
+    """Build a `VideoFile` from a recorded ffprobe response without any network lookup.
+
+    Returns:
+        Callable[..., VideoFile]: Call with a fixture file name and, optionally, the
+            original language to report (default `en`).
+    """
+
+    def _inner(fixture_name: str, language: str = "en") -> VideoFile:
+        mock_video_probe(fixture_name)
+        mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang(language))
+        return VideoFile(video_path)
 
     return _inner
 

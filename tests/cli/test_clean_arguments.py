@@ -6,27 +6,27 @@ import cappa
 import pytest
 from cappa.base import invoke, parse
 
+from tests.helpers import run_vidcleaner
 from vid_cleaner.cli.discovery_output import NOT_AN_EXISTING_DIRECTORY_ERROR
 from vid_cleaner.vidcleaner import CleanCommand, VidCleaner, configure_output
 
 
-def test_fail_on_flag_conflict(debug, tmp_path, capsys, mock_video_path) -> None:
+def test_fail_on_flag_conflict(capsys, video_path) -> None:
     """Verify clean command fails when incompatible flags are used."""
     # Given: Conflicting codec conversion flags
-    args = ["clean", "-vv", "--h265", "--vp9", str(mock_video_path)]
+    args = ["clean", "-vv", "--h265", "--vp9", str(video_path)]
 
     # When: Running clean command with conflicting flags
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: Error message is displayed
     output = capsys.readouterr().err
 
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     assert "Cannot convert to both H265 and VP9" in output
 
 
-def test_clean_out_with_multiple_files_errors(debug, tmp_path, capsys) -> None:
+def test_clean_out_with_multiple_files_errors(tmp_path, capsys) -> None:
     """Verify clean command rejects --out when given more than one input file."""
     # Given: an explicit --out alongside two input files
     first = Path(tmp_path / "first_video.mkv")
@@ -36,12 +36,11 @@ def test_clean_out_with_multiple_files_errors(debug, tmp_path, capsys) -> None:
     args = ["clean", "-vv", "--out", str(tmp_path / "out.mkv"), str(first), str(second)]
 
     # When: running clean with --out and multiple files
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: the command exits with an error explaining the conflict
     output = capsys.readouterr().err
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     assert "`--out` cannot be used with multiple input files" in output
 
 
@@ -53,11 +52,10 @@ def test_clean_rejects_from_with_positional_files(capsys, tmp_path):
     args = ["clean", "--from", str(tmp_path), str(video)]
 
     # When: Running clean
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: The command errors explaining the conflict
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     assert "`--from` cannot be combined with explicit file paths" in capsys.readouterr().err
 
 
@@ -67,11 +65,10 @@ def test_clean_rejects_from_with_out(capsys, tmp_path):
     args = ["clean", "--from", str(tmp_path), "--out", str(tmp_path / "out.mkv")]
 
     # When: Running clean
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: The command errors
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     assert "`--out` cannot be used with `--from`" in capsys.readouterr().err
 
 
@@ -87,11 +84,10 @@ def test_clean_rejects_discovery_flags_without_from(capsys, tmp_path, discovery_
     args = ["clean", str(video), *discovery_arg]
 
     # When: Running clean
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: The command errors naming --from
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     assert "require `--from`" in capsys.readouterr().err
 
 
@@ -101,11 +97,10 @@ def test_clean_rejects_no_files_and_no_from(capsys):
     args = ["clean"]
 
     # When: Running clean
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: The command errors
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     assert "Provide file path(s) or `--from`" in capsys.readouterr().err
 
 
@@ -117,11 +112,10 @@ def test_clean_rejects_yes_without_from(capsys, tmp_path):
     args = ["clean", "--yes", str(video)]
 
     # When: Running clean
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: The command errors naming --from
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     assert "require `--from`" in capsys.readouterr().err
 
 
@@ -189,7 +183,7 @@ def test_clean_langs_short_flag_takes_a_value(tmp_path):
 
 
 @pytest.mark.parametrize("limit", ["0", "-1"])
-def test_clean_rejects_limit_below_one(capsys, tmp_path, limit):
+def test_clean_rejects_limit_below_one(tmp_path, limit):
     """Verify a limit below one is refused instead of silently selecting the wrong files."""
     # Given: A discovery run asking for a zero or negative limit
     args = ["clean", "--from", str(tmp_path), "--limit", limit]
@@ -209,11 +203,10 @@ def test_clean_rejects_from_that_does_not_exist(capsys, tmp_path):
     args = ["clean", "--from", str(tmp_path / "does-not-exist")]
 
     # When: Running clean
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: The command errors rather than exiting 0
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     assert f"`--from` {NOT_AN_EXISTING_DIRECTORY_ERROR}" in capsys.readouterr().err
 
 
@@ -225,9 +218,8 @@ def test_clean_rejects_from_that_is_a_file(capsys, tmp_path):
     args = ["clean", "--from", str(video)]
 
     # When: Running clean
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: The command errors rather than exiting 0
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     assert f"`--from` {NOT_AN_EXISTING_DIRECTORY_ERROR}" in capsys.readouterr().err

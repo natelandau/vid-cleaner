@@ -52,12 +52,8 @@ Each `_plan_*` method on `VideoFile` adds `OutputStream` and `PlanAction` entrie
 
 ## Tests
 
-- Drive the real CLI, not `main()`:
-
-    ```python
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
-    ```
-
-- The autouse `_isolate_config` fixture points the user and dev config paths at `tmp_path` and clears `VIDCLEANER_*` vars. Write a test config with the `user_config` fixture; build objects with `make_config` and `make_run_options`.
+- `tests/` mirrors `src/vid_cleaner/`, with subcommand tests in `tests/cli/`. Put a test in the folder of the module it covers.
+- Drive the real CLI, not `main()`: `exit_code = run_vidcleaner(["clean", "-n", str(path)])` from `tests/helpers.py`. Call `invoke(...)` inside `pytest.raises(cappa.Exit)` only to read other attributes of the `Exit`.
+- Fixtures in `tests/conftest.py`: `video_path` (empty file on disk), `mock_video_probe("reference.json")` (every `VideoFile` probe returns that recorded ffprobe response; returns the box to adjust), `make_video` (a `VideoFile` with no language lookup), `video_library` (a directory of probeable files), `mock_ffmpeg`. Recorded responses live in `tests/fixtures/ffprobe/`; load raw JSON with `load_ffprobe_json`.
+- The autouse `_isolate_config` fixture points the user and dev config paths at `tmp_path` and clears `VIDCLEANER_*` vars. Write a test config with the `user_config` fixture. Build a `Config` with `make_config`; construct `RunOptions(...)` directly.
 - `VideoFile.probe_box` re-probes whenever the cached box's `path_to_file` differs from `latest_temp_path()`, so a `get_probe_as_box` mock fires more than once per file. A call-count assertion on it must count those re-probes.

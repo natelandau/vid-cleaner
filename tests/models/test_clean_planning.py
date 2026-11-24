@@ -5,7 +5,6 @@ from typing import Any
 
 import pytest
 from box import Box
-from iso639 import Lang
 
 from vid_cleaner.config import Config, RunOptions
 from vid_cleaner.constants import (
@@ -30,7 +29,6 @@ from vid_cleaner.constants import (
 from vid_cleaner.exceptions import VideoCleanError
 
 from vid_cleaner.cli.clean_video import clean_video_file  # isort: skip
-from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
 @pytest.fixture
@@ -57,21 +55,6 @@ def plan_settings(make_config):
             return make_config(**config_values), RunOptions(**option_values)
 
     return PlanSettings()
-
-
-@pytest.fixture
-def make_video(mocker, mock_video_path, mock_ffprobe_box):
-    """Build a VideoFile whose probe data comes from a named ffprobe fixture."""
-
-    def _inner(fixture_name: str, language: str = "en") -> VideoFile:
-        mocker.patch(
-            "vid_cleaner.models.video_file.get_probe_as_box",
-            return_value=mock_ffprobe_box(fixture_name),
-        )
-        mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang(language))
-        return VideoFile(mock_video_path)
-
-    return _inner
 
 
 def test_build_plan_selects_streams_with_copy_codecs(make_video, plan_settings):
@@ -107,7 +90,7 @@ def test_build_plan_downmix_appends_encoded_stream(make_video, plan_settings):
     assert downmix.metadata == {"title": "2.0"}
 
 
-def test_build_plan_h265_sets_video_codec_and_bitrates(make_video, tmp_path, plan_settings):
+def test_build_plan_h265_sets_video_codec_and_bitrates(make_video, plan_settings):
     """Verify --h265 encodes the video stream with size-derived bitrate options."""
     # Given: a 1 MB input file and reference.json probe data
     plan_settings.update({"h265": True})
@@ -252,7 +235,7 @@ def test_build_plan_1080p_scales_every_video_stream(make_video, plan_settings):
     assert all(s.codec is None for s in video_streams)
 
 
-def test_build_plan_1080p_and_h265_single_encode(make_video, tmp_path, plan_settings):
+def test_build_plan_1080p_and_h265_single_encode(make_video, plan_settings):
     """Verify --1080p --h265 yields one libx265 encode with the scale filter attached."""
     # Given: a UHD source with both conversion flags
     plan_settings.update({"video_1080": True, "h265": True})

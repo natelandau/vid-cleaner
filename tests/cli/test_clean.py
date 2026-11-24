@@ -5,6 +5,7 @@ import pytest
 from cappa.base import invoke
 from iso639 import Lang
 
+from tests.helpers import run_vidcleaner
 from vid_cleaner.constants import (
     ALREADY_MODERN_CODEC_REASON,
     CONVERT_TO_H265_LABEL,
@@ -31,7 +32,7 @@ from vid_cleaner.controllers import TempFile  # isort: skip
             [],
             ["-map 0:0 -map 0:1 -map 0:2 -map 0:4"],
             [f"✔ {DROP_AUDIO_LABEL}", f"✔ {DROP_SUBTITLES_LABEL}"],
-            id="Defaults (only keep local audio,no commentary)",
+            id="Defaults (only keep local audio, no commentary)",
         ),
         pytest.param(
             ["--downmix"],
@@ -52,7 +53,7 @@ from vid_cleaner.controllers import TempFile  # isort: skip
             id="Keep local language from config even when dropped",
         ),
         pytest.param(
-            ["--langs", "fr,es"],
+            ["--langs", "fr, es"],
             ["-map 0:0 -map 0:1 -map 0:2 -map 0:3 -map 0:4 -map 0:8"],
             [f"✔ {DROP_SUBTITLES_LABEL}"],
             id="Keep specified languages",
@@ -72,25 +73,21 @@ from vid_cleaner.controllers import TempFile  # isort: skip
     ],
 )
 def test_stream_processing(
-    debug,
     mocker,
-    mock_ffprobe_box,
     mock_ffmpeg,
     capsys,
-    mock_video_path,
+    video_path,
     args,
     command_expected,
     process_output,
+    mock_video_probe,
 ) -> None:
     """Verify clean command processes video streams according to specified options."""
     # Given: Mock video file and processing options
-    args = ["clean", "-vv", *args, str(mock_video_path)]
+    args = ["clean", "-vv", *args, str(video_path)]
 
     # And: Mocked external dependencies
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    mock_video_probe("reference.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -98,11 +95,9 @@ def test_stream_processing(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Running clean command
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
-    # debug(output, "output")
 
     # Then: FFmpeg is called with correct stream mapping
     mock_ffmpeg.assert_called_once()
@@ -113,7 +108,7 @@ def test_stream_processing(
 
     # And: Success messages are displayed. The fixture's video stream is already first, so
     # under -vv the reorder action shows skipped rather than absent.
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert f"✖ {REORDER_STREAMS_LABEL}  ({STREAMS_IN_ORDER_REASON})" in output
     for fragment in process_output:
         assert fragment in output
@@ -121,13 +116,7 @@ def test_stream_processing(
 
 
 def test_clean_video_foreign_language_keeps_und_subtitle(
-    mocker,
-    mock_video_path,
-    capsys,
-    tmp_path,
-    mock_ffprobe_box,
-    mock_ffmpeg,
-    debug,
+    mocker, video_path, capsys, mock_ffmpeg, mock_video_probe
 ):
     """Verify a subtitle tagged "und" is kept when the original audio language differs.
 
@@ -138,11 +127,8 @@ def test_clean_video_foreign_language_keeps_und_subtitle(
     # Given: a video whose original audio language (fr) is not in langs_to_keep (en),
     # forcing the "keep subtitles when original audio differs" branch to decide, and a
     # subtitle stream tagged "und" that branch must keep
-    args = ["clean", "-vv", str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("und_subtitle.json"),
-    )
+    args = ["clean", "-vv", str(video_path)]
+    mock_video_probe("und_subtitle.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -150,8 +136,7 @@ def test_clean_video_foreign_language_keeps_und_subtitle(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("fr"))
 
     # When: processing the video file
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
 
@@ -160,7 +145,7 @@ def test_clean_video_foreign_language_keeps_und_subtitle(
     mock_ffmpeg.assert_called_once()
     call_args, _ = mock_ffmpeg.call_args
     command = " ".join(call_args[0])
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "-map 0:6" in command
     assert "-map 0:7" in command
     assert "-map 0:8" not in command
@@ -193,24 +178,19 @@ def test_clean_video_foreign_language_keeps_und_subtitle(
 )
 def test_clean_video_foreign_language(
     mocker,
-    mock_video_path,
+    video_path,
     capsys,
-    tmp_path,
-    mock_ffprobe_box,
     mock_ffmpeg,
-    debug,
     args,
     command_expected,
     process_output,
+    mock_video_probe,
 ):
     """Verify that video cleaning correctly processes foreign language videos."""
-    args = ["clean", "-vv", *args, str(mock_video_path)]
+    args = ["clean", "-vv", *args, str(video_path)]
 
     # And: Mock external dependencies
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    mock_video_probe("reference.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -218,11 +198,9 @@ def test_clean_video_foreign_language(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("fr"))
 
     # When: Processing the video file
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
-    # debug(output, "output")
 
     # THEN verify the ffmpeg command contains expected stream mappings
     mock_ffmpeg.assert_called_once()
@@ -231,7 +209,7 @@ def test_clean_video_foreign_language(
 
     # AND verify the command output indicates successful processing. The fixture's video
     # stream is already first, so under -vv the reorder action shows skipped rather than absent.
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     for fragment in command_expected:
         assert fragment in command
     assert f"✖ {REORDER_STREAMS_LABEL}  ({STREAMS_IN_ORDER_REASON})" in output
@@ -266,24 +244,19 @@ def test_clean_video_foreign_language(
 )
 def test_clean_video_downmix(
     mocker,
-    mock_ffprobe_box,
-    mock_video_path,
+    video_path,
     capsys,
-    tmp_path,
     mock_ffmpeg,
-    debug,
     args,
     command_expected,
     process_output,
+    mock_video_probe,
 ):
     """Verify that videos without stereo audio are correctly downmixed."""
-    args = ["clean", "-vv", *args, str(mock_video_path)]
+    args = ["clean", "-vv", *args, str(video_path)]
 
     # And: Mock external dependencies
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("no_stereo.json"),
-    )
+    mock_video_probe("no_stereo.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -291,11 +264,9 @@ def test_clean_video_downmix(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Processing the video file
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
-    # debug(output, "output")
 
     # Then: FFmpeg is called with correct stream mapping
     mock_ffmpeg.assert_called_once()
@@ -306,27 +277,19 @@ def test_clean_video_downmix(
 
     # And: Success messages are displayed. The fixture's video stream is already first, so
     # under -vv the reorder action shows skipped rather than absent.
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert f"✖ {REORDER_STREAMS_LABEL}  ({STREAMS_IN_ORDER_REASON})" in output
     assert process_output in output
     assert "cleaned_video.mkv" in output
 
 
 def test_clean_video_downmix_stereo_commentary_kept(
-    mocker,
-    mock_ffprobe_box,
-    mock_video_path,
-    capsys,
-    mock_ffmpeg,
-    debug,
+    mocker, video_path, capsys, mock_ffmpeg, mock_video_probe
 ):
     """Verify a kept stereo commentary track does not block downmixing the main track."""
     # Given: A file with a surround main track and a no-language stereo commentary track
-    args = ["clean", "-vv", "--downmix", "--keep-commentary", str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("commentary_no_lang.json"),
-    )
+    args = ["clean", "-vv", "--downmix", "--keep-commentary", str(video_path)]
+    mock_video_probe("commentary_no_lang.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -334,8 +297,7 @@ def test_clean_video_downmix_stereo_commentary_kept(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Processing the video file with downmix requested
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
 
@@ -349,26 +311,18 @@ def test_clean_video_downmix_stereo_commentary_kept(
     assert "-ac:a:2 2" in command
 
     # And: The commentary track is kept and the file is processed
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "-map 0:2" in command
     assert "✔ Downmix to stereo" in output
 
 
 def test_clean_video_downmix_unmapped_channel_count(
-    mocker,
-    mock_ffprobe_box,
-    mock_video_path,
-    capsys,
-    mock_ffmpeg,
-    debug,
+    mocker, video_path, capsys, mock_ffmpeg, mock_video_probe
 ):
     """Verify downmix skips audio with an unmapped channel count instead of crashing."""
     # Given: A file whose only audio track has an unmapped channel count (3ch -> None)
-    args = ["clean", "-vv", "--downmix", str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("unmapped_channels.json"),
-    )
+    args = ["clean", "-vv", "--downmix", str(video_path)]
+    mock_video_probe("unmapped_channels.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -376,32 +330,23 @@ def test_clean_video_downmix_unmapped_channel_count(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Processing the video file with downmix requested
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: It completes successfully without raising an unexpected error. Under -vv every
     # skipped operation is shown (none applied), not the normal-mode "No changes needed" line.
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     output = capsys.readouterr().out
     assert f"✖ {REORDER_STREAMS_LABEL}  ({STREAMS_IN_ORDER_REASON})" in output
     assert "✖ Downmix to stereo  (no surround source to downmix)" in output
 
 
 def test_clean_video_downmix_dialogue_forward_filter(
-    mocker,
-    mock_ffprobe_box,
-    mock_video_path,
-    capsys,
-    mock_ffmpeg,
-    debug,
+    mocker, video_path, mock_ffmpeg, mock_video_probe
 ):
     """Verify the downmix uses the dialogue-forward filter with LFE dropped."""
     # Given: A file with surround audio and no stereo track
-    args = ["clean", "-vv", "--downmix", str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("no_stereo.json"),
-    )
+    args = ["clean", "-vv", "--downmix", str(video_path)]
+    mock_video_probe("no_stereo.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -423,20 +368,12 @@ def test_clean_video_downmix_dialogue_forward_filter(
 
 
 def test_clean_trace_prints_stream_specifiers_verbatim(
-    mocker,
-    mock_ffprobe_box,
-    mock_video_path,
-    capsys,
-    mock_ffmpeg,
-    debug,
+    mocker, video_path, capsys, mock_ffmpeg, mock_video_probe
 ):
     """Verify -vv prints ffmpeg stream specifiers such as :a: as text, not emoji."""
     # Given: A downmix, whose ffmpeg command carries per-stream audio options
-    args = ["clean", "-vv", "--downmix", str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("no_stereo.json"),
-    )
+    args = ["clean", "-vv", "--downmix", str(video_path)]
+    mock_video_probe("no_stereo.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -453,21 +390,11 @@ def test_clean_trace_prints_stream_specifiers_verbatim(
     assert "🅰" not in output
 
 
-def test_clean_video_downmix_atmos(
-    mocker,
-    mock_ffprobe_box,
-    mock_video_path,
-    capsys,
-    mock_ffmpeg,
-    debug,
-):
+def test_clean_video_downmix_atmos(mocker, video_path, capsys, mock_ffmpeg, mock_video_probe):
     """Verify a channel-based Atmos track above 7.1 is downmixed to stereo."""
     # Given: A file whose only audio is a 12-channel 7.1.4 Atmos track with no stereo
-    args = ["clean", "-vv", "--downmix", str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("atmos_no_stereo.json"),
-    )
+    args = ["clean", "-vv", "--downmix", str(video_path)]
+    mock_video_probe("atmos_no_stereo.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -475,8 +402,7 @@ def test_clean_video_downmix_atmos(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Processing the video file with downmix requested
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: The Atmos track is downmixed rather than passed through un-downmixed.
     # One audio stream is kept, so the downmix is output audio stream index 1.
@@ -488,25 +414,17 @@ def test_clean_video_downmix_atmos(
     assert "-c:a:1 aac" in command
     assert "-ac:a:1 2" in command
     assert "pan=stereo|FL=0.7*FC" in command
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "✔ Downmix to stereo" in output
 
 
 def test_clean_video_downmix_does_not_clobber_kept_stream(
-    mocker,
-    mock_ffprobe_box,
-    mock_video_path,
-    capsys,
-    mock_ffmpeg,
-    debug,
+    mocker, video_path, mock_ffmpeg, mock_video_probe
 ):
     """Verify the downmix targets its own output stream, not a kept surround track."""
     # Given: A file with two surround tracks (7.1 + 5.1) and no stereo
-    args = ["clean", "-vv", "--downmix", str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("no_stereo.json"),
-    )
+    args = ["clean", "-vv", "--downmix", str(video_path)]
+    mock_video_probe("no_stereo.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -529,16 +447,11 @@ def test_clean_video_downmix_does_not_clobber_kept_stream(
     assert "-filter:a:1" not in command
 
 
-def test_clean_reorganize_streams(
-    mocker, mock_ffprobe_box, mock_video_path, tmp_path, capsys, mock_ffmpeg, debug
-):
+def test_clean_reorganize_streams(mocker, video_path, capsys, mock_ffmpeg, mock_video_probe):
     """Verify streams in the wrong order are remapped video-first in the single pass."""
     # Given: a file whose video stream is not first
-    args = ["clean", "-vv", str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("wrong_order.json"),
-    )
+    args = ["clean", "-vv", str(video_path)]
+    mock_video_probe("wrong_order.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -546,8 +459,7 @@ def test_clean_reorganize_streams(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Processing the video file
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
 
@@ -555,7 +467,7 @@ def test_clean_reorganize_streams(
     mock_ffmpeg.assert_called_once()
     call_args, _ = mock_ffmpeg.call_args
     command = " ".join(call_args[0])
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "-map 0:2 -map 0:1 -map 0:3" in command
     assert f"✔ {REORDER_STREAMS_LABEL}" in output
     assert "cleaned_video.mkv" in output
@@ -593,34 +505,28 @@ def test_clean_reorganize_streams(
 )
 def test_convert_video(
     mocker,
-    mock_ffprobe_box,
-    mock_video_path,
-    tmp_path,
+    video_path,
     mock_ffmpeg,
     capsys,
-    debug,
     args,
     command_expected,
     conversion_output,
+    mock_video_probe,
 ):
     """Verify codec conversion happens in the same single ffmpeg pass as stream selection."""
     # Given: reference.json probe data and a conversion flag
-    args = ["clean", "-vv", *args, str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    args = ["clean", "-vv", *args, str(video_path)]
+    mock_video_probe("reference.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
-    mocker.patch.object(TempFile, "new_tmp_path", return_value=(mock_video_path))
-    mocker.patch.object(TempFile, "latest_temp_path", return_value=(mock_video_path))
+    mocker.patch.object(TempFile, "new_tmp_path", return_value=(video_path))
+    mocker.patch.object(TempFile, "latest_temp_path", return_value=(video_path))
 
     # When: Processing the video file
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
 
@@ -633,7 +539,7 @@ def test_convert_video(
 
     # And: the result tree itemizes the conversion, proving the codec change ran alongside
     # stream selection in the same pass
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert f"✖ {REORDER_STREAMS_LABEL}  ({STREAMS_IN_ORDER_REASON})" in output
     assert conversion_output in output
     if "--vp9" in args:
@@ -643,13 +549,13 @@ def test_convert_video(
 def test_clean_video_h265_skip_shown_in_debug_mode(
     mocker,
     mock_ffprobe_box,
-    mock_video_path,
+    video_path,
     capsys,
     mock_ffmpeg,
 ):
     """Verify -vv reports a skipped --h265 request with its reason when already H.265."""
     # Given: reference.json rewritten so the video stream is already HEVC
-    args = ["clean", "-vv", "--h265", str(mock_video_path)]
+    args = ["clean", "-vv", "--h265", str(video_path)]
     box = mock_ffprobe_box("reference.json")
     box.streams[0].codec_name = "hevc"
     mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", return_value=box)
@@ -660,25 +566,24 @@ def test_clean_video_h265_skip_shown_in_debug_mode(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: running clean in debug mode with --h265 requested
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: the skipped H.265 conversion is reported with its reason
     output = capsys.readouterr().out
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert f"✖ {CONVERT_TO_H265_LABEL}  ({ALREADY_MODERN_CODEC_REASON})" in output
 
 
 def test_clean_video_h265_skip_hidden_in_normal_mode(
     mocker,
     mock_ffprobe_box,
-    mock_video_path,
+    video_path,
     capsys,
     mock_ffmpeg,
 ):
     """Verify normal mode (no -vv) hides the skipped --h265 request and its reason."""
     # Given: reference.json rewritten so the video stream is already HEVC, and no -vv flag
-    args = ["clean", "--h265", str(mock_video_path)]
+    args = ["clean", "--h265", str(video_path)]
     box = mock_ffprobe_box("reference.json")
     box.streams[0].codec_name = "hevc"
     mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", return_value=box)
@@ -689,12 +594,11 @@ def test_clean_video_h265_skip_hidden_in_normal_mode(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: running clean in normal mode with --h265 requested
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: normal mode is genuinely active and the skipped operation is not shown
     output = capsys.readouterr().out
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "✖ Convert to H.265" not in output
     assert "already H.265/VP9; use --force" not in output
     # But verify that rendering actually happened (positive assertion)
@@ -702,7 +606,7 @@ def test_clean_video_h265_skip_hidden_in_normal_mode(
 
 
 def test_clean_renders_completed_steps_on_error(
-    mocker, mock_ffprobe_box, mock_ffmpeg, capsys, mock_video_path
+    mocker, mock_ffmpeg, capsys, video_path, mock_video_probe
 ) -> None:
     """Verify operations render up front even when the later write step raises.
 
@@ -712,11 +616,8 @@ def test_clean_renders_completed_steps_on_error(
     """
     # Given: operations render up front inside clean(), before the write step, so a
     # failing write can't hide what already completed
-    args = ["clean", "-vv", "--h265", str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    args = ["clean", "-vv", "--h265", str(video_path)]
+    mock_video_probe("reference.json")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
@@ -724,8 +625,7 @@ def test_clean_renders_completed_steps_on_error(
     )
 
     # When: running clean and the output write raises after processing completes
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: the operations render up front, before the failing write, proving the CLI
     # reports what actually happened even when `write_output()` raises. reference.json's
@@ -733,27 +633,19 @@ def test_clean_renders_completed_steps_on_error(
     # operation that proves clean() ran to completion. The write failure is reported and
     # the command exits non-zero rather than crashing.
     output, error = capsys.readouterr()
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     assert "✔ Convert to H.265" in output
     assert f"✖ {REORDER_STREAMS_LABEL}  ({STREAMS_IN_ORDER_REASON})" in output
     assert "1 file(s) failed" in output + error
 
 
 def test_clean_video_downmix_skip_when_stereo_exists(
-    mocker,
-    mock_ffprobe_box,
-    mock_video_path,
-    capsys,
-    mock_ffmpeg,
-    debug,
+    mocker, video_path, capsys, mock_ffmpeg, mock_video_probe
 ):
     """Verify --downmix without --force skips and notifies when a stereo track exists."""
     # Given: reference.json keeps a 7.1, a 5.1, and a non-commentary stereo track
-    args = ["clean", "-vv", "--downmix", str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    args = ["clean", "-vv", "--downmix", str(video_path)]
+    mock_video_probe("reference.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -761,8 +653,7 @@ def test_clean_video_downmix_skip_when_stereo_exists(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Processing with downmix requested but not forced
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
     mock_ffmpeg.assert_called_once()
@@ -770,27 +661,19 @@ def test_clean_video_downmix_skip_when_stereo_exists(
     command = " ".join(call_args[0])
 
     # Then: The existing stereo track is kept and no downmix filter is added
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "-map 0:4" in command
     assert "-filter:a:" not in command
     assert f"✖ {DOWNMIX_STEREO_LABEL}  ({STEREO_EXISTS_REASON})" in output
 
 
 def test_clean_video_downmix_force_recreates_stereo(
-    mocker,
-    mock_ffprobe_box,
-    mock_video_path,
-    capsys,
-    mock_ffmpeg,
-    debug,
+    mocker, video_path, capsys, mock_ffmpeg, mock_video_probe
 ):
     """Verify --downmix --force drops the existing stereo track and rebuilds from surround."""
     # Given: reference.json with a non-commentary stereo track at index 4
-    args = ["clean", "-vv", "--downmix", "--force", str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    args = ["clean", "-vv", "--downmix", "--force", str(video_path)]
+    mock_video_probe("reference.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -798,8 +681,7 @@ def test_clean_video_downmix_force_recreates_stereo(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Processing with downmix forced
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
     mock_ffmpeg.assert_called_once()
@@ -808,7 +690,7 @@ def test_clean_video_downmix_force_recreates_stereo(
 
     # Then: The old stereo (index 4) is dropped and a fresh downmix is built from the 5.1
     # (index 2). Two audio streams remain mapped, so the downmix is output audio index 2.
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "-map 0:0 -map 0:1 -map 0:2 -map 0:2" in command
     assert "-c:a:2 aac" in command
     assert "-ac:a:2 2 -b:a:2 256k -ar:a:2 48000" in command
@@ -820,20 +702,12 @@ def test_clean_video_downmix_force_recreates_stereo(
 
 
 def test_clean_video_downmix_force_recreates_from_multiple_stereo(
-    mocker,
-    mock_ffprobe_box,
-    mock_video_path,
-    capsys,
-    mock_ffmpeg,
-    debug,
+    mocker, video_path, capsys, mock_ffmpeg, mock_video_probe
 ):
     """Verify --downmix --force drops every existing stereo track and rebuilds one from surround."""
     # Given: two non-commentary stereo tracks plus a 5.1 surround bed
-    args = ["clean", "-vv", "--downmix", "--force", str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("two_stereo_and_surround.json"),
-    )
+    args = ["clean", "-vv", "--downmix", "--force", str(video_path)]
+    mock_video_probe("two_stereo_and_surround.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -841,8 +715,7 @@ def test_clean_video_downmix_force_recreates_from_multiple_stereo(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Forcing downmix with two stereo tracks present
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
     mock_ffmpeg.assert_called_once()
@@ -851,7 +724,7 @@ def test_clean_video_downmix_force_recreates_from_multiple_stereo(
 
     # Then: Both stereo tracks (index 2 and 3) are dropped and one downmix is rebuilt from the
     # 5.1 (index 1). Only the 5.1 remains mapped, so the downmix is output audio index 1.
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "-map 0:2" not in command
     assert "-map 0:3" not in command
     assert "-map 0:1 -map 0:1" in command
@@ -861,20 +734,12 @@ def test_clean_video_downmix_force_recreates_from_multiple_stereo(
 
 
 def test_clean_video_downmix_force_no_surround_keeps_stereo(
-    mocker,
-    mock_ffprobe_box,
-    mock_video_path,
-    capsys,
-    mock_ffmpeg,
-    debug,
+    mocker, video_path, capsys, mock_ffmpeg, mock_video_probe
 ):
     """Verify --downmix --force keeps the existing stereo and notifies when no surround exists."""
     # Given: A file whose only audio track is a non-commentary stereo track
-    args = ["clean", "-vv", "--downmix", "--force", str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("stereo_no_surround.json"),
-    )
+    args = ["clean", "-vv", "--downmix", "--force", str(video_path)]
+    mock_video_probe("stereo_no_surround.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -882,34 +747,24 @@ def test_clean_video_downmix_force_no_surround_keeps_stereo(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Forcing downmix with no surround source to rebuild from
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
 
     # Then: The stereo track is kept (all streams pass through) and the user is notified.
     # Under -vv every skipped operation is shown (none applied), including the downmix
     # itself, rather than the normal-mode "No changes needed" line.
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "✖ Downmix to stereo  (no surround source to downmix)" in output
 
 
 def test_clean_video_downmix_force_noop_without_existing_stereo(
-    mocker,
-    mock_ffprobe_box,
-    mock_video_path,
-    capsys,
-    mock_ffmpeg,
-    debug,
-    make_config,
+    mocker, video_path, capsys, mock_ffmpeg, make_config, mock_video_probe
 ):
     """Verify --force does not change the normal downmix path when no stereo track exists."""
     # Given: no_stereo.json (7.1 + 5.1 + a stereo commentary track only)
-    args = ["clean", "-vv", "--downmix", "--force", str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("no_stereo.json"),
-    )
+    args = ["clean", "-vv", "--downmix", "--force", str(video_path)]
+    mock_video_probe("no_stereo.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -917,8 +772,7 @@ def test_clean_video_downmix_force_noop_without_existing_stereo(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Forcing downmix with no existing stereo mix
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
     mock_ffmpeg.assert_called_once()
@@ -926,23 +780,18 @@ def test_clean_video_downmix_force_noop_without_existing_stereo(
     command = " ".join(call_args[0])
 
     # Then: The downmix is built from the 5.1 exactly as an un-forced --downmix would
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "-c:a:2 aac" in command
     assert "-ac:a:2 2 -b:a:2 256k" in command
     assert "-filter:a:2" in command
     assert "✔ Downmix to stereo" in output
 
 
-def test_clean_renders_one_tree_per_file(
-    mocker, mock_ffprobe_box, mock_video_path, capsys, mock_ffmpeg
-):
+def test_clean_renders_one_tree_per_file(mocker, video_path, capsys, mock_ffmpeg, mock_video_probe):
     """Verify a file's operations and outcomes close a single tree, not one each."""
     # Given: A file whose operations render up front and whose write then reports a save
-    args = ["clean", "-vv", "--h265", str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    args = ["clean", "-vv", "--h265", str(video_path)]
+    mock_video_probe("reference.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
@@ -950,20 +799,19 @@ def test_clean_renders_one_tree_per_file(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Running clean
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
 
     # Then: Everything printed for the file closes a single tree, on its last line
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     per_file = output.rsplit("\u21e8", 1)[-1]
     assert per_file.count(TREE_LAST) == 1
     assert TREE_LAST in per_file.splitlines()[-1]
 
 
 def test_clean_debug_output_reports_unusable_language_tags(
-    mocker, mock_ffprobe_box, mock_video_path, capsys, mock_ffmpeg
+    mocker, mock_ffprobe_box, video_path, capsys, mock_ffmpeg
 ):
     """Verify -vv names a language tag that planning treated as unknown."""
     # Given: reference.json with the French 5.1 track tagged with a reserved code
@@ -973,15 +821,10 @@ def test_clean_debug_output_reports_unusable_language_tags(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Dry-running clean with debug output
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(
-            obj=VidCleaner,
-            argv=["-n", "-vv", "clean", str(mock_video_path)],
-            deps=[configure_output],
-        )
+    exit_code = run_vidcleaner(["-n", "-vv", "clean", str(video_path)])
 
     # Then: The debug output names the stream and its unusable tag
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "Stream #3: unusable language tag 'qaa'" in capsys.readouterr().out
 
 
@@ -998,7 +841,7 @@ def test_clean_debug_output_reports_unusable_language_tags(
 def test_clean_asks_before_upscaling_to_1080p(
     mocker,
     mock_ffprobe_box,
-    mock_video_path,
+    video_path,
     capsys,
     mock_ffmpeg,
     interactive_console,
@@ -1026,13 +869,12 @@ def test_clean_asks_before_upscaling_to_1080p(
     args = [*(["-n"] if dryrun else []), "-vv", "clean", "--1080p", "--force"]
 
     # When: cleaning the file
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=[*args, str(mock_video_path)], deps=[configure_output])
+    exit_code = run_vidcleaner([*args, str(video_path)])
 
     # Then: the user was warned, and the video is scaled only when the upscale went ahead
     captured = capsys.readouterr()
     output = captured.out + captured.err
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "1280px wide" in output
     assert ask.called is expect_prompt
     if dryrun:

@@ -32,7 +32,9 @@ def make_report(**overrides) -> DiscoveryReport:
     return dataclasses.replace(defaults, **overrides)
 
 
-def test_present_exits_zero_when_nothing_found(capsys, tmp_path):
+def test_present_exits_zero_when_nothing_found(
+    capsys,
+):
     """Verify an empty directory warns and exits 0, since finding nothing is not an error."""
     # Given: A report from a directory holding no video files
     report = make_report(total=0)
@@ -46,7 +48,9 @@ def test_present_exits_zero_when_nothing_found(capsys, tmp_path):
     assert "No video files found" in capsys.readouterr().err
 
 
-def test_present_exits_one_when_nothing_matched(capsys, tmp_path):
+def test_present_exits_one_when_nothing_matched(
+    capsys,
+):
     """Verify files found but none matching the filters is an error naming the filters."""
     # Given: A report where candidates existed but none matched
     report = make_report(total=3, filters={VideoTrait.REORDER})
@@ -96,7 +100,9 @@ def test_present_empty_match_reports_skipped_count(capsys, tmp_path):
     assert "1 skipped" in error
 
 
-def test_present_unfiltered_empty_match_says_unreadable(capsys, tmp_path):
+def test_present_unfiltered_empty_match_says_unreadable(
+    capsys,
+):
     """Verify an unfiltered run that matched nothing blames readability, not the filters."""
     # Given: A report with candidates, no filters, and no results
     report = make_report(total=2)
@@ -122,7 +128,9 @@ def make_result(mocker, name: str, size: int):
     return result
 
 
-def test_confirm_returns_when_assume_yes(mocker, capsys):
+def test_confirm_returns_when_assume_yes(
+    mocker,
+):
     """Verify --yes proceeds without prompting, so unattended runs never block."""
     # Given: A selection and a stubbed prompt that would fail the test if called
     report = make_report(results=[make_result(mocker, "a.mkv", 100)], total=1)

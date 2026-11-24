@@ -161,7 +161,10 @@ def test_discover_limit_above_match_count_truncates_nothing(video_library):
     assert report.truncated == 0
 
 
-def test_discover_collects_unreadable_files(video_library, mocker, tmp_path):
+def test_discover_collects_unreadable_files(
+    video_library,
+    mocker,
+):
     """Verify a file that cannot be probed is collected rather than aborting discovery."""
     # Given: One readable file and one that ffprobe rejects
     directory = video_library([("good.mkv", 100, 1_000_000)])

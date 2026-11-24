@@ -6,22 +6,22 @@ from vid_cleaner.controllers.temp_files import TempFile, cleanup_on_exit  # isor
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
-def test_temp_file_latest_temp_path(mock_video_path: Path, tmp_path: Path) -> None:
+def test_temp_file_latest_temp_path(video_path: Path, tmp_path: Path) -> None:
     """Verify original path is returned when no temp files exist."""
     # Given: A TempFile instance with cache directory set
-    temp_file = TempFile(mock_video_path)
+    temp_file = TempFile(video_path)
 
     # When: Getting latest temp path with no temp files
     result = temp_file.latest_temp_path()
 
     # Then: Original path is returned
-    assert result == mock_video_path
+    assert result == video_path
 
 
-def test_temp_file_new_tmp_path(mock_video_path: Path, tmp_path: Path) -> None:
+def test_temp_file_new_tmp_path(video_path: Path, tmp_path: Path) -> None:
     """Verify new temp file paths are generated with optional suffix and step name."""
     # Given: A TempFile instance with cache directory set
-    temp_file = TempFile(mock_video_path)
+    temp_file = TempFile(video_path)
 
     # When: Generating new temp paths with different options
     default_path = temp_file.new_tmp_path(cache_dir=tmp_path)
@@ -33,10 +33,10 @@ def test_temp_file_new_tmp_path(mock_video_path: Path, tmp_path: Path) -> None:
     assert temp_file.created_tmp_files == []
 
 
-def test_temp_file_created_temp_file(mock_video_path: Path, tmp_path: Path) -> None:
+def test_temp_file_created_temp_file(video_path: Path, tmp_path: Path) -> None:
     """Verify newly created temp files are tracked correctly."""
     # Given: A TempFile instance with cache directory set
-    temp_file = TempFile(mock_video_path)
+    temp_file = TempFile(video_path)
 
     # When: Creating and tracking a new temp file
     output_path = temp_file.new_tmp_path(suffix=".mkv", step_name="somename", cache_dir=tmp_path)
@@ -46,10 +46,10 @@ def test_temp_file_created_temp_file(mock_video_path: Path, tmp_path: Path) -> N
     assert temp_file.created_tmp_files == [output_path]
 
 
-def test_temp_file_clean_old_tmp_files(mock_video_path: Path, tmp_path: Path) -> None:
+def test_temp_file_clean_old_tmp_files(video_path: Path, tmp_path: Path) -> None:
     """Verify all but latest temp file are removed."""
     # Given: A TempFile instance with multiple temp files
-    temp_file = TempFile(mock_video_path)
+    temp_file = TempFile(video_path)
 
     # When: Creating multiple temp files
     output_path_1 = temp_file.new_tmp_path(cache_dir=tmp_path)
@@ -74,10 +74,10 @@ def test_temp_file_clean_old_tmp_files(mock_video_path: Path, tmp_path: Path) ->
     assert output_path_3.exists()
 
 
-def test_temp_file_clean_up(mock_video_path: Path, tmp_path: Path) -> None:
+def test_temp_file_clean_up(video_path: Path, tmp_path: Path) -> None:
     """Verify all temp files and temp directory are removed."""
     # Given: A TempFile instance with multiple temp files
-    temp_file = TempFile(mock_video_path)
+    temp_file = TempFile(video_path)
 
     # When: Creating multiple temp files
     output_path_1 = temp_file.new_tmp_path(cache_dir=tmp_path)
@@ -105,7 +105,10 @@ def test_temp_file_clean_up(mock_video_path: Path, tmp_path: Path) -> None:
     assert not output_path_3.parent.exists()
 
 
-def test_video_file_without_temps_registers_no_exit_hook(mocker, mock_video_path, tmp_path) -> None:
+def test_video_file_without_temps_registers_no_exit_hook(
+    mocker,
+    video_path,
+) -> None:
     """Verify a probed-but-unprocessed file pins nothing for the life of the process.
 
     A discovery run builds a VideoFile for every candidate it probes, so registering an
@@ -115,19 +118,17 @@ def test_video_file_without_temps_registers_no_exit_hook(mocker, mock_video_path
     register = mocker.patch("vid_cleaner.controllers.temp_files.atexit.register")
 
     # When: Building a VideoFile without ever creating a temporary file
-    VideoFile(mock_video_path)
+    VideoFile(video_path)
 
     # Then: Nothing was registered
     register.assert_not_called()
 
 
-def test_temp_file_registers_exit_cleanup_once_a_temp_exists(
-    mocker, mock_video_path, tmp_path
-) -> None:
+def test_temp_file_registers_exit_cleanup_once_a_temp_exists(mocker, video_path, tmp_path) -> None:
     """Verify a file that creates a temp is still cleaned up when the interpreter exits."""
     # Given: A cache directory and a patched exit registry
     register = mocker.patch("vid_cleaner.controllers.temp_files.atexit.register")
-    video_file = VideoFile(mock_video_path)
+    video_file = VideoFile(video_path)
 
     # When: Creating two temporary files
     first = video_file.temp_file.new_tmp_path(step_name="clean", cache_dir=tmp_path)

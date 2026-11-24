@@ -2,23 +2,17 @@
 
 from pathlib import Path
 
-import cappa
 import pytest
-from cappa.base import invoke
 from iso639 import Lang
 
-from vid_cleaner.vidcleaner import VidCleaner, configure_output
+from tests.helpers import run_vidcleaner
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 from vid_cleaner.controllers import TempFile  # isort: skip
 
 
 def test_clean_multiple_files_use_distinct_output_paths(
-    mocker,
-    mock_ffprobe_box,
-    mock_ffmpeg,
-    capsys,
-    tmp_path,
+    mocker, mock_ffmpeg, tmp_path, mock_video_probe
 ) -> None:
     """Verify each input file is written to its own output path, not the first file's."""
     # Given: two distinct input files
@@ -30,10 +24,7 @@ def test_clean_multiple_files_use_distinct_output_paths(
     args = ["clean", "-vv", "--downmix", str(first), str(second)]
 
     # And: mocked external dependencies; copy_file echoes the destination it was handed
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    mock_video_probe("reference.json")
     mock_copy = mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
@@ -41,21 +32,16 @@ def test_clean_multiple_files_use_distinct_output_paths(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: cleaning both files in a single invocation
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: each file is copied to its own destination, not both to the first file's path
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     destinations = [call.args[1] for call in mock_copy.mock_calls]
     assert destinations == [first.resolve(), second.resolve()]
 
 
 def test_clean_multiple_files_overwrite_each_in_place(
-    mocker,
-    mock_ffprobe_box,
-    mock_ffmpeg,
-    capsys,
-    tmp_path,
+    mocker, mock_ffmpeg, tmp_path, mock_video_probe
 ) -> None:
     """Verify each file overwrites itself with --overwrite, leaving no original deleted."""
     # Given: two distinct input files
@@ -67,10 +53,7 @@ def test_clean_multiple_files_overwrite_each_in_place(
     args = ["clean", "-vv", "--overwrite", "--downmix", str(first), str(second)]
 
     # And: mocked external dependencies; copy_file echoes the destination it was handed
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    mock_video_probe("reference.json")
     mock_copy = mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
@@ -78,11 +61,10 @@ def test_clean_multiple_files_overwrite_each_in_place(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: cleaning both files in place
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: each file overwrites itself and neither original is deleted
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     destinations = [call.args[1] for call in mock_copy.mock_calls]
     assert destinations == [first.resolve(), second.resolve()]
     assert first.exists()
@@ -90,11 +72,7 @@ def test_clean_multiple_files_overwrite_each_in_place(
 
 
 def test_clean_write_output_cleanup_failure_still_reports_the_save(
-    mocker,
-    mock_ffprobe_box,
-    mock_video_path,
-    capsys,
-    mock_ffmpeg,
+    mocker, video_path, capsys, mock_ffmpeg, mock_video_probe
 ):
     """Verify a cleanup error after a successful write is a warning, not a per-file failure.
 
@@ -103,11 +81,8 @@ def test_clean_write_output_cleanup_failure_still_reports_the_save(
     """
     # Given: a file that cleans and writes successfully, but whose temp-directory
     # housekeeping raises after the output is already safely in place
-    args = ["clean", "-vv", str(mock_video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    args = ["clean", "-vv", str(video_path)]
+    mock_video_probe("reference.json")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
@@ -116,21 +91,20 @@ def test_clean_write_output_cleanup_failure_still_reports_the_save(
     mocker.patch.object(TempFile, "clean_up", side_effect=OSError("temp dir busy"))
 
     # When: running clean
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
 
     # Then: the run still exits successfully, the save is still reported, and the
     # cleanup failure is surfaced as a warning rather than a batch failure
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "cleaned_video.mkv" in output
     assert "temp dir busy" in output
     assert "failed" not in output
 
 
 def test_clean_removes_the_original_even_when_temp_cleanup_fails(
-    mocker, mock_ffprobe_box, mock_ffmpeg, capsys, tmp_path
+    mocker, mock_ffmpeg, capsys, tmp_path, mock_video_probe
 ):
     """Verify a failed temp cleanup does not skip removing the original under --overwrite."""
     # Given: --overwrite renaming the result to a new container, and temp housekeeping
@@ -138,10 +112,7 @@ def test_clean_removes_the_original_even_when_temp_cleanup_fails(
     source = tmp_path / "movie.mkv"
     source.touch()
     args = ["clean", "-vv", "--overwrite", "--vp9", str(source)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    mock_video_probe("reference.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
@@ -150,19 +121,18 @@ def test_clean_removes_the_original_even_when_temp_cleanup_fails(
     mocker.patch.object(TempFile, "clean_up", side_effect=OSError("temp dir busy"))
 
     # When: Running clean
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
 
     # Then: The original is gone and the cleanup failure is reported as its own warning
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert not source.exists()
     assert "temp dir busy" in output
 
 
 def test_clean_reports_a_failed_original_removal_accurately(
-    mocker, mock_ffprobe_box, mock_ffmpeg, capsys, tmp_path
+    mocker, mock_ffmpeg, capsys, tmp_path, mock_video_probe
 ):
     """Verify a failed removal of the original is not reported as a temp-file cleanup error."""
     # Given: --overwrite renaming the result to a new container, where removing the
@@ -170,10 +140,7 @@ def test_clean_reports_a_failed_original_removal_accurately(
     source = tmp_path / "movie.mkv"
     source.touch()
     args = ["clean", "-vv", "--overwrite", "--vp9", str(source)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    mock_video_probe("reference.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
@@ -182,19 +149,18 @@ def test_clean_reports_a_failed_original_removal_accurately(
     mocker.patch.object(Path, "unlink", side_effect=OSError("read-only file system"))
 
     # When: Running clean
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
 
     # Then: The warning names the original file, not the temporary files
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "could not remove the original" in output
     assert "could not clean up temporary files" not in output
 
 
 def test_clean_out_with_overwrite_leaves_the_input_alone(
-    mocker, mock_ffprobe_box, mock_ffmpeg, tmp_path
+    mocker, mock_ffmpeg, tmp_path, mock_video_probe
 ):
     """Verify `--out` never deletes the input, even when `--overwrite` is also passed.
 
@@ -207,10 +173,7 @@ def test_clean_out_with_overwrite_leaves_the_input_alone(
     source.touch()
     destination = tmp_path / "out.mkv"
     args = ["clean", "--overwrite", "--out", str(destination), str(source)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    mock_video_probe("reference.json")
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
@@ -218,11 +181,10 @@ def test_clean_out_with_overwrite_leaves_the_input_alone(
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Running clean
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: The input file is still there
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert source.exists()
 
 
@@ -256,11 +218,10 @@ def test_clean_from_depth_writes_each_file_back_to_its_own_directory(
     args = ["clean", "--overwrite", "--from", str(directory), "--depth", "1", "--yes"]
 
     # When: Cleaning everything discovered one level deep
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: Each file is written back over itself, with no backup kept
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert sorted(call.args[1] for call in write.mock_calls) == sorted(
         [
             directory / "top.mkv",
@@ -291,82 +252,68 @@ def fake_transcode(mocker):
     return _inner
 
 
-def test_clean_vp9_writes_a_webm_file(mocker, mock_ffprobe_box, capsys, tmp_path, fake_transcode):
+def test_clean_vp9_writes_a_webm_file(mocker, tmp_path, fake_transcode, mock_video_probe):
     """Verify --vp9 names the output for the container it actually produced."""
     # Given: An .mkv input converted to VP9
     video = tmp_path / "movie.mkv"
     video.touch()
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    mock_video_probe("reference.json")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
     fake_transcode()
 
     # When: Cleaning it to VP9 without --overwrite
     args = ["clean", "--vp9", str(video)]
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: WebM data lands in a .webm file, the original is untouched, and no pointless
     # backup of a file that was never overwritten is left behind
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert (tmp_path / "movie.webm").read_bytes() == b"transcoded"
     assert video.exists()
     assert not list(tmp_path.glob("*.bak"))
 
 
 def test_clean_vp9_overwrite_removes_the_original_container(
-    mocker, mock_ffprobe_box, capsys, tmp_path, fake_transcode
+    mocker, tmp_path, fake_transcode, mock_video_probe
 ):
     """Verify --overwrite removes the source .mkv once the result lands in a .webm."""
     # Given: An .mkv input converted to VP9 with --overwrite
     video = tmp_path / "movie.mkv"
     video.touch()
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    mock_video_probe("reference.json")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
     fake_transcode()
 
     # When: Cleaning it to VP9 in place
     args = ["clean", "--vp9", "--overwrite", str(video)]
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: Only the .webm remains, so the container change does not leave two copies
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert (tmp_path / "movie.webm").read_bytes() == b"transcoded"
     assert not video.exists()
 
 
 def test_clean_dryrun_writes_nothing_to_the_cache(
-    mocker, mock_ffprobe_box, mock_video_path, capsys, mock_ffmpeg, monkeypatch, tmp_path
+    mocker, video_path, capsys, mock_ffmpeg, monkeypatch, tmp_path, mock_video_probe
 ):
     """Verify a dry run previews the ffmpeg command without creating anything under cache_dir."""
     # Given: A cache directory inside a parent no one can write to
     locked = tmp_path / "locked"
     locked.mkdir()
     monkeypatch.setenv("VIDCLEANER_CACHE_DIR", str(locked / "cache"))
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    mock_video_probe("reference.json")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
     locked.chmod(0o500)
 
     # When: Dry-running a clean that would change the file
     try:
-        with pytest.raises(cappa.Exit) as exc_info:
-            invoke(
-                obj=VidCleaner, argv=["-n", "clean", str(mock_video_path)], deps=[configure_output]
-            )
+        exit_code = run_vidcleaner(["-n", "clean", str(video_path)])
     finally:
         locked.chmod(0o700)
 
     # Then: The command is previewed, ffmpeg never runs, and nothing was created
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "Processing (dry run)" in capsys.readouterr().out
     mock_ffmpeg.assert_not_called()
     assert not any(locked.iterdir())

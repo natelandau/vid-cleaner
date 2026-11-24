@@ -1,40 +1,34 @@
 """Test how the clean subcommand runs a batch of files: discovery, failures, and interrupts."""
 
 import cappa
-import pytest
-from cappa.base import invoke
 from iso639 import Lang
 
+from tests.helpers import run_vidcleaner
 from vid_cleaner.exceptions import VideoCleanError
 from vid_cleaner.models import video_file as video_file_module
 from vid_cleaner.models.conversion_plan import ConversionPlan
-from vid_cleaner.vidcleaner import VidCleaner, configure_output
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 from vid_cleaner.controllers import TempFile  # isort: skip
 
 
 def test_clean_interrupt_removes_temp_files_and_stops(
-    mocker, mock_ffprobe_box, mock_ffmpeg, mock_video_path, tmp_path
+    mocker, mock_ffmpeg, video_path, tmp_path, mock_video_probe
 ) -> None:
     """Verify Ctrl-C during ffmpeg removes the run's temporary files and exits with an error."""
     # Given: a file that needs cleaning and an ffmpeg run the user interrupts
-    mocker.patch(
-        "vid_cleaner.models.video_file.get_probe_as_box",
-        return_value=mock_ffprobe_box("reference.json"),
-    )
+    mock_video_probe("reference.json")
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
     mock_ffmpeg.return_value.run_command_with_progress.side_effect = KeyboardInterrupt
 
     # When: running the clean command
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=["clean", str(mock_video_path)], deps=[configure_output])
+    exit_code = run_vidcleaner(["clean", str(video_path)])
 
     # Then: the run stops with an error, leaves no temporary files, and keeps the original
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     cache_dir = tmp_path / "cache"
     assert not cache_dir.exists() or not any(cache_dir.rglob("*"))
-    assert mock_video_path.exists()
+    assert video_path.exists()
 
 
 def test_clean_from_previews_and_requires_confirmation(capsys, video_library):
@@ -44,13 +38,12 @@ def test_clean_from_previews_and_requires_confirmation(capsys, video_library):
     args = ["clean", "--from", str(directory), "--filters", "h264"]
 
     # When: Running clean with no TTY and no --yes
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output, error = capsys.readouterr()
 
     # Then: The table rendered before the refusal, so the user still sees the selection
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     assert "apple.mkv" in output
     assert "--yes" in error
 
@@ -62,13 +55,12 @@ def test_clean_from_dryrun_skips_the_prompt(capsys, video_library, mock_ffmpeg):
     args = ["-n", "clean", "--from", str(directory), "--filters", "h264"]
 
     # When: Running a dry run with no TTY and no --yes
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output, error = capsys.readouterr()
 
     # Then: It completes successfully without demanding --yes
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "apple.mkv" in output
     assert "--yes" not in error
 
@@ -86,13 +78,12 @@ def test_clean_from_limit_selects_top_results(capsys, video_library, mock_ffmpeg
     args = ["-n", "clean", "--from", str(directory), "--sort", "size", "--limit", "1"]
 
     # When: Previewing the single largest file
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
 
     # Then: Only the largest file is selected
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "banana.mkv" in output
     assert "apple.mkv" not in output
 
@@ -116,13 +107,12 @@ def test_clean_continues_after_a_file_fails(capsys, tmp_path, mocker, mock_ffmpe
 
     # When: Cleaning both files
     args = ["-n", "clean", str(first), str(second)]
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output, error = capsys.readouterr()
 
     # Then: The second file was still attempted and the failure is reported at the end
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     assert "second.mkv" in output
     assert "first.mkv" in output + error
     assert "1 file(s) failed" in output + error
@@ -138,11 +128,10 @@ def test_clean_exits_zero_when_every_file_succeeds(capsys, tmp_path, mocker, moc
 
     # When: Cleaning it
     args = ["-n", "clean", str(video)]
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: The command exits successfully with no failure report
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "failed" not in capsys.readouterr().out
 
 
@@ -164,11 +153,10 @@ def test_clean_keyboard_interrupt_aborts_the_whole_batch(capsys, tmp_path, mocke
 
     # When: Cleaning both files
     args = ["-n", "clean", str(first), str(second)]
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: The run aborts before reaching the second file
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     assert "second.mkv" not in capsys.readouterr().out
 
 
@@ -180,11 +168,10 @@ def test_clean_from_empty_directory_still_exits_zero(capsys, tmp_path):
     args = ["clean", "--from", str(directory)]
 
     # When: Running clean
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: The command reports the empty directory and exits successfully
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "No video files found" in capsys.readouterr().err
 
 
@@ -219,20 +206,19 @@ def test_clean_failure_lines_name_the_file_exactly_once(capsys, tmp_path, mocker
 
     # When: Cleaning both files
     args = ["-n", "clean", str(first), str(second)]
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output, error = capsys.readouterr()
     combined = _normalize(output + error)
 
     # Then: The domain failure names the file once, and the plain error still names it
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     assert "first.mkv: no video streams found" in combined
     assert "Could not clean" not in combined
     assert "second.mkv: boom" in combined
 
 
-def test_clean_clears_the_temp_directory_when_a_file_fails(capsys, tmp_path, mocker, mock_ffmpeg):
+def test_clean_clears_the_temp_directory_when_a_file_fails(tmp_path, mocker, mock_ffmpeg):
     """Verify a failed file's full-size temp transcode is discarded immediately.
 
     A batch that fails on every file would otherwise hold one full-size intermediate per
@@ -250,11 +236,10 @@ def test_clean_clears_the_temp_directory_when_a_file_fails(capsys, tmp_path, moc
 
     # When: Cleaning it
     args = ["-n", "clean", str(video)]
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: The temp directory was cleared as part of handling the failure
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     cleanup.assert_called_once()
 
 
@@ -274,14 +259,13 @@ def test_clean_from_cleanup_failure_does_not_mask_the_real_failure(
 
     # When: Cleaning it
     args = ["-n", "clean", str(video)]
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output, error = capsys.readouterr()
     combined = _normalize(output + error)
 
     # Then: The original cause is still what the batch reports
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     assert "movie.mkv: no video streams found" in combined
 
 
@@ -297,19 +281,18 @@ def test_clean_from_yes_reaches_the_transcode_loop(capsys, video_library, mocker
     args = ["clean", "--from", str(directory), "--filters", "h264", "--yes"]
 
     # When: Running clean with --yes and no TTY
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     output = capsys.readouterr().out
 
     # Then: Both files were transcoded and written
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert mock_ffmpeg.call_count == 2
     assert "apple.mkv" in output
     assert "banana.mkv" in output
 
 
-def test_clean_from_yes_reuses_the_discovery_probe(capsys, video_library, mocker, mock_ffmpeg):
+def test_clean_from_yes_reuses_the_discovery_probe(video_library, mocker, mock_ffmpeg):
     """Verify each file is probed once, not again when the transcode loop reaches it.
 
     Discovery already probed every candidate and `VideoFile` caches the result, so
@@ -331,16 +314,15 @@ def test_clean_from_yes_reuses_the_discovery_probe(capsys, video_library, mocker
     args = ["clean", "--from", str(directory), "--filters", "h264", "--yes"]
 
     # When: Running clean with --yes
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: ffprobe ran exactly once per file
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert probe.call_count == 2
 
 
 def test_clean_from_declining_the_prompt_changes_nothing(
-    capsys, video_library, mocker, mock_ffmpeg, interactive_console
+    video_library, mocker, mock_ffmpeg, interactive_console
 ):
     """Verify answering no is a successful no-op that leaves every file untouched."""
     # Given: A discoverable file and a user who declines the prompt
@@ -353,11 +335,10 @@ def test_clean_from_declining_the_prompt_changes_nothing(
     args = ["clean", "--from", str(directory), "--filters", "h264"]
 
     # When: Running clean and declining
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    exit_code = run_vidcleaner(args)
 
     # Then: Nothing was transcoded, nothing was written, and the file is unchanged
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     mock_ffmpeg.assert_not_called()
     write.assert_not_called()
     assert video.read_bytes() == original
