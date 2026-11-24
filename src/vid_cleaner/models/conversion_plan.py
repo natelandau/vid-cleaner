@@ -71,6 +71,9 @@ class ConversionPlan:
         debug_notes (list[str]): Planning details shown only in debug output.
         upscale_source_width (int | None): The source width when the plan scales a video
             narrower than 1080p up to 1080p, so the CLI can ask before upscaling.
+        keep_attachments (bool): Copy every attachment stream, such as the fonts ASS
+            subtitles need, after the planned streams. Off for containers that cannot carry
+            attachments.
     """
 
     streams: list[OutputStream] = field(default_factory=list)
@@ -80,6 +83,7 @@ class ConversionPlan:
     notices: list[str] = field(default_factory=list)
     debug_notes: list[str] = field(default_factory=list)
     upscale_source_width: int | None = None
+    keep_attachments: bool = True
 
     def streams_of(self, codec_type: CodecTypes) -> list[OutputStream]:
         """List the planned output streams of one type, so a planner can change every one.
@@ -131,6 +135,9 @@ class ConversionPlan:
         command: list[str] = []
         for stream in self.streams:
             command.extend(["-map", f"0:{stream.source_index}"])
+        if self.keep_attachments:
+            # `?` makes the map optional, so a file with no attachments is not an error
+            command.extend(["-map", "0:t?", "-c:t", "copy"])
 
         type_counts: dict[CodecTypes, int] = {}
         for stream in self.streams:

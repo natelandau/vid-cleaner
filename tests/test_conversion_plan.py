@@ -1,5 +1,7 @@
 """Test the ConversionPlan model."""
 
+import pytest
+
 from vid_cleaner.constants import CodecTypes
 from vid_cleaner.models import ConversionPlan, OutputStream, PlanAction
 
@@ -91,6 +93,29 @@ def test_build_command_appends_global_args():
 
     # Then: the global args are the final elements
     assert command[-3:] == ["-dn", "-map_chapters", "-1"]
+
+
+@pytest.mark.parametrize(
+    ("keep_attachments", "expected_kept"),
+    [
+        pytest.param(True, True, id="attachments copied by default"),
+        pytest.param(False, False, id="attachments left out when not kept"),
+    ],
+)
+def test_build_command_copies_attachments_when_kept(keep_attachments, expected_kept):
+    """Verify attachments are copied after the planned streams unless the plan drops them."""
+    # Given: a plan whose attachment setting is set
+    plan = ConversionPlan(
+        streams=[OutputStream(source_index=0, codec_type=CodecTypes.VIDEO)],
+        keep_attachments=keep_attachments,
+    )
+
+    # When: building the command
+    command = " ".join(plan.build_command())
+
+    # Then: every attachment is optionally mapped and copied, after the planned streams
+    assert ("-map 0:0 -map 0:t? -c:t copy" in command) is expected_kept
+    assert ("0:t?" in command) is expected_kept
 
 
 def test_is_noop_true_for_full_passthrough():
