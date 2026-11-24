@@ -16,7 +16,7 @@
         "httpx>=0.28.1",
         "iso639-lang>=2.6.3",
         "nclutils>=4.0.0,<5.0.0",
-        "python-box>=7.4.1,<8.0.0",
+        "python-box>=7.4.1,<9.0.0",
         "rich>=15.0.0",
     ]
     description = "Tools to transcode, inspect and convert videos."
