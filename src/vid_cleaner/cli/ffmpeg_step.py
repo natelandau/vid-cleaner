@@ -3,6 +3,7 @@
 from nclutils import pp
 from rich.markdown import Markdown
 from rich.progress import Progress
+from rich.text import Text
 
 from vid_cleaner.constants import SYMBOL_CHECK
 
@@ -25,7 +26,8 @@ def run_ffmpeg_step(
             command is previewed instead of run.
     """
     command_line = " ".join(command.arguments)
-    pp.trace(f"RUN FFMPEG:\n{command_line}")
+    # A plain Text skips markup parsing, which renders stream specifiers such as :v: as emoji
+    pp.trace(Text(f"RUN FFMPEG:\n{command_line}"))
 
     if dryrun:
         pp.header(f"{title} (dry run)")

@@ -451,6 +451,37 @@ def test_clean_video_downmix_dialogue_forward_filter(
     assert "LFE" not in command
 
 
+def test_clean_trace_prints_stream_specifiers_verbatim(
+    mocker,
+    mock_ffprobe_box,
+    mock_video_path,
+    capsys,
+    mock_ffmpeg,
+    debug,
+):
+    """Verify -vv prints ffmpeg stream specifiers such as :a: as text, not emoji."""
+    # Given: A downmix, whose ffmpeg command carries per-stream audio options
+    args = ["clean", "-vv", "--downmix", str(mock_video_path)]
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("no_stereo.json"),
+    )
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+
+    # When: Processing the video file with trace output
+    with pytest.raises(cappa.Exit):
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+
+    # Then: The traced command shows the audio stream specifier as typed
+    output = capsys.readouterr().out
+    assert "-c:a:" in output
+    assert "🅰" not in output
+
+
 def test_clean_video_downmix_atmos(
     mocker,
     mock_ffprobe_box,
