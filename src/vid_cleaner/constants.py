@@ -105,10 +105,29 @@ class Resolution:
 
 SYMBOL_CHECK = "✔"
 SYMBOL_CROSS = "✖"  # Marks a skipped operation in debug output, or a file that failed to process
-# Shared so the VP9 planner can correct the subtitle action recorded under this exact label
+# Labels of the cleaning operations a conversion plan reports
+CONVERT_TO_H265_LABEL = "Convert to H.265"
+CONVERT_TO_VP9_LABEL = "Convert to VP9"
+DOWNMIX_STEREO_LABEL = "Downmix to stereo"
+DROP_AUDIO_LABEL = "Drop unwanted audio"
 DROP_SUBTITLES_LABEL = "Drop unwanted subtitles"
-# Shared so the clean command can record a declined upscale under the planner's label
+REORDER_STREAMS_LABEL = "Reorder streams"
 SCALE_TO_1080P_LABEL = "Convert to 1080p"
+# Reasons a conversion plan gives for skipping a cleaning operation
+ALL_AUDIO_KEPT_REASON = "all audio matches keep languages"
+ALREADY_MODERN_CODEC_REASON = "already H.265/VP9; use --force"
+KEEP_ALL_SUBTITLES_REASON = "--keep-all-subtitles set"
+NO_SUBTITLES_REASON = "no subtitles to drop"
+NO_SURROUND_SOURCE_REASON = "no surround source to downmix"
+NO_UNWANTED_SUBTITLES_REASON = "no unwanted subtitles"
+SILENT_FILE_REASON = "kept all audio to avoid a silent file"
+STEREO_EXISTS_REASON = "stereo track already exists; use --force"
+STREAMS_IN_ORDER_REASON = "streams already in order"
+UNKNOWN_DURATION_REASON = "could not determine duration"
+UPSCALE_DECLINED_REASON = "upscale not approved"
+# Reasons a file cannot be cleaned
+NO_AUDIO_STREAMS_REASON = "no audio streams found"
+NO_VIDEO_STREAMS_REASON = "no video streams found"
 TREE_BRANCH = "├─"  # Connector for a non-final child line in faked step output
 TREE_LAST = "└─"  # Connector for the final child line in faked step output
 COMMENTARY_STREAM_TITLE_REGEX = r"commentary|sdh|description"

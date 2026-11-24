@@ -1,14 +1,70 @@
 """Helper utilities."""
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import ffmpeg as python_ffmpeg
 from box import Box
+from ffmpeg_progress_yield import FfmpegProgress
 from nclutils.sh import ShellCommandError, run_command
 
-from vid_cleaner.constants import AudioLayout, CodecTypes
+from vid_cleaner.constants import FFMPEG_APPEND, FFMPEG_PREPEND, AudioLayout, CodecTypes
 from vid_cleaner.exceptions import VideoProbeError
+
+
+@dataclass(frozen=True)
+class FfmpegCommand:
+    """A complete ffmpeg command line and the file it writes.
+
+    Attributes:
+        arguments (list[str]): The command line, starting with `ffmpeg`.
+        output_path (Path): The file the command writes.
+    """
+
+    arguments: list[str]
+    output_path: Path
+
+
+def build_ffmpeg_command(
+    arguments: list[str], *, input_path: Path, output_path: Path
+) -> FfmpegCommand:
+    """Wrap one step's ffmpeg arguments in the full command line every step shares.
+
+    Args:
+        arguments (list[str]): The step's arguments, placed between the input and the output.
+        input_path (Path): The file ffmpeg reads.
+        output_path (Path): The file ffmpeg writes.
+
+    Returns:
+        FfmpegCommand: The command and the file it writes.
+    """
+    # Global options go before the input so they apply to the whole run
+    command: list[str] = [
+        "ffmpeg",
+        *FFMPEG_PREPEND,
+        "-i",
+        str(input_path),
+        *arguments,
+        *FFMPEG_APPEND,
+        str(output_path),
+    ]
+    return FfmpegCommand(arguments=command, output_path=output_path)
+
+
+def run_ffmpeg(command: FfmpegCommand, *, on_progress: Callable[[float], None]) -> None:
+    """Run an ffmpeg command to completion, reporting progress as it goes.
+
+    A KeyboardInterrupt propagates so the caller can clean up the partial output.
+
+    Args:
+        command (FfmpegCommand): The command to run.
+        on_progress (Callable[[float], None]): Receives the percent complete as ffmpeg
+            reports it.
+    """
+    for complete in FfmpegProgress(command.arguments).run_command_with_progress():
+        on_progress(complete)
 
 
 def channels_to_layout(channels: int) -> AudioLayout | None:

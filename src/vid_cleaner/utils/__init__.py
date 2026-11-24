@@ -1,8 +1,23 @@
 """Shared utilities."""
 
-from .api_utils import query_radarr, query_sonarr, query_tmdb, query_tmdb_by_id
+from .api_utils import (
+    query_radarr,
+    query_sonarr,
+    query_tmdb,
+    query_tmdb_by_id,
+    radarr_imdb_id,
+    sonarr_imdb_id,
+    tmdb_original_language,
+)
 from .console import render_operations, render_substeps
-from .ffmpeg_utils import channels_to_layout, get_probe_as_box, run_ffprobe
+from .ffmpeg_utils import (
+    FfmpegCommand,
+    build_ffmpeg_command,
+    channels_to_layout,
+    get_probe_as_box,
+    run_ffmpeg,
+    run_ffprobe,
+)
 from .media_ids import MediaId, find_media_ids
 
 from .cli import (  # isort: skip
@@ -16,7 +31,9 @@ from .cli import (  # isort: skip
 )
 
 __all__ = [
+    "FfmpegCommand",
     "MediaId",
+    "build_ffmpeg_command",
     "channels_to_layout",
     "coerce_video_files",
     "copy_to_output",
@@ -30,8 +47,12 @@ __all__ = [
     "query_sonarr",
     "query_tmdb",
     "query_tmdb_by_id",
+    "radarr_imdb_id",
     "render_operations",
     "render_substeps",
     "resolve_out_path_override",
+    "run_ffmpeg",
     "run_ffprobe",
+    "sonarr_imdb_id",
+    "tmdb_original_language",
 ]

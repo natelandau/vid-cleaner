@@ -6,6 +6,8 @@ import httpx
 from nclutils import pp
 from rich.json import JSON
 
+from .media_ids import MediaId
+
 _TIMEOUT_SECONDS = 15
 
 
@@ -113,6 +115,33 @@ def query_tmdb_by_id(
     return {}
 
 
+def tmdb_original_language(media_id: MediaId, *, api_key: str) -> str | None:
+    """Look up the original language TMDB records for a movie or series.
+
+    Args:
+        media_id (MediaId): An IMDb ID, which TMDB resolves through its find endpoint, or a
+            TMDB ID.
+        api_key (str): The TMDB API key. An empty key skips the request.
+
+    Returns:
+        str | None: The ISO 639 language code, or None when TMDB has no record or no language.
+    """
+    if media_id.source == "imdb":
+        response = query_tmdb(search=media_id.value, api_key=api_key)
+        results = response.get("movie_results") or response.get("tv_results") or []
+        language = results[0].get("original_language") if results else None
+    else:
+        response = query_tmdb_by_id(
+            tmdb_id=media_id.value, media_type=media_id.media_type, api_key=api_key
+        )
+        language = response.get("original_language")
+
+    if not language:
+        return None
+    # TMDB uses 'cn' for Chinese, where ISO 639 uses 'zh'
+    return "zh" if language == "cn" else language
+
+
 def _query_arr_parse(service: str, search: str, *, url: str, api_key: str) -> dict[str, Any]:
     if not api_key or not url:
         return {}
@@ -155,3 +184,51 @@ def query_sonarr(search: str, *, url: str, api_key: str) -> dict[str, Any]:
         dict: Sonarr API response, or an empty dict when unavailable.
     """
     return _query_arr_parse(service="Sonarr", search=search, url=url, api_key=api_key)
+
+
+def _imdb_id_from_arr_response(response: dict[str, Any], media_key: str) -> str | None:
+    """Read the IMDb ID from a Radarr or Sonarr parse response.
+
+    An unmatched title can come back with the media object null or missing, and a match
+    can lack an IMDb ID, so every level is checked before reading it.
+
+    Args:
+        response (dict[str, Any]): The parse response body.
+        media_key (str): The key holding the matched media, `movie` or `series`.
+
+    Returns:
+        str | None: The IMDb ID, or None when the response has none.
+    """
+    media = response.get(media_key) if isinstance(response, dict) else None
+    imdb_id = media.get("imdbId") if isinstance(media, dict) else None
+    return imdb_id if isinstance(imdb_id, str) and imdb_id else None
+
+
+def radarr_imdb_id(title: str, *, url: str, api_key: str) -> str | None:
+    """Find the IMDb ID of the movie Radarr matches to a title.
+
+    Args:
+        title (str): The file name or title to match.
+        url (str): The Radarr base URL. An empty URL skips the request.
+        api_key (str): The Radarr API key. An empty key skips the request.
+
+    Returns:
+        str | None: The IMDb ID, or None when Radarr matches no movie or has no ID for it.
+    """
+    response = query_radarr(search=title, url=url, api_key=api_key)
+    return _imdb_id_from_arr_response(response=response, media_key="movie")
+
+
+def sonarr_imdb_id(title: str, *, url: str, api_key: str) -> str | None:
+    """Find the IMDb ID of the series Sonarr matches to a title.
+
+    Args:
+        title (str): The file name or title to match.
+        url (str): The Sonarr base URL. An empty URL skips the request.
+        api_key (str): The Sonarr API key. An empty key skips the request.
+
+    Returns:
+        str | None: The IMDb ID, or None when Sonarr matches no series or has no ID for it.
+    """
+    response = query_sonarr(search=title, url=url, api_key=api_key)
+    return _imdb_id_from_arr_response(response=response, media_key="series")

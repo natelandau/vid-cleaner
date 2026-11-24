@@ -1,64 +1,94 @@
 """VideoFile model."""
 
 import re
-from collections.abc import Callable
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import cappa
 from box import Box
-from ffmpeg_progress_yield import FfmpegProgress
 from iso639 import Lang
 from iso639.exceptions import DeprecatedLanguageValue, InvalidLanguageValue
 
 from vid_cleaner.config import Config, RunOptions
 from vid_cleaner.constants import (
+    ALL_AUDIO_KEPT_REASON,
+    ALREADY_MODERN_CODEC_REASON,
     COMMENTARY_STREAM_TITLE_REGEX,
+    CONVERT_TO_H265_LABEL,
+    CONVERT_TO_VP9_LABEL,
     DOWNMIX_STEREO_FILTER,
+    DOWNMIX_STEREO_LABEL,
+    DROP_AUDIO_LABEL,
     DROP_SUBTITLES_LABEL,
     EXCLUDED_VIDEO_CODECS,
-    FFMPEG_APPEND,
-    FFMPEG_PREPEND,
     FHD_RESOLUTION,
     H265_CODECS,
     HDTV_RESOLUTION,
+    KEEP_ALL_SUBTITLES_REASON,
     MIN_SURROUND_CHANNELS,
+    NO_AUDIO_STREAMS_REASON,
+    NO_SUBTITLES_REASON,
+    NO_SURROUND_SOURCE_REASON,
+    NO_UNWANTED_SUBTITLES_REASON,
+    NO_VIDEO_STREAMS_REASON,
+    REORDER_STREAMS_LABEL,
     SCALE_TO_1080P_LABEL,
     SDTV_RESOLUTION,
+    SILENT_FILE_REASON,
+    STEREO_EXISTS_REASON,
+    STREAMS_IN_ORDER_REASON,
     TEXT_SUBTITLE_CODECS,
     UHDTV_RESOLUTION,
+    UNKNOWN_DURATION_REASON,
     AudioLayout,
     CodecTypes,
+    Resolution,
     VideoTrait,
 )
 from vid_cleaner.exceptions import VideoCleanError
 from vid_cleaner.models.conversion_plan import ConversionPlan, OutputStream, PlanAction
 from vid_cleaner.utils import (
+    FfmpegCommand,
     MediaId,
+    build_ffmpeg_command,
     find_media_ids,
     get_probe_as_box,
-    query_radarr,
-    query_sonarr,
-    query_tmdb,
-    query_tmdb_by_id,
+    radarr_imdb_id,
     run_ffprobe,
+    sonarr_imdb_id,
+    tmdb_original_language,
 )
 
 from vid_cleaner.controllers import TempFile  # isort: skip
 
+_LAYOUT_TRAITS: dict[AudioLayout, VideoTrait] = {
+    AudioLayout.STEREO: VideoTrait.STEREO,
+    AudioLayout.MONO: VideoTrait.MONO,
+    AudioLayout.SURROUND5: VideoTrait.SURROUND5,
+    AudioLayout.SURROUND7: VideoTrait.SURROUND7,
+}
 
-@dataclass(frozen=True)
-class FfmpegCommand:
-    """A complete ffmpeg command line and the temporary file it writes.
+# Checked in order; the first resolution whose height or width matches wins
+_RESOLUTION_TRAITS: tuple[tuple[Resolution, VideoTrait], ...] = (
+    (HDTV_RESOLUTION, VideoTrait.HDTV),
+    (FHD_RESOLUTION, VideoTrait.FHD),
+    (UHDTV_RESOLUTION, VideoTrait.UHDTV),
+    (SDTV_RESOLUTION, VideoTrait.SDTV),
+)
 
-    Attributes:
-        arguments (list[str]): The command line, starting with `ffmpeg`.
-        output_path (Path): The temporary file the command writes.
+
+def _parse_language(code: str) -> Lang | None:
+    """Parse an ISO 639 code, treating one that iso639 rejects as unknown.
+
+    Args:
+        code (str): The language code to parse.
+
+    Returns:
+        Lang | None: The language, or None when the code is not a usable ISO 639 code.
     """
-
-    arguments: list[str]
-    output_path: Path
+    try:
+        return Lang(code)
+    except (InvalidLanguageValue, DeprecatedLanguageValue):
+        return None
 
 
 class VideoFile:
@@ -69,12 +99,8 @@ class VideoFile:
         self.path = path.expanduser().resolve()
         self.name = path.name
         self.stem = path.stem
-        self.parent = path.parent
-        self.suffix = path.suffix
-        self.suffixes = self.path.suffixes
         self.temp_file = TempFile(self.path)
 
-        self.container = self.suffix
         self.language: Lang | None = None
         self.ran_language_check = False
         self._probe_box: Box = Box({}, default_box=True, default_box_create_on_get=False)
@@ -137,15 +163,7 @@ class VideoFile:
         Returns:
             list[VideoTrait]: A list of VideoTrait enums representing all identified characteristics including audio layouts, video codecs, resolutions, and structural properties.
         """
-        traits = []
-
-        # Process audio streams
-        traits.extend(self._get_audio_traits())
-
-        # Process video streams
-        traits.extend(self._get_video_traits())
-
-        # Add derived traits
+        traits = [*self._get_audio_traits(), *self._get_video_traits()]
         if self._needs_stereo():
             traits.append(VideoTrait.NEEDS_STEREO)
 
@@ -165,18 +183,12 @@ class VideoFile:
             list[VideoTrait]: A list of VideoTrait enums representing the audio characteristics
                 found in the file's audio streams.
         """
-        traits = []
+        traits: list[VideoTrait] = []
         for stream in self.audio_streams:
             if self._is_commentary_stream(stream):
                 traits.append(VideoTrait.COMMENTARY)
-            elif stream.channels == AudioLayout.STEREO:
-                traits.append(VideoTrait.STEREO)
-            elif stream.channels == AudioLayout.MONO:
-                traits.append(VideoTrait.MONO)
-            elif stream.channels == AudioLayout.SURROUND5:
-                traits.append(VideoTrait.SURROUND5)
-            elif stream.channels == AudioLayout.SURROUND7:
-                traits.append(VideoTrait.SURROUND7)
+            elif trait := _LAYOUT_TRAITS.get(stream.channels):
+                traits.append(trait)
         return traits
 
     def _get_video_traits(self) -> list[VideoTrait]:
@@ -190,23 +202,23 @@ class VideoFile:
             list[VideoTrait]: A list of VideoTrait enums representing the video characteristics
                 found in the file's video streams, including codec and resolution information.
         """
-        traits = []
+        traits: list[VideoTrait] = []
         for stream in self.video_streams:
             if stream.codec_name.lower() in H265_CODECS:
                 traits.append(VideoTrait.H265)
             elif stream.codec_name.lower() == "h264":
                 traits.append(VideoTrait.H264)
 
-            if stream.height == HDTV_RESOLUTION.height or stream.width == HDTV_RESOLUTION.width:
-                traits.append(VideoTrait.HDTV)
-            elif stream.height == FHD_RESOLUTION.height or stream.width == FHD_RESOLUTION.width:
-                traits.append(VideoTrait.FHD)
-            elif stream.height == UHDTV_RESOLUTION.height or stream.width == UHDTV_RESOLUTION.width:
-                traits.append(VideoTrait.UHDTV)
-            elif stream.height == SDTV_RESOLUTION.height or stream.width == SDTV_RESOLUTION.width:
-                traits.append(VideoTrait.SDTV)
-            else:
-                traits.append(VideoTrait.UNKNOWN_RESOLUTION)
+            traits.append(
+                next(
+                    (
+                        trait
+                        for resolution, trait in _RESOLUTION_TRAITS
+                        if stream.height == resolution.height or stream.width == resolution.width
+                    ),
+                    VideoTrait.UNKNOWN_RESOLUTION,
+                )
+            )
         return traits
 
     @staticmethod
@@ -226,6 +238,18 @@ class VideoFile:
         )
 
     @staticmethod
+    def _has_undefined_language(stream: Box) -> bool:
+        """Check whether a stream carries no language tag or the `und` (undetermined) tag.
+
+        Args:
+            stream (Box): The stream to inspect.
+
+        Returns:
+            bool: True when the stream names no language.
+        """
+        return not stream.language or str(stream.language).lower() == "und"
+
+    @staticmethod
     def _stream_language(stream: Box) -> Lang | None:
         """Parse a stream's language tag so it can be compared with the keep languages.
 
@@ -239,16 +263,10 @@ class VideoFile:
             Lang | None: The tagged language, or None when the tag is missing, `und`, or not a
                 usable ISO 639 code.
         """
-        if not stream.language:
+        if VideoFile._has_undefined_language(stream):
             return None
-        tag = str(stream.language).lower()
-        if tag == "und":
-            return None
-        # `_note_unusable_language_tags` reports these tags in the plan's debug notes
-        try:
-            return Lang(tag)
-        except (InvalidLanguageValue, DeprecatedLanguageValue):
-            return None
+        # `_note_unusable_language_tags` reports unusable tags in the plan's debug notes
+        return _parse_language(str(stream.language).lower())
 
     def _note_unusable_language_tags(self, plan: ConversionPlan) -> None:
         """Record each audio or subtitle language tag that planning treats as unknown.
@@ -259,9 +277,7 @@ class VideoFile:
         plan.debug_notes.extend(
             f"Stream #{stream.index}: unusable language tag '{stream.language}', treated as unknown"
             for stream in self.audio_streams + self.subtitle_streams
-            if stream.language
-            and str(stream.language).lower() != "und"
-            and self._stream_language(stream) is None
+            if not self._has_undefined_language(stream) and self._stream_language(stream) is None
         )
 
     @staticmethod
@@ -279,21 +295,31 @@ class VideoFile:
         """
         return bool(stream.channel_count) and stream.channel_count >= MIN_SURROUND_CHANNELS
 
+    @staticmethod
+    def _is_stereo_mix(stream: Box) -> bool:
+        """Check whether a stream is a stereo mix of the main audio.
+
+        Commentary tracks are often stereo but are not a mix of the main audio, so they never
+        count as one.
+
+        Args:
+            stream (Box): The stream to inspect.
+
+        Returns:
+            bool: True if the stream is a non-commentary stereo track.
+        """
+        return stream.channels == AudioLayout.STEREO and not VideoFile._is_commentary_stream(stream)
+
     def _needs_stereo(self) -> bool:
         """Check whether the file lacks a stereo mix but could have one built from its audio.
 
         Distinguishes a file worth downmixing from one that merely has no stereo track, such as
-        an original mono recording, which has nothing to downmix and should be left alone. The
-        commentary handling mirrors `_plan_downmix` so the trait never promises a stereo track
-        the planner would decline to build.
+        an original mono recording, which has nothing to downmix and should be left alone.
 
         Returns:
             bool: True if no non-commentary stereo mix exists and a surround bed does.
         """
-        has_stereo_mix = any(
-            stream.channels == AudioLayout.STEREO and not self._is_commentary_stream(stream)
-            for stream in self.audio_streams
-        )
+        has_stereo_mix = any(self._is_stereo_mix(stream) for stream in self.audio_streams)
         return not has_stereo_mix and any(
             self._is_surround_stream(stream) for stream in self.audio_streams
         )
@@ -344,7 +370,7 @@ class VideoFile:
     @staticmethod
     def _plan_downmix(
         streams: list[Box], langs: list[Lang], *, force: bool
-    ) -> tuple[list[OutputStream], list[Box], PlanAction | None]:
+    ) -> tuple[list[OutputStream], list[Box], PlanAction]:
         """Plan a downmix of the best surround bed to a dialogue-forward stereo track.
 
         Skip the work when a non-commentary stereo mix already exists, unless
@@ -360,72 +386,56 @@ class VideoFile:
             force (bool): Rebuild the stereo track even when one already exists.
 
         Returns:
-            tuple[list[OutputStream], list[Box], PlanAction | None]: The planned downmix
-                output streams, the existing streams the caller must not map, and the
-                recorded action (always populated; callers only invoke this method when
-                `downmix_stereo` is set).
+            tuple[list[OutputStream], list[Box], PlanAction]: The planned downmix output
+                streams, the existing streams the caller must not map, and the recorded
+                action.
         """
-        downmix_streams: list[OutputStream] = []
-        streams_to_drop: list[Box] = []
-
-        # Commentary tracks are often stereo but are not a stereo mix of the main audio,
-        # so they must not count as an existing stereo mix.
-        existing_stereo = [
-            stream
-            for stream in streams
-            if stream.channels == AudioLayout.STEREO and not VideoFile._is_commentary_stream(stream)
+        existing_stereo: list[Box] = [
+            stream for stream in streams if VideoFile._is_stereo_mix(stream)
         ]
+        if existing_stereo and not force:
+            skip = PlanAction(
+                label=DOWNMIX_STEREO_LABEL, applied=False, reason=STEREO_EXISTS_REASON
+            )
+            return [], [], skip
 
         # One stereo track per file: rank every surround bed and keep the best. `min` returns
         # the first of equal ranks, so file order breaks ties.
-        surround = [s for s in streams if VideoFile._is_surround_stream(s)]
         surround_source = min(
-            surround,
+            (s for s in streams if VideoFile._is_surround_stream(s)),
             key=lambda s: VideoFile._downmix_source_rank(stream=s, langs=langs),
             default=None,
         )
-
-        if existing_stereo:
-            if not force:
-                action = PlanAction(
-                    label="Downmix to stereo",
-                    applied=False,
-                    reason="stereo track already exists; use --force",
-                )
-                return downmix_streams, streams_to_drop, action
-            if surround_source is None:
-                action = PlanAction(
-                    label="Downmix to stereo", applied=False, reason="no surround source to downmix"
-                )
-                return downmix_streams, streams_to_drop, action
-            # Forced recreation: drop the existing stereo mix and rebuild it from the surround bed
-            source_language = VideoFile._stream_language(surround_source)
-            streams_to_drop = [
-                stream
-                for stream in existing_stereo
-                if VideoFile._stream_language(stream) == source_language
-            ]
-
-        if surround_source is not None:
-            downmix_streams.append(
-                OutputStream(
-                    source_index=surround_source.index,
-                    codec_type=CodecTypes.AUDIO,
-                    codec="aac",
-                    stream_filter=DOWNMIX_STEREO_FILTER,
-                    extra_args=["-ac:a:{n}", "2", "-b:a:{n}", "256k", "-ar:a:{n}", "48000"],
-                    metadata={"title": "2.0"},
-                )
+        if surround_source is None:
+            skip = PlanAction(
+                label=DOWNMIX_STEREO_LABEL, applied=False, reason=NO_SURROUND_SOURCE_REASON
             )
-        action = PlanAction(
-            label="Downmix to stereo",
-            applied=bool(downmix_streams),
-            reason=None if downmix_streams else "no surround source to downmix",
+            return [], [], skip
+
+        # Forced recreation replaces the existing stereo mix in the surround bed's language
+        source_language = VideoFile._stream_language(surround_source)
+        streams_to_drop: list[Box] = [
+            stream
+            for stream in existing_stereo
+            if VideoFile._stream_language(stream) == source_language
+        ]
+        downmix = OutputStream(
+            source_index=surround_source.index,
+            codec_type=CodecTypes.AUDIO,
+            codec="aac",
+            stream_filter=DOWNMIX_STEREO_FILTER,
+            extra_args=["-ac:a:{n}", "2", "-b:a:{n}", "256k", "-ar:a:{n}", "48000"],
+            metadata={"title": "2.0"},
         )
-        return downmix_streams, streams_to_drop, action
+        return [downmix], streams_to_drop, PlanAction(label=DOWNMIX_STEREO_LABEL, applied=True)
 
     def _plan_audio_streams(
-        self, plan: ConversionPlan, config: Config, options: RunOptions
+        self,
+        plan: ConversionPlan,
+        config: Config,
+        options: RunOptions,
+        *,
+        langs: list[Lang],
     ) -> list[OutputStream]:
         """Plan audio streams to keep, honoring language, commentary, and downmix settings.
 
@@ -434,18 +444,11 @@ class VideoFile:
                 outcomes.
             config (Config): The settings for this run.
             options (RunOptions): The CLI-only values for this run.
+            langs (list[Lang]): Audio languages to keep, in preference order.
 
         Returns:
             list[OutputStream]: Copy-mapped kept audio followed by any planned downmix.
         """
-        langs = [Lang(lang) for lang in config.langs_to_keep]
-
-        # Add original language to list of languages to keep if not explicitly dropping it
-        if not config.drop_original_audio:
-            original_language = self._find_original_language(config, notes=plan.debug_notes)
-            if original_language and original_language not in langs:
-                langs.append(original_language)
-
         streams_to_keep: list[Box] = []
         for stream in self.audio_streams:
             # Commentary tracks are often unwanted and take up space
@@ -461,33 +464,33 @@ class VideoFile:
 
             plan.debug_notes.append(f"PLAN AUDIO: Remove stream #{stream.index}")
 
-        # If every stream would be removed, keep them all to prevent silent video
-        fallback_triggered = not streams_to_keep
-        if fallback_triggered:
+        if not streams_to_keep:
+            # Removing every stream would leave a silent video
             streams_to_keep = list(self.audio_streams)
-
-        dropped = len(self.audio_streams) - len(streams_to_keep)
-        if fallback_triggered:
-            action = PlanAction(
-                label="Drop unwanted audio",
-                applied=False,
-                reason="kept all audio to avoid a silent file",
+            plan.actions.append(
+                PlanAction(
+                    label=DROP_AUDIO_LABEL,
+                    applied=False,
+                    reason=SILENT_FILE_REASON,
+                )
             )
         else:
-            action = PlanAction(
-                label="Drop unwanted audio",
-                applied=dropped > 0,
-                reason=None if dropped > 0 else "all audio matches keep languages",
+            dropped = len(self.audio_streams) - len(streams_to_keep)
+            plan.actions.append(
+                PlanAction(
+                    label=DROP_AUDIO_LABEL,
+                    applied=dropped > 0,
+                    reason=None if dropped > 0 else ALL_AUDIO_KEPT_REASON,
+                )
             )
-        plan.actions.append(action)
 
-        # Plan the downmix; forced recreation can request dropping an existing stereo track
-        downmix_streams, streams_to_drop, downmix_action = (
-            self._plan_downmix(streams=streams_to_keep, langs=langs, force=options.force)
-            if config.downmix_stereo
-            else ([], [], None)
-        )
-        if downmix_action is not None:
+        downmix_streams: list[OutputStream] = []
+        streams_to_drop: list[Box] = []
+        if config.downmix_stereo:
+            # Forced recreation can request dropping an existing stereo track
+            downmix_streams, streams_to_drop, downmix_action = self._plan_downmix(
+                streams=streams_to_keep, langs=langs, force=options.force
+            )
             plan.actions.append(downmix_action)
 
         drop_indices = {stream.index for stream in streams_to_drop}
@@ -520,9 +523,9 @@ class VideoFile:
         if not stream.language:
             return False
 
-        # Undefined-language streams count as a match so important subtitles are not removed
+        # `und` streams count as a match so important subtitles are not removed
         language = VideoFile._stream_language(stream)
-        matches_keep_languages = str(stream.language).lower() == "und" or (
+        matches_keep_languages = VideoFile._has_undefined_language(stream) or (
             language is not None and language in langs
         )
 
@@ -538,28 +541,28 @@ class VideoFile:
             and matches_keep_languages
         )
 
-    def _plan_subtitle_streams(self, plan: ConversionPlan, config: Config) -> list[OutputStream]:
+    def _plan_subtitle_streams(
+        self,
+        plan: ConversionPlan,
+        config: Config,
+        *,
+        langs: list[Lang],
+        original_language: Lang | None,
+    ) -> list[OutputStream]:
         """Plan subtitle streams to keep based on language preferences.
 
         Args:
             plan (ConversionPlan): The plan whose actions record the drop-subtitles
                 outcome.
             config (Config): The settings for this run.
+            langs (list[Lang]): The configured keep languages.
+            original_language (Lang | None): The file's original audio language, or None
+                when unknown or not looked up.
 
         Returns:
             list[OutputStream]: Copy-mapped kept subtitle streams.
         """
         keep: list[OutputStream] = []
-
-        langs = [Lang(lang) for lang in config.langs_to_keep]
-
-        # Only look up original language if we're not explicitly dropping local subs
-        # This avoids unnecessary API calls
-        original_language = (
-            None
-            if config.drop_local_subs
-            else self._find_original_language(config, notes=plan.debug_notes)
-        )
 
         # Skip evaluating streams entirely when settings drop every local subtitle;
         # a single return path below still records the drop-subtitles action.
@@ -593,25 +596,34 @@ class VideoFile:
         if dropped > 0:
             reason: str | None = None
         elif not self.subtitle_streams:
-            reason = "no subtitles to drop"
+            reason = NO_SUBTITLES_REASON
         elif config.keep_all_subtitles:
-            reason = "--keep-all-subtitles set"
+            reason = KEEP_ALL_SUBTITLES_REASON
         else:
-            reason = "no unwanted subtitles"
+            reason = NO_UNWANTED_SUBTITLES_REASON
         plan.actions.append(
             PlanAction(label=DROP_SUBTITLES_LABEL, applied=dropped > 0, reason=reason)
         )
 
         return keep
 
-    def _first_video_stream(self) -> Box | None:
-        """Find the first processable video stream in the probe data.
+    def _skip_codec_conversion(self, plan: ConversionPlan, label: str, options: RunOptions) -> bool:
+        """Record a skipped codec conversion when the video already uses a modern codec.
+
+        Args:
+            plan (ConversionPlan): The plan that receives the skipped action.
+            label (str): The conversion's action label.
+            options (RunOptions): The CLI-only values for this run; `force` disables the skip.
 
         Returns:
-            Box | None: The first non-thumbnail video stream, or None when absent.
+            bool: True when the conversion was skipped and the caller should stop planning it.
         """
-        # video_streams already applies the non-thumbnail filter and is memoized.
-        return self.video_streams[0] if self.video_streams else None
+        if options.force or self.video_streams[0].codec_name.lower() not in H265_CODECS:
+            return False
+        plan.actions.append(
+            PlanAction(label=label, applied=False, reason=ALREADY_MODERN_CODEC_REASON)
+        )
+        return True
 
     def _estimate_cleaned_size_mb(self, mapped_indices: set[int], duration: float) -> float:
         """Estimate the input size in megabytes after dropped streams are removed.
@@ -647,28 +659,19 @@ class VideoFile:
             plan (ConversionPlan): The plan whose video stream is annotated in place.
             options (RunOptions): The CLI-only values for this run.
         """
-        video_stream = self._first_video_stream()
-        if not video_stream:
-            plan.actions.append(
-                PlanAction(label="Convert to H.265", applied=False, reason="no video stream")
-            )
+        if self._skip_codec_conversion(plan=plan, label=CONVERT_TO_H265_LABEL, options=options):
             return
 
-        if not options.force and video_stream.codec_name.lower() in H265_CODECS:
-            plan.actions.append(
-                PlanAction(
-                    label="Convert to H.265", applied=False, reason="already H.265/VP9; use --force"
-                )
-            )
-            return
-
+        video_stream = self.video_streams[0]
         # Calculate target bitrate using Frame.io's formula: https://blog.frame.io/2017/03/06/calculate-video-bitrates/
         # This formula provides good quality while maintaining reasonable file sizes
         stream_duration = float(self.probe_box.duration or 0) or float(video_stream.duration or 0)
         if not stream_duration:
             plan.actions.append(
                 PlanAction(
-                    label="Convert to H.265", applied=False, reason="could not determine duration"
+                    label=CONVERT_TO_H265_LABEL,
+                    applied=False,
+                    reason=UNKNOWN_DURATION_REASON,
                 )
             )
             return
@@ -683,8 +686,11 @@ class VideoFile:
 
         # When the same pass also downscales, the encode sees fewer pixels than the
         # source, so shrink the size-derived targets by the pixel ratio.
-        width = getattr(video_stream, "width", 0) or 0
-        scale_factor = (1920 / width) ** 2 if options.video_1080 and width > 1920 else 1.0  # noqa: PLR2004
+        width = video_stream.width or 0
+        target_width = FHD_RESOLUTION.width
+        scale_factor = (
+            (target_width / width) ** 2 if options.video_1080 and width > target_width else 1.0
+        )
 
         # Calculate bitrates with a target of 50% of original size while maintaining quality
         current_bitrate = int(file_size_megabytes / (duration * 0.0075) * scale_factor)
@@ -693,9 +699,7 @@ class VideoFile:
         min_bitrate = int(current_bitrate * 0.7)
         max_bitrate = int(current_bitrate * 1.3)
 
-        # Encode every kept video stream, matching the old `-c:v libx265` (no index),
-        # which applied to all video streams, not just the first.
-        for video_output in [s for s in plan.streams if s.codec_type == CodecTypes.VIDEO]:
+        for video_output in plan.streams_of(CodecTypes.VIDEO):
             video_output.codec = "libx265"
             video_output.extra_args = [
                 "-b:v:{n}",
@@ -707,7 +711,7 @@ class VideoFile:
                 "-bufsize:v:{n}",
                 f"{current_bitrate}k",
             ]
-        plan.actions.append(PlanAction(label="Convert to H.265", applied=True))
+        plan.actions.append(PlanAction(label=CONVERT_TO_H265_LABEL, applied=True))
 
     def _plan_vp9(self, plan: ConversionPlan, options: RunOptions) -> None:
         """Plan a VP9/WebM conversion, adapting audio and subtitles to the container.
@@ -720,20 +724,7 @@ class VideoFile:
             plan (ConversionPlan): The plan mutated in place.
             options (RunOptions): The CLI-only values for this run.
         """
-        video_stream = self._first_video_stream()
-        if not video_stream:
-            plan.actions.append(
-                PlanAction(label="Convert to VP9", applied=False, reason="no video stream")
-            )
-            return
-
-        # Skip re-encoding if already in modern codec unless forced
-        if not options.force and video_stream.codec_name.lower() in H265_CODECS:
-            plan.actions.append(
-                PlanAction(
-                    label="Convert to VP9", applied=False, reason="already H.265/VP9; use --force"
-                )
-            )
+        if self._skip_codec_conversion(plan=plan, label=CONVERT_TO_VP9_LABEL, options=options):
             return
 
         destination = options.out or self.path
@@ -766,7 +757,7 @@ class VideoFile:
             kept_streams.append(stream)
 
         plan.streams = kept_streams
-        plan.actions.append(PlanAction(label="Convert to VP9", applied=True))
+        plan.actions.append(PlanAction(label=CONVERT_TO_VP9_LABEL, applied=True))
 
     @staticmethod
     def _mark_subtitles_dropped(plan: ConversionPlan) -> None:
@@ -793,14 +784,7 @@ class VideoFile:
             plan (ConversionPlan): The plan whose video stream is annotated in place.
             options (RunOptions): The CLI-only values for this run.
         """
-        video_stream = self._first_video_stream()
-        if not video_stream:
-            plan.actions.append(
-                PlanAction(label=SCALE_TO_1080P_LABEL, applied=False, reason="no video stream")
-            )
-            return
-
-        source_width = getattr(video_stream, "width", 0) or 0
+        source_width = self.video_streams[0].width or 0
         if source_width <= FHD_RESOLUTION.width and not options.force:
             plan.actions.append(
                 PlanAction(
@@ -812,11 +796,9 @@ class VideoFile:
         if 0 < source_width < FHD_RESOLUTION.width:
             plan.upscale_source_width = source_width
 
-        # Scale every kept video stream, matching the old `-filter:v scale=...` (no index),
-        # which applied to all video streams, not just the first.
-        for video_output in [s for s in plan.streams if s.codec_type == CodecTypes.VIDEO]:
-            # Use -2 for height to maintain aspect ratio while ensuring even dimensions for compatibility
-            video_output.stream_filter = "scale=width=1920:height=-2"
+        for video_output in plan.streams_of(CodecTypes.VIDEO):
+            # Height -2 keeps the aspect ratio while forcing the even dimension encoders need
+            video_output.stream_filter = f"scale=width={FHD_RESOLUTION.width}:height=-2"
             if video_output.codec == "copy":
                 # Scaling requires an encode; None lets ffmpeg pick the container default
                 video_output.codec = None
@@ -824,6 +806,9 @@ class VideoFile:
 
     def _build_plan(self, config: Config, options: RunOptions) -> ConversionPlan:
         """Compose every requested operation into a single-pass conversion plan.
+
+        The codec and scale planners read the first video stream, so the file must have one;
+        `plan_clean` checks before calling this.
 
         Args:
             config (Config): The settings for this run.
@@ -833,9 +818,40 @@ class VideoFile:
             ConversionPlan: The composed plan, ready to build one ffmpeg command.
         """
         plan = ConversionPlan()
+        needs_reorder = self._need_stream_reorder()
+        plan.actions.append(
+            PlanAction(
+                label=REORDER_STREAMS_LABEL,
+                applied=needs_reorder,
+                reason=None if needs_reorder else STREAMS_IN_ORDER_REASON,
+            )
+        )
+
+        keep_langs: list[Lang] = [Lang(lang) for lang in config.langs_to_keep]
+        # Only look up the original language when a setting uses it, to avoid API calls
+        original_language = (
+            None
+            if config.drop_original_audio and config.drop_local_subs
+            else self._find_original_language(config=config, notes=plan.debug_notes)
+        )
+        audio_langs: list[Lang] = list(keep_langs)
+        if (
+            not config.drop_original_audio
+            and original_language
+            and original_language not in audio_langs
+        ):
+            audio_langs.append(original_language)
+
         video = self._plan_video_streams()
-        audio = self._plan_audio_streams(plan=plan, config=config, options=options)
-        subtitles = self._plan_subtitle_streams(plan=plan, config=config)
+        audio = self._plan_audio_streams(
+            plan=plan, config=config, options=options, langs=audio_langs
+        )
+        subtitles = self._plan_subtitle_streams(
+            plan=plan,
+            config=config,
+            langs=keep_langs,
+            original_language=None if config.drop_local_subs else original_language,
+        )
         plan.streams = video + audio + subtitles
 
         # Codec planners run before the scale planner so scaling only falls back to the
@@ -868,22 +884,12 @@ class VideoFile:
             VideoCleanError: If the file has no video or no audio streams.
         """
         if not self.video_streams:
-            raise VideoCleanError(path=self.path, reason="no video streams found")
+            raise VideoCleanError(path=self.path, reason=NO_VIDEO_STREAMS_REASON)
         if not self.audio_streams:
-            raise VideoCleanError(path=self.path, reason="no audio streams found")
+            raise VideoCleanError(path=self.path, reason=NO_AUDIO_STREAMS_REASON)
 
         plan = self._build_plan(config=config, options=options)
         self._note_unusable_language_tags(plan)
-
-        needs_reorder = self._need_stream_reorder()
-        plan.actions.insert(
-            0,
-            PlanAction(
-                label="Reorder streams",
-                applied=needs_reorder,
-                reason=None if needs_reorder else "streams already in order",
-            ),
-        )
         return plan
 
     def plan_changes_file(self, plan: ConversionPlan) -> bool:
@@ -895,7 +901,9 @@ class VideoFile:
         Returns:
             bool: True when the plan maps, reorders, or encodes anything differently.
         """
-        return not plan.is_noop(stream_count=len(self.all_streams)) or self._need_stream_reorder()
+        # Planners map streams in `all_streams` order, so an identity mapping also means
+        # no reorder is needed
+        return not plan.is_noop(stream_count=len(self.all_streams))
 
     def _language_for(self, media_id: MediaId, config: Config, notes: list[str]) -> Lang | None:
         """Resolve a single media ID to the content's original language.
@@ -908,30 +916,14 @@ class VideoFile:
         Returns:
             Lang | None: The original language, or None when it cannot be resolved.
         """
-        if media_id.source == "imdb":
-            response = query_tmdb(media_id.value, api_key=config.tmdb_api_key)
-            results = response.get("movie_results") or response.get("tv_results") or []
-            original_language = results[0].get("original_language") if results else None
-        else:
-            response = query_tmdb_by_id(
-                tmdb_id=media_id.value,
-                media_type=media_id.media_type,
-                api_key=config.tmdb_api_key,
-            )
-            original_language = response.get("original_language")
-
+        original_language = tmdb_original_language(media_id=media_id, api_key=config.tmdb_api_key)
         if not original_language:
             return None
 
-        # TMDB uses 'cn' for Chinese but iso639 expects 'zh'
-        if original_language == "cn":
-            original_language = "zh"
-
-        try:
-            return Lang(original_language)
-        except (InvalidLanguageValue, DeprecatedLanguageValue):
+        language = _parse_language(original_language)
+        if language is None:
             notes.append(f"iso639: Unusable language '{original_language}' for: {self.name}")
-            return None
+        return language
 
     def _find_original_language(self, config: Config, *, notes: list[str]) -> Lang | None:
         """Find the original language of the video content.
@@ -947,37 +939,37 @@ class VideoFile:
         Returns:
             Lang | None: The determined language, or None when none could be found.
         """
-        if self.ran_language_check:
-            return self.language
+        # Cache a miss too, so a failed lookup does not re-query every API on each call
+        if not self.ran_language_check:
+            self.language = self._look_up_original_language(config=config, notes=notes)
+            self.ran_language_check = True
+        return self.language
 
-        # Cache the attempt itself, so a miss does not re-query every API on each call
-        self.ran_language_check = True
+    def _look_up_original_language(self, config: Config, *, notes: list[str]) -> Lang | None:
+        """Query the metadata APIs for the original language, without caching.
 
+        Args:
+            config (Config): The settings holding the API credentials.
+            notes (list[str]): Debug notes that receive why a lookup failed.
+
+        Returns:
+            Lang | None: The determined language, or None when none could be found.
+        """
         media_ids = find_media_ids(stem=self.stem, format_tags=self.probe_box.format.tags)
-
         for media_id in media_ids:
             if language := self._language_for(media_id=media_id, config=config, notes=notes):
-                self.language = language
                 return language
 
         # Last resort: Radarr/Sonarr require a network round trip, so only ask
         # once every filename- and container-derived ID has failed to resolve.
-        imdb_id = self._query_arr_apps_for_imdb_id(config)
-
-        # Skip IDs already tried above; every one of them just failed to resolve
+        imdb_id = radarr_imdb_id(
+            title=self.name, url=config.radarr_url, api_key=config.radarr_api_key
+        ) or sonarr_imdb_id(title=self.name, url=config.sonarr_url, api_key=config.sonarr_api_key)
         tried_imdb_ids = {media_id.value for media_id in media_ids if media_id.source == "imdb"}
-
-        if (
-            imdb_id
-            and imdb_id not in tried_imdb_ids
-            and (
-                language := self._language_for(
-                    media_id=MediaId(source="imdb", value=imdb_id), config=config, notes=notes
-                )
-            )
-        ):
-            self.language = language
-            return language
+        if imdb_id and imdb_id not in tried_imdb_ids:
+            arr_media_id = MediaId(source="imdb", value=imdb_id)
+            if language := self._language_for(media_id=arr_media_id, config=config, notes=notes):
+                return language
 
         notes.append(f"Could not find original language for: {self.name}")
         return None
@@ -988,50 +980,7 @@ class VideoFile:
         Returns:
             bool: True if the video file needs stream reordering, False otherwise.
         """
-        return any(
-            stream.index != i
-            for i, stream in enumerate(
-                self.video_streams + self.audio_streams + self.subtitle_streams
-            )
-        )
-
-    def _query_arr_apps_for_imdb_id(self, config: Config) -> str | None:
-        """Query Radarr and Sonarr APIs to find the IMDb ID of the video.
-
-        This method attempts to retrieve the IMDb ID based on the video file's name by utilizing external APIs for Radarr and Sonarr as sources. It first queries Radarr API and checks if the response contains the movie information with the IMDb ID. If found, it returns the IMDb ID.
-
-        If not found, it then queries Sonarr API and checks if the response contains the series information with the IMDb ID. If found, it returns the IMDb ID. If no IMDb ID is found from either API, it returns None.
-
-        Args:
-            config (Config): The settings holding the Radarr and Sonarr credentials.
-
-        Returns:
-            str | None: The IMDb ID if found, otherwise None.
-        """
-        radarr = query_radarr(self.name, url=config.radarr_url, api_key=config.radarr_api_key)
-        if imdb_id := self._imdb_id_from_arr_response(response=radarr, media_key="movie"):
-            return imdb_id
-
-        sonarr = query_sonarr(self.name, url=config.sonarr_url, api_key=config.sonarr_api_key)
-        return self._imdb_id_from_arr_response(response=sonarr, media_key="series")
-
-    @staticmethod
-    def _imdb_id_from_arr_response(response: dict[str, Any], media_key: str) -> str | None:
-        """Read the IMDb ID from a Radarr or Sonarr parse response.
-
-        An unmatched title can come back with the media object null or missing, and a match
-        can lack an IMDb ID, so every level is checked before reading it.
-
-        Args:
-            response (dict[str, Any]): The parse response body.
-            media_key (str): The key holding the matched media, `movie` or `series`.
-
-        Returns:
-            str | None: The IMDb ID, or None when the response has none.
-        """
-        media = response.get(media_key) if isinstance(response, dict) else None
-        imdb_id = media.get("imdbId") if isinstance(media, dict) else None
-        return imdb_id if isinstance(imdb_id, str) and imdb_id else None
+        return any(stream.index != i for i, stream in enumerate(self.all_streams))
 
     def prepare_ffmpeg(
         self,
@@ -1058,45 +1007,13 @@ class VideoFile:
         Returns:
             FfmpegCommand: The command and the temporary file it writes.
         """
-        input_path = self.temp_file.latest_temp_path()
         make_path = self.temp_file.preview_tmp_path if dryrun else self.temp_file.new_tmp_path
         output_path = make_path(suffix=suffix, step_name=step, cache_dir=config.cache_dir)
-
-        # Prepend global ffmpeg options before input file to ensure consistent behavior
-        command = [
-            "ffmpeg",
-            *FFMPEG_PREPEND,
-            "-i",
-            str(input_path),
-            *arguments,
-            *FFMPEG_APPEND,
-            str(output_path),
-        ]
-        return FfmpegCommand(arguments=command, output_path=output_path)
-
-    def run_ffmpeg(self, command: FfmpegCommand, *, on_progress: Callable[[float], None]) -> None:
-        """Run a prepared ffmpeg command and make its output the file's latest version.
-
-        Args:
-            command (FfmpegCommand): A command from `prepare_ffmpeg` with `dryrun` unset.
-            on_progress (Callable[[float], None]): Receives the percent complete as ffmpeg
-                reports it, so the caller can show progress.
-
-        Raises:
-            cappa.Exit: If the user interrupts ffmpeg, after removing temporary files.
-        """
-        ff = FfmpegProgress(command.arguments)
-
-        try:
-            for complete in ff.run_command_with_progress():
-                on_progress(complete)
-        except KeyboardInterrupt as e:
-            # Clean up temporary files if user interrupts to avoid orphaned files
-            self.temp_file.clean_up()
-            message = "Interrupted while running ffmpeg. Exiting..."
-            raise cappa.Exit(message, code=1) from e
-
-        self.temp_file.created_temp_file(command.output_path)
+        return build_ffmpeg_command(
+            arguments=arguments,
+            input_path=self.temp_file.latest_temp_path(),
+            output_path=output_path,
+        )
 
     def clip_arguments(self, start: str, duration: str) -> list[str]:
         """Build the ffmpeg arguments that copy a segment of the video without re-encoding.
@@ -1112,7 +1029,7 @@ class VideoFile:
             VideoCleanError: If the file has no video streams.
         """
         if not self.video_streams:
-            raise VideoCleanError(path=self.path, reason="no video streams found")
+            raise VideoCleanError(path=self.path, reason=NO_VIDEO_STREAMS_REASON)
 
         return ["-ss", start, "-t", duration, "-map", "0", "-c", "copy"]
 
