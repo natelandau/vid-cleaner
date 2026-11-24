@@ -7,6 +7,7 @@ from nclutils import pp
 from rich.progress import track
 
 from vid_cleaner import settings
+from vid_cleaner.cli.discovery_output import resolve_discovery_root
 from vid_cleaner.constants import SortOrder
 from vid_cleaner.controllers.discovery import discover_video_files
 from vid_cleaner.controllers.validation import CheckResult, check_probed_video, check_video_file
@@ -38,11 +39,12 @@ def display_path(path: Path) -> str:
         return str(resolved)
 
 
-def check_from_directory(check_cmd: CheckCommand) -> list[CheckResult]:
+def check_from_directory(check_cmd: CheckCommand, *, from_dir: Path) -> list[CheckResult]:
     """Check every video file under the `--from` directory.
 
     Args:
         check_cmd (CheckCommand): The parsed check command.
+        from_dir (Path): The `--from` directory as the user typed it.
 
     Returns:
         list[CheckResult]: A verdict per file found, unreadable files included.
@@ -50,14 +52,11 @@ def check_from_directory(check_cmd: CheckCommand) -> list[CheckResult]:
     Raises:
         cappa.Exit: If `--from` does not name an existing directory.
     """
-    from_dir = check_cmd.from_
-    if from_dir is None or not from_dir.is_dir():
-        pp.error(f"`--from` must be an existing directory: {from_dir}")
-        raise cappa.Exit(code=1)
+    root = resolve_discovery_root(from_dir, argument_name="`--from`")
 
     discovery = check_cmd.discovery
     report = discover_video_files(
-        from_dir,
+        root,
         depth=discovery.depth,
         filters=set(settings.filters),
         sort=discovery.sort,
@@ -65,7 +64,7 @@ def check_from_directory(check_cmd: CheckCommand) -> list[CheckResult]:
     )
 
     if report.total == 0:
-        pp.warning(f"No video files found in {check_cmd.from_}")
+        pp.warning(f"No video files found in {root}")
         raise cappa.Exit(code=0)
 
     # Discovery reports the files it could not read separately from the ones it kept, and
@@ -145,7 +144,7 @@ def select_results(check_cmd: CheckCommand) -> list[CheckResult]:
         raise cappa.Exit(code=1)
 
     if check_cmd.from_ is not None:
-        return check_from_directory(check_cmd)
+        return check_from_directory(check_cmd, from_dir=check_cmd.from_)
 
     if not check_cmd.files:
         pp.error("Provide file path(s) or `--from` to discover them")

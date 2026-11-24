@@ -558,3 +558,33 @@ def test_search_table_caption_reports_skipped_files(
     # Then: The caption reports the skipped file
     assert exc_info.value.code == 0
     assert "1 skipped" in output
+
+
+def test_search_rejects_directory_that_does_not_exist(capsys, tmp_path):
+    """Verify a mistyped search path fails instead of reporting an empty library."""
+    # Given: A search path that does not exist
+    args = ["search", str(tmp_path / "does-not-exist")]
+
+    # When: Running search
+    with pytest.raises(cappa.Exit) as exc_info:
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The command errors rather than exiting 0
+    assert exc_info.value.code == 1
+    assert "must be an existing directory" in capsys.readouterr().err
+
+
+def test_search_expands_a_literal_tilde(capsys, video_library, monkeypatch):
+    """Verify a `~` the shell left unexpanded, such as a quoted path, still finds the library."""
+    # Given: A library under the home directory, named with a literal `~`
+    directory = video_library([("movie.mkv", 100, 1_000_000)])
+    monkeypatch.setenv("HOME", str(directory.parent))
+
+    # When: Searching it recursively, so the table also lays out paths relative to the root
+    args = ["search", f"~/{directory.name}", "--depth", "1"]
+    with pytest.raises(cappa.Exit) as exc_info:
+        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+
+    # Then: The file is found and listed
+    assert exc_info.value.code == 0
+    assert "movie" in capsys.readouterr().out

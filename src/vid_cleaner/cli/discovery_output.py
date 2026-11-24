@@ -22,6 +22,32 @@ if TYPE_CHECKING:
     from vid_cleaner.controllers.discovery import DiscoveryReport
 
 
+def resolve_discovery_root(path: Path, *, argument_name: str) -> Path:
+    """Normalize a user-supplied discovery directory, or stop the run if it is not one.
+
+    Call this before discovery so the directory searched, the directory shown, and the
+    directory relative paths are computed from are the same absolute path. A missing
+    directory would otherwise discover nothing and exit 0, so a typo or an unmounted
+    media share would look like an empty library.
+
+    Args:
+        path (Path): The directory as the user typed it. A `~` the shell left unexpanded,
+            such as in a quoted path, is expanded here.
+        argument_name (str): How the error message names the argument, e.g. "`--from`".
+
+    Returns:
+        Path: The absolute, symlink-resolved directory.
+
+    Raises:
+        cappa.Exit: With code 1 when `path` is not an existing directory.
+    """
+    resolved = path.expanduser().resolve()
+    if not resolved.is_dir():
+        pp.error(f"{argument_name} must be an existing directory: {path}")
+        raise cappa.Exit(code=1)
+    return resolved
+
+
 def present_discovery(report: DiscoveryReport, *, root: Path) -> None:
     """Render a discovery report, or exit with the message its emptiness calls for.
 
@@ -33,7 +59,9 @@ def present_discovery(report: DiscoveryReport, *, root: Path) -> None:
     Args:
         report (DiscoveryReport): The selection to present, carrying the query that
             produced it.
-        root (Path): The directory that was searched, named in the empty-directory warning.
+        root (Path): The directory that was searched, as returned by
+            `resolve_discovery_root`. Named in the empty-directory warning, and the base
+            a recursive table lays out paths from.
 
     Raises:
         cappa.Exit: With code 0 when no video files exist under `root`, or code 1 when
@@ -65,9 +93,7 @@ def present_discovery(report: DiscoveryReport, *, root: Path) -> None:
         pp.error(message)
         raise cappa.Exit(code=1)
 
-    pp.console().print(
-        search_table(report, root=root.expanduser().resolve() if report.recursive else None)
-    )
+    pp.console().print(search_table(report, root=root if report.recursive else None))
 
 
 def _no_prompt_available() -> cappa.Exit:

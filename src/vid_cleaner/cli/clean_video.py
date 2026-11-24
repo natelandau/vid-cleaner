@@ -6,7 +6,11 @@ import cappa
 from nclutils import pp
 
 from vid_cleaner import settings
-from vid_cleaner.cli.discovery_output import confirm_selection, present_discovery
+from vid_cleaner.cli.discovery_output import (
+    confirm_selection,
+    present_discovery,
+    resolve_discovery_root,
+)
 from vid_cleaner.constants import SYMBOL_CROSS, SortOrder
 from vid_cleaner.controllers.discovery import discover_video_files
 from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
@@ -111,14 +115,9 @@ def select_video_files(clean_cmd: CleanCommand) -> list[VideoFile]:
             raise cappa.Exit(code=1)
         return coerce_video_files(clean_cmd.files)
 
-    # A missing or non-directory `--from` would otherwise discover nothing and exit 0, so a
-    # typo or an unmounted media share would report success having cleaned nothing.
-    if not clean_cmd.from_.is_dir():
-        pp.error(f"`--from` must be an existing directory: {clean_cmd.from_}")
-        raise cappa.Exit(code=1)
-
+    root = resolve_discovery_root(clean_cmd.from_, argument_name="`--from`")
     report = discover_video_files(
-        clean_cmd.from_,
+        root,
         depth=discovery.depth,
         filters=set(settings.filters),
         sort=discovery.sort,
@@ -126,7 +125,7 @@ def select_video_files(clean_cmd: CleanCommand) -> list[VideoFile]:
         limit=discovery.limit,
     )
 
-    present_discovery(report, root=clean_cmd.from_)
+    present_discovery(report, root=root)
 
     # A dry run previews rather than acts, so there is nothing to approve.
     if not settings.dryrun:
