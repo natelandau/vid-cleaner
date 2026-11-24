@@ -178,6 +178,22 @@ def test_discover_collects_unreadable_files(video_library, mocker, tmp_path):
     assert report.skipped[0].path.name == "bad.mkv"
 
 
+def test_discover_ignores_appledouble_sidecars(video_library):
+    """Verify macOS `._` sidecar files are never treated as videos."""
+    # Given: A real video beside its AppleDouble sidecar, and a sidecar one level down
+    directory = video_library([("movie.mkv", 100, 1_000_000), ("nested/deep.mkv", 100, 1_000_000)])
+    (directory / "._movie.mkv").write_bytes(b"\x00\x05\x16\x07")
+    (directory / "nested" / "._deep.mkv").write_bytes(b"\x00\x05\x16\x07")
+
+    # When: Discovering one level deep
+    report = discover_video_files(directory, depth=1)
+
+    # Then: Only the real videos are found, and the sidecars are neither counted nor skipped
+    assert {r.video_file.path.name for r in report.results} == {"movie.mkv", "deep.mkv"}
+    assert report.total == 2
+    assert report.skipped == []
+
+
 def test_discover_depth_zero_ignores_subdirectories(video_library):
     """Verify the default depth does not descend into subdirectories."""
     # Given: One top-level file and one nested a directory below

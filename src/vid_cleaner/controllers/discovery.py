@@ -117,14 +117,17 @@ def discover_video_files(
     video_files = []
     with Live(console=pp.console(), auto_refresh=True) as live:
         for i, directory in enumerate(directories_to_search):
+            matching_paths = find_files(
+                directory,
+                globs=[f"*{container_type.value}" for container_type in VideoContainerTypes],
+            )
+            # macOS writes an AppleDouble `._` metadata sidecar beside every file it copies to
+            # a non-HFS volume. They share the video's extension but hold no video, so probing
+            # them only slows the scan and floods the skipped-file report. Other dotfiles stay
+            # in scope because a user may deliberately hide a real video.
             video_files.extend(
                 coerce_video_files(
-                    find_files(
-                        directory,
-                        globs=[
-                            f"*{container_type.value}" for container_type in VideoContainerTypes
-                        ],
-                    )
+                    [path for path in matching_paths if not path.name.startswith("._")]
                 )
             )
             live.update(
@@ -143,8 +146,8 @@ def discover_video_files(
         description=f"Filtering {len(video_files)} files for {human_readable_filters}...",
         transient=True,
     ):
-        # A video extension is no guarantee of video content; corrupt files and stubs like
-        # AppleDouble `._` sidecars must not abort the whole run.
+        # A video extension is no guarantee of video content; corrupt or truncated files
+        # must not abort the whole run.
         try:
             video_traits = video_file.get_traits()
         except VideoProbeError as e:
