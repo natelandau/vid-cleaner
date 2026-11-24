@@ -19,6 +19,7 @@ from vid_cleaner.constants import (
     FHD_RESOLUTION,
     SCALE_TO_1080P_LABEL,
     SYMBOL_CROSS,
+    UPSCALE_DECLINED_REASON,
     SortOrder,
 )
 from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
@@ -149,7 +150,7 @@ def clean_video_file(
     ):
         plan = video_file.plan_clean(config=config, options=replace(options, video_1080=False))
         plan.actions.append(
-            PlanAction(label=SCALE_TO_1080P_LABEL, applied=False, reason="upscale not approved")
+            PlanAction(label=SCALE_TO_1080P_LABEL, applied=False, reason=UPSCALE_DECLINED_REASON)
         )
 
     for note in plan.debug_notes:

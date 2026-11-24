@@ -4,7 +4,16 @@ import httpx
 import pytest
 from nclutils import pp
 
-from vid_cleaner.utils import query_radarr, query_sonarr, query_tmdb, query_tmdb_by_id
+from vid_cleaner.utils import (
+    MediaId,
+    query_radarr,
+    query_sonarr,
+    query_tmdb,
+    query_tmdb_by_id,
+    radarr_imdb_id,
+    sonarr_imdb_id,
+    tmdb_original_language,
+)
 from vid_cleaner.utils.api_utils import describe_http_error
 
 SECRET = "SECRET-KEY-123"  # noqa: S105
@@ -175,3 +184,73 @@ def test_non_json_response_returns_empty(mocker):
     )
 
     assert query_radarr("Movie", url="http://arr:1", api_key=SECRET) == {}
+
+
+@pytest.mark.parametrize(
+    ("lookup", "response", "expected"),
+    [
+        pytest.param(
+            radarr_imdb_id,
+            {"parsedMovieInfo": {"movieTitle": "Some Movie"}, "movie": {"imdbId": "tt0133093"}},
+            "tt0133093",
+            id="Radarr matched the movie",
+        ),
+        pytest.param(
+            radarr_imdb_id,
+            {"parsedMovieInfo": {"movieTitle": "Some Movie"}},
+            None,
+            id="Radarr parsed the title but matched no movie",
+        ),
+        pytest.param(
+            radarr_imdb_id,
+            {"movie": {"title": "Some Movie"}},
+            None,
+            id="Radarr matched a movie carrying no imdb id",
+        ),
+        pytest.param(
+            radarr_imdb_id,
+            {"parsedMovieInfo": {"movieTitle": "Some Movie"}, "movie": None},
+            None,
+            id="Radarr returned a null movie",
+        ),
+        pytest.param(
+            sonarr_imdb_id,
+            {"series": {"imdbId": "tt0903747"}},
+            "tt0903747",
+            id="Sonarr matched the series",
+        ),
+    ],
+)
+def test_arr_imdb_id_reads_parse_response(mocker, lookup, response, expected):
+    """Verify the IMDb ID is read from a Radarr or Sonarr parse response without raising."""
+    # Given: The service answers the parse request with this body
+    mocker.patch(
+        "vid_cleaner.utils.api_utils.httpx.get",
+        return_value=httpx.Response(
+            status_code=200, json=response, request=httpx.Request("GET", "http://arr:1/")
+        ),
+    )
+
+    # When: Looking up the IMDb ID for a title
+    result = lookup("Some Movie (1999).mkv", url="http://arr:1", api_key=SECRET)
+
+    # Then: The IMDb ID is returned when present, otherwise None
+    assert result == expected
+
+
+def test_tmdb_original_language_reads_tv_result_and_maps_chinese(mocker):
+    """Verify an IMDb lookup falls back to TV results and maps TMDB's `cn` to ISO 639 `zh`."""
+    # Given: TMDB finds the IMDb ID only as a series whose language is `cn`
+    mocker.patch(
+        "vid_cleaner.utils.api_utils.httpx.get",
+        return_value=_response(
+            status_code=200,
+            payload={"movie_results": [], "tv_results": [{"original_language": "cn"}]},
+        ),
+    )
+
+    # When: Looking up the original language
+    result = tmdb_original_language(MediaId(source="imdb", value="tt0000001"), api_key=SECRET)
+
+    # Then: The series language is returned as the ISO 639 code
+    assert result == "zh"

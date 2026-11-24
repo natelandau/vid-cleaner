@@ -81,6 +81,20 @@ class ConversionPlan:
     debug_notes: list[str] = field(default_factory=list)
     upscale_source_width: int | None = None
 
+    def streams_of(self, codec_type: CodecTypes) -> list[OutputStream]:
+        """List the planned output streams of one type, so a planner can change every one.
+
+        An ffmpeg option with no stream index applies to every stream of its type, so a
+        planner that sets a codec or filter must cover each stream this returns.
+
+        Args:
+            codec_type (CodecTypes): The stream type to select.
+
+        Returns:
+            list[OutputStream]: The matching streams, in output order.
+        """
+        return [stream for stream in self.streams if stream.codec_type == codec_type]
+
     def is_noop(self, stream_count: int) -> bool:
         """Check whether executing this plan would change nothing about the file.
 

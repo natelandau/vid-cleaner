@@ -4,6 +4,7 @@ import cappa
 import pytest
 from cappa.base import invoke
 
+from vid_cleaner.constants import NO_VIDEO_STREAMS_REASON
 from vid_cleaner.controllers import TempFile
 from vid_cleaner.vidcleaner import VidCleaner, configure_output
 
@@ -186,7 +187,7 @@ def test_clip_rejects_file_without_video_streams(
     # Then: ffmpeg never runs, the reason is reported, and the run fails
     mock_ffmpeg.assert_not_called()
     assert exc_info.value.code == 1
-    assert "no video streams found" in captured.out + captured.err
+    assert NO_VIDEO_STREAMS_REASON in captured.out + captured.err
 
 
 def test_clip_continues_past_a_bad_file(
@@ -223,5 +224,5 @@ def test_clip_continues_past_a_bad_file(
     # Then: The good file was still clipped, and the run reports the failure
     mock_ffmpeg.assert_called_once()
     assert exc_info.value.code == 1
-    assert "no video streams found" in captured.out + captured.err
+    assert NO_VIDEO_STREAMS_REASON in captured.out + captured.err
     assert "clipped_video.mkv" in captured.out

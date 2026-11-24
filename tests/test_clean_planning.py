@@ -7,7 +7,25 @@ import pytest
 from iso639 import Lang
 
 from vid_cleaner.config import Config, RunOptions
-from vid_cleaner.constants import SCALE_TO_1080P_LABEL, CodecTypes
+from vid_cleaner.constants import (
+    ALL_AUDIO_KEPT_REASON,
+    ALREADY_MODERN_CODEC_REASON,
+    CONVERT_TO_H265_LABEL,
+    CONVERT_TO_VP9_LABEL,
+    DOWNMIX_STEREO_LABEL,
+    DROP_AUDIO_LABEL,
+    DROP_SUBTITLES_LABEL,
+    KEEP_ALL_SUBTITLES_REASON,
+    NO_AUDIO_STREAMS_REASON,
+    NO_SUBTITLES_REASON,
+    NO_SURROUND_SOURCE_REASON,
+    NO_UNWANTED_SUBTITLES_REASON,
+    NO_VIDEO_STREAMS_REASON,
+    SCALE_TO_1080P_LABEL,
+    SILENT_FILE_REASON,
+    UNKNOWN_DURATION_REASON,
+    CodecTypes,
+)
 from vid_cleaner.exceptions import VideoCleanError
 
 from vid_cleaner.cli.clean_video import clean_video_file  # isort: skip
@@ -102,7 +120,7 @@ def test_build_plan_h265_sets_video_codec_and_bitrates(make_video, tmp_path, pla
     video_stream = plan.streams[0]
     assert video_stream.codec == "libx265"
     assert video_stream.extra_args[0] == "-b:v:{n}"
-    h265_action = next(a for a in plan.actions if a.label == "Convert to H.265")
+    h265_action = next(a for a in plan.actions if a.label == CONVERT_TO_H265_LABEL)
     assert h265_action.applied is True
 
 
@@ -117,40 +135,54 @@ def test_h265_records_applied_action(make_video, plan_settings):
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the recorded action is applied
-    h265_action = next(a for a in plan.actions if a.label == "Convert to H.265")
+    h265_action = next(a for a in plan.actions if a.label == CONVERT_TO_H265_LABEL)
     assert h265_action.applied is True
 
 
-def test_build_plan_h265_skips_when_already_h265(make_video, plan_settings):
-    """Verify --h265 without --force leaves an already-H.265 video as a copy."""
+@pytest.mark.parametrize(
+    ("flag", "label"),
+    [
+        pytest.param("h265", CONVERT_TO_H265_LABEL, id="h265"),
+        pytest.param("vp9", CONVERT_TO_VP9_LABEL, id="vp9"),
+    ],
+)
+def test_codec_conversion_records_skip_reason_when_already_modern(
+    make_video, plan_settings, flag, label
+):
+    """Verify --h265 or --vp9 without --force skips an already-H.265 video and names --force."""
     # Given: reference.json rewritten so the video codec is hevc
-    plan_settings.update({"h265": True})
+    plan_settings.update({flag: True})
     video = make_video("reference.json")
     video.probe_box.streams[0].codec_name = "hevc"
 
     # When: building the plan
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
-    # Then: the video stream stays a copy and no applied H.265 action is recorded
+    # Then: the recorded action is skipped with a reason pointing to --force, and the
+    # video and container are left alone
+    action = next(a for a in plan.actions if a.label == label)
+    assert action.applied is False
+    assert action.reason == ALREADY_MODERN_CODEC_REASON
     assert plan.streams[0].codec == "copy"
-    assert not any(a.label == "Convert to H.265" and a.applied for a in plan.actions)
+    assert plan.output_suffix is None
 
 
-def test_h265_records_skip_reason_when_already_h265(make_video, plan_settings):
-    """Verify --h265 without --force records a skip reason pointing to --force."""
-    # Given: reference.json rewritten so the video codec is hevc
+def test_h265_skips_when_duration_unknown(make_video, plan_settings):
+    """Verify --h265 skips the encode when no duration is available to size the bitrate."""
+    # Given: reference.json with no container or stream duration, and --h265
     plan_settings.update({"h265": True})
     video = make_video("reference.json")
-    video.probe_box.streams[0].codec_name = "hevc"
+    video.probe_box.duration = None
+    video.probe_box.streams[0].duration = None
 
     # When: building the plan
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
-    # Then: the recorded action is skipped with a reason pointing to --force
-    h265_action = next(a for a in plan.actions if a.label == "Convert to H.265")
-    assert h265_action.applied is False
-    assert h265_action.reason is not None
-    assert "use --force" in h265_action.reason
+    # Then: the video stays a copy and the skip says why
+    action = next(a for a in plan.actions if a.label == CONVERT_TO_H265_LABEL)
+    assert action.applied is False
+    assert action.reason == UNKNOWN_DURATION_REASON
+    assert plan.streams[0].codec == "copy"
 
 
 def test_build_plan_1080p_scales_and_forces_encode(make_video, plan_settings):
@@ -166,7 +198,7 @@ def test_build_plan_1080p_scales_and_forces_encode(make_video, plan_settings):
     video_stream = plan.streams[0]
     assert video_stream.stream_filter == "scale=width=1920:height=-2"
     assert video_stream.codec is None
-    scale_action = next(a for a in plan.actions if a.label == "Convert to 1080p")
+    scale_action = next(a for a in plan.actions if a.label == SCALE_TO_1080P_LABEL)
     assert scale_action.applied is True
 
 
@@ -180,7 +212,7 @@ def test_scale_records_skip_reason_when_already_1080p(make_video, plan_settings)
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the recorded action is skipped with a reason naming 1080p
-    scale_action = next(a for a in plan.actions if a.label == "Convert to 1080p")
+    scale_action = next(a for a in plan.actions if a.label == SCALE_TO_1080P_LABEL)
     assert scale_action.applied is False
     assert scale_action.reason is not None
     assert "1080" in scale_action.reason
@@ -318,7 +350,7 @@ def test_build_plan_vp9_drops_bitmap_subtitles(make_video, plan_settings):
     # Then: no subtitle stream survives into the WebM plan, and the earlier
     # "Drop unwanted subtitles" action is corrected to reflect that a drop happened
     assert all(s.codec_type != CodecTypes.SUBTITLE for s in plan.streams)
-    drop_subs = next(a for a in plan.actions if a.label == "Drop unwanted subtitles")
+    drop_subs = next(a for a in plan.actions if a.label == DROP_SUBTITLES_LABEL)
     assert drop_subs.applied is True
     assert drop_subs.reason is None
 
@@ -368,7 +400,7 @@ def test_clean_no_video_streams_raises(make_video, plan_settings):
     with pytest.raises(VideoCleanError) as exc_info:
         video.plan_clean(*plan_settings.args())
     assert exc_info.value.path == video.path
-    assert exc_info.value.reason == "no video streams found"
+    assert exc_info.value.reason == NO_VIDEO_STREAMS_REASON
 
 
 def test_clean_no_audio_streams_raises(make_video, plan_settings):
@@ -382,7 +414,7 @@ def test_clean_no_audio_streams_raises(make_video, plan_settings):
     with pytest.raises(VideoCleanError) as exc_info:
         video.plan_clean(*plan_settings.args())
     assert exc_info.value.path == video.path
-    assert exc_info.value.reason == "no audio streams found"
+    assert exc_info.value.reason == NO_AUDIO_STREAMS_REASON
 
 
 def test_clean_noop_skips_ffmpeg(make_video, mock_ffmpeg, plan_settings):
@@ -409,7 +441,7 @@ def test_drop_audio_records_applied_when_streams_dropped(make_video, plan_settin
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the drop-audio action is applied with no skip reason
-    drop = next(a for a in plan.actions if a.label == "Drop unwanted audio")
+    drop = next(a for a in plan.actions if a.label == DROP_AUDIO_LABEL)
     assert drop.applied is True
     assert drop.reason is None
 
@@ -423,9 +455,9 @@ def test_drop_audio_records_reason_when_nothing_dropped(make_video, plan_setting
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the drop-audio action is skipped with a matching-languages reason
-    drop = next(a for a in plan.actions if a.label == "Drop unwanted audio")
+    drop = next(a for a in plan.actions if a.label == DROP_AUDIO_LABEL)
     assert drop.applied is False
-    assert drop.reason == "all audio matches keep languages"
+    assert drop.reason == ALL_AUDIO_KEPT_REASON
 
 
 def test_drop_audio_records_fallback_reason_when_every_stream_filtered(make_video, plan_settings):
@@ -439,9 +471,9 @@ def test_drop_audio_records_fallback_reason_when_every_stream_filtered(make_vide
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the drop-audio action is truthfully unapplied with the fallback reason
-    drop = next(a for a in plan.actions if a.label == "Drop unwanted audio")
+    drop = next(a for a in plan.actions if a.label == DROP_AUDIO_LABEL)
     assert drop.applied is False
-    assert drop.reason == "kept all audio to avoid a silent file"
+    assert drop.reason == SILENT_FILE_REASON
 
 
 def test_downmix_records_applied_when_planned(make_video, plan_settings):
@@ -454,7 +486,7 @@ def test_downmix_records_applied_when_planned(make_video, plan_settings):
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the downmix action is applied with no skip reason
-    downmix = next(a for a in plan.actions if a.label == "Downmix to stereo")
+    downmix = next(a for a in plan.actions if a.label == DOWNMIX_STEREO_LABEL)
     assert downmix.applied is True
     assert downmix.reason is None
 
@@ -469,7 +501,7 @@ def test_downmix_records_skip_when_stereo_exists(make_video, plan_settings):
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the downmix action is skipped with a --force reason
-    downmix = next(a for a in plan.actions if a.label == "Downmix to stereo")
+    downmix = next(a for a in plan.actions if a.label == DOWNMIX_STEREO_LABEL)
     assert downmix.applied is False
     assert "use --force" in downmix.reason
 
@@ -484,9 +516,9 @@ def test_downmix_records_skip_when_no_surround_source_after_force(make_video, pl
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the downmix action is skipped with a no-surround-source reason
-    downmix = next(a for a in plan.actions if a.label == "Downmix to stereo")
+    downmix = next(a for a in plan.actions if a.label == DOWNMIX_STEREO_LABEL)
     assert downmix.applied is False
-    assert downmix.reason == "no surround source to downmix"
+    assert downmix.reason == NO_SURROUND_SOURCE_REASON
 
 
 def test_downmix_absent_when_flag_not_set(make_video, plan_settings):
@@ -498,7 +530,7 @@ def test_downmix_absent_when_flag_not_set(make_video, plan_settings):
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: no downmix action appears in the plan
-    assert all(a.label != "Downmix to stereo" for a in plan.actions)
+    assert all(a.label != DOWNMIX_STEREO_LABEL for a in plan.actions)
 
 
 def test_actions_order_drop_audio_before_downmix(make_video, plan_settings):
@@ -512,7 +544,7 @@ def test_actions_order_drop_audio_before_downmix(make_video, plan_settings):
 
     # Then: drop-audio precedes downmix in the recorded actions
     labels = [a.label for a in plan.actions]
-    assert labels.index("Drop unwanted audio") < labels.index("Downmix to stereo")
+    assert labels.index(DROP_AUDIO_LABEL) < labels.index(DOWNMIX_STEREO_LABEL)
 
 
 def test_drop_subtitles_records_applied_when_dropped(make_video, plan_settings):
@@ -524,7 +556,7 @@ def test_drop_subtitles_records_applied_when_dropped(make_video, plan_settings):
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the drop-subtitles action is applied with no skip reason
-    drop = next(a for a in plan.actions if a.label == "Drop unwanted subtitles")
+    drop = next(a for a in plan.actions if a.label == DROP_SUBTITLES_LABEL)
     assert drop.applied is True
     assert drop.reason is None
 
@@ -539,7 +571,7 @@ def test_drop_subtitles_records_applied_via_early_drop_all_path(make_video, plan
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the drop-subtitles action is still recorded exactly once and applied
-    drop_actions = [a for a in plan.actions if a.label == "Drop unwanted subtitles"]
+    drop_actions = [a for a in plan.actions if a.label == DROP_SUBTITLES_LABEL]
     assert len(drop_actions) == 1
     assert drop_actions[0].applied is True
 
@@ -553,9 +585,9 @@ def test_drop_subtitles_records_reason_when_no_subtitles(make_video, plan_settin
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the drop-subtitles action is skipped with a no-subtitles reason
-    drop = next(a for a in plan.actions if a.label == "Drop unwanted subtitles")
+    drop = next(a for a in plan.actions if a.label == DROP_SUBTITLES_LABEL)
     assert drop.applied is False
-    assert drop.reason == "no subtitles to drop"
+    assert drop.reason == NO_SUBTITLES_REASON
 
 
 def test_drop_subtitles_records_reason_when_keep_all_subtitles(make_video, plan_settings):
@@ -568,9 +600,9 @@ def test_drop_subtitles_records_reason_when_keep_all_subtitles(make_video, plan_
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the drop-subtitles action is skipped with a --keep-all-subtitles reason
-    drop = next(a for a in plan.actions if a.label == "Drop unwanted subtitles")
+    drop = next(a for a in plan.actions if a.label == DROP_SUBTITLES_LABEL)
     assert drop.applied is False
-    assert drop.reason == "--keep-all-subtitles set"
+    assert drop.reason == KEEP_ALL_SUBTITLES_REASON
 
 
 def test_drop_subtitles_records_reason_when_no_unwanted(make_video, plan_settings):
@@ -583,9 +615,9 @@ def test_drop_subtitles_records_reason_when_no_unwanted(make_video, plan_setting
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the drop-subtitles action is skipped with a no-unwanted-subtitles reason
-    drop = next(a for a in plan.actions if a.label == "Drop unwanted subtitles")
+    drop = next(a for a in plan.actions if a.label == DROP_SUBTITLES_LABEL)
     assert drop.applied is False
-    assert drop.reason == "no unwanted subtitles"
+    assert drop.reason == NO_UNWANTED_SUBTITLES_REASON
 
 
 def test_downmix_picks_one_source_per_file(make_video, plan_settings):
@@ -644,6 +676,31 @@ def test_audio_plan_drops_untagged_commentary(make_video, plan_settings):
 
 
 @pytest.mark.parametrize(
+    ("keep_commentary", "expected_subtitles"),
+    [
+        pytest.param(False, [], id="commentary dropped by default"),
+        pytest.param(True, [6], id="commentary kept when asked"),
+    ],
+)
+def test_subtitle_plan_drops_commentary_unless_kept(
+    make_video, plan_settings, keep_commentary, expected_subtitles
+):
+    """Verify a commentary subtitle in a kept language is dropped unless commentary is kept."""
+    # Given: reference.json whose English subtitle (#6) is a commentary track, with local
+    # subtitles kept
+    plan_settings.update({"keep_local_subtitles": True, "keep_commentary": keep_commentary})
+    video = make_video("reference.json")
+    video.probe_box.streams[6].title = "Commentary"
+
+    # When: building the plan
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
+
+    # Then: the commentary subtitle is mapped only when commentary is kept
+    subtitles = [s.source_index for s in plan.streams if s.codec_type == CodecTypes.SUBTITLE]
+    assert subtitles == expected_subtitles
+
+
+@pytest.mark.parametrize(
     ("stream_index", "tag", "settings", "expected_kept"),
     [
         pytest.param(3, "qaa", {}, True, id="audio reserved code kept as unknown"),
@@ -668,6 +725,32 @@ def test_plan_tolerates_unusable_language_tags(
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
     # Then: the stream is kept or dropped by its parsed language
+    assert (stream_index in {s.source_index for s in plan.streams}) is expected_kept
+
+
+@pytest.mark.parametrize(
+    ("stream_index", "tag", "expected_kept"),
+    [
+        pytest.param(3, None, True, id="untagged audio kept"),
+        pytest.param(3, "und", True, id="und audio kept"),
+        pytest.param(7, None, False, id="untagged subtitle dropped"),
+        pytest.param(7, "und", True, id="und subtitle kept"),
+    ],
+)
+def test_plan_handles_streams_without_a_language(
+    make_video, plan_settings, stream_index, tag, expected_kept
+):
+    """Verify untagged audio and `und` streams are kept, while untagged subtitles are dropped."""
+    # Given: reference.json with one non-English stream's language tag removed or set to
+    # `und`, keeping local subtitles
+    plan_settings.update({"keep_local_subtitles": True})
+    video = make_video("reference.json")
+    next(s for s in video.probe_box.streams if s.index == stream_index).language = tag
+
+    # When: building the plan
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
+
+    # Then: the stream is kept or dropped by the rule for its type
     assert (stream_index in {s.source_index for s in plan.streams}) is expected_kept
 
 

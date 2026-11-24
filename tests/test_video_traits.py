@@ -90,3 +90,80 @@ def test_get_traits_needs_stereo_agrees_with_downmix_planner(make_video, fixture
 
     # Then: the tag promises exactly what the planner delivers
     assert tagged == bool(downmix_streams)
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "expected"),
+    [
+        pytest.param(
+            "reference.json",
+            {
+                VideoTrait.H264,
+                VideoTrait.FHD,
+                VideoTrait.SURROUND7,
+                VideoTrait.SURROUND5,
+                VideoTrait.STEREO,
+                VideoTrait.COMMENTARY,
+            },
+            id="1080p h264 with every surround layout and commentary",
+        ),
+        pytest.param(
+            "uhd.json",
+            {VideoTrait.H264, VideoTrait.UHDTV, VideoTrait.SURROUND5, VideoTrait.NEEDS_STEREO},
+            id="4K with only a surround bed",
+        ),
+        pytest.param(
+            "mono_only.json",
+            {VideoTrait.H264, VideoTrait.FHD, VideoTrait.MONO},
+            id="mono audio and a 1080-line height",
+        ),
+        pytest.param(
+            "wrong_order.json",
+            {
+                VideoTrait.H264,
+                VideoTrait.FHD,
+                VideoTrait.SURROUND5,
+                VideoTrait.STEREO,
+                VideoTrait.REORDER,
+            },
+            id="streams out of order",
+        ),
+    ],
+)
+def test_get_traits_describes_each_file(make_video, fixture_name, expected):
+    """Verify the traits name each file's codec, resolution, audio layouts, and stream order."""
+    # Given: a probeable file
+    video = make_video(fixture_name)
+
+    # When: deriving traits
+    traits = video.get_traits()
+
+    # Then: exactly the expected traits are reported
+    assert set(traits) == expected
+
+
+@pytest.mark.parametrize(
+    ("codec_name", "width", "height", "expected"),
+    [
+        pytest.param("hevc", 1920, 1080, {VideoTrait.H265, VideoTrait.FHD}, id="hevc"),
+        pytest.param("vp9", 1920, 1080, {VideoTrait.H265, VideoTrait.FHD}, id="vp9 as modern"),
+        pytest.param("h264", 1280, 720, {VideoTrait.H264, VideoTrait.HDTV}, id="720p"),
+        pytest.param("h264", 720, 480, {VideoTrait.H264, VideoTrait.SDTV}, id="480p"),
+        pytest.param("h264", 1920, 800, {VideoTrait.H264, VideoTrait.FHD}, id="letterboxed 1080p"),
+        pytest.param(
+            "mpeg2video", 1000, 500, {VideoTrait.UNKNOWN_RESOLUTION}, id="unknown codec and size"
+        ),
+    ],
+)
+def test_get_traits_video_codec_and_resolution(make_video, codec_name, width, height, expected):
+    """Verify the video stream's codec and size map to codec and resolution traits."""
+    # Given: a file whose only kept video stream has this codec and size
+    video = make_video("mono_only.json")
+    stream = video.probe_box.streams[0]
+    stream.codec_name, stream.width, stream.height = codec_name, width, height
+
+    # When: deriving traits
+    traits = video.get_traits()
+
+    # Then: only the expected video traits appear alongside the mono audio trait
+    assert set(traits) - {VideoTrait.MONO} == expected

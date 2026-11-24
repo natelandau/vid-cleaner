@@ -140,7 +140,7 @@ def mock_ffmpeg(mocker):
         Mock: A mock object for the FfmpegProgress class.
     """
     mock_ffmpeg_progress = mocker.patch(
-        "vid_cleaner.models.video_file.FfmpegProgress",
+        "vid_cleaner.utils.ffmpeg_utils.FfmpegProgress",
         autospec=True,
     )
     mock_instance = mock_ffmpeg_progress.return_value
