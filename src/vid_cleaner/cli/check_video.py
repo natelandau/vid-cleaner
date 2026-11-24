@@ -26,7 +26,11 @@ def display_path(path: Path) -> str:
     Returns:
         str: The path to print.
     """
-    cwd = Path.cwd()
+    try:
+        cwd = Path.cwd()
+    except FileNotFoundError:
+        # A deleted working directory leaves nothing to shorten the path against.
+        return str(path.expanduser())
     resolved = path.expanduser().resolve()
 
     if resolved.parent == cwd:
@@ -51,7 +55,7 @@ def check_discovered_files(report: DiscoveryReport, *, deep: bool) -> list[Check
     Raises:
         cappa.Exit: With code 0 when the directory holds no video files.
     """
-    if report.total == 0:
+    if report.total == 0 and not report.skipped:
         pp.warning(f"No video files found in {report.root}")
         raise cappa.Exit(code=0)
 
@@ -133,7 +137,7 @@ def select_results(check_cmd: CheckCommand) -> list[CheckResult]:
 
     if check_cmd.from_ is not None:
         report = discover_from_directory(
-            check_cmd.from_, check_cmd.discovery, argument_name="`--from`"
+            directory=check_cmd.from_, options=check_cmd.discovery, argument_name="`--from`"
         )
         return check_discovered_files(report, deep=check_cmd.deep)
 

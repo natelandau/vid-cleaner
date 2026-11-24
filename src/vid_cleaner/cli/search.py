@@ -16,8 +16,8 @@ def main(search_cmd: SearchCommand) -> None:
         cappa.Exit: Always, carrying the command's exit code.
     """
     report = discover_from_directory(
-        search_cmd.directory,
-        search_cmd.discovery,
+        directory=search_cmd.directory,
+        options=search_cmd.discovery,
         argument_name="The search path",
         limit=search_cmd.discovery.limit,
     )

@@ -83,7 +83,9 @@ def coerce_bitrate(raw: str | int | None) -> int:
         return 0
 
 
-def _walk_video_paths(root: Path, *, depth: int) -> Iterator[tuple[Path, list[Path]]]:
+def _walk_video_paths(
+    root: Path, *, depth: int, on_error: Callable[[OSError], None]
+) -> Iterator[tuple[Path, list[Path]]]:
     """Yield each directory under `root`, down to `depth` levels, with its candidate videos.
 
     Decide on file names alone before touching the filesystem, so the sidecars, artwork,
@@ -92,15 +94,31 @@ def _walk_video_paths(root: Path, *, depth: int) -> Iterator[tuple[Path, list[Pa
     Args:
         root (Path): Directory to start from.
         depth (int): Subdirectory levels to descend. 0 lists only `root`.
+        on_error (Callable[[OSError], None]): Receives the error for each directory that
+            cannot be listed, so the caller can report it instead of losing its files.
 
     Yields:
         tuple[Path, list[Path]]: A directory and the video files directly inside it.
     """
+    # Shallowest level each real directory was walked at, keyed by resolved path.
+    shallowest_level: dict[Path, int] = {}
+
     # `os.walk` rather than `Path.walk`, which needs Python 3.12. Following links keeps
-    # symlinked folders in a library searchable; `depth` bounds any link cycle.
-    for current, dirnames, filenames in os.walk(root, followlinks=True):
+    # symlinked folders in a library searchable.
+    for current, dirnames, filenames in os.walk(root, onerror=on_error, followlinks=True):
         directory = Path(current)
-        if len(directory.relative_to(root).parts) >= depth:
+        level = len(directory.relative_to(root).parts)
+
+        # A link back to an ancestor would otherwise multiply the walk at every level.
+        # Walk a directory again only when reached nearer the root, where more of its
+        # subdirectories fall within `depth`.
+        real_directory = directory.resolve()
+        if shallowest_level.get(real_directory, depth + 1) <= level:
+            dirnames[:] = []
+            continue
+        shallowest_level[real_directory] = level
+
+        if level >= depth:
             dirnames[:] = []
         # Compare suffixes rather than globbing, since glob is case-sensitive on POSIX and
         # would miss `MOVIE.MKV`. macOS writes an AppleDouble `._` metadata sidecar beside
@@ -115,6 +133,63 @@ def _walk_video_paths(root: Path, *, depth: int) -> Iterator[tuple[Path, list[Pa
                 if Path(name).suffix.lower() in VIDEO_SUFFIXES and not name.startswith("._")
             ],
         )
+
+
+def _collect_video_files(
+    root: Path, *, depth: int, unreadable: list[VideoProbeError]
+) -> list[VideoFile]:
+    """Find every video file under `root` once, showing progress while the walk runs.
+
+    Args:
+        root (Path): Directory to search.
+        depth (int): Subdirectory levels to descend. 0 searches only `root`.
+        unreadable (list[VideoProbeError]): Receives each directory or file that could
+            not be read, so the caller reports it alongside the files that failed to probe.
+
+    Returns:
+        list[VideoFile]: One entry per distinct file, unprobed.
+    """
+
+    def record_unlistable_directory(error: OSError) -> None:
+        unreadable.append(
+            VideoProbeError(
+                path=Path(error.filename),
+                reason=f"directory could not be listed: {error.strerror or error}",
+            )
+        )
+
+    # Keyed by resolved path so a file reached twice, such as through a symlinked
+    # subdirectory, is probed, listed, and cleaned once.
+    video_files_by_path: dict[Path, VideoFile] = {}
+    directories_searched = 0
+    with Live(console=pp.console(), auto_refresh=True) as live:
+        for directories_searched, (_, paths) in enumerate(
+            _walk_video_paths(root, depth=depth, on_error=record_unlistable_directory), start=1
+        ):
+            for path in paths:
+                # Only a regular file can hold a video. A FIFO would block ffprobe, and
+                # before Python 3.13 `resolve()` raises on a symlink loop.
+                try:
+                    if not path.is_file():
+                        continue
+                except OSError as e:
+                    unreadable.append(VideoProbeError(path=path, reason=str(e)))
+                    continue
+
+                # Not `coerce_video_files`: its `cappa.Exit` for a file deleted mid-scan would
+                # end the whole run instead of skipping that file at probe time.
+                video_file = VideoFile(path)
+                video_files_by_path.setdefault(video_file.path, video_file)
+            live.update(
+                f"Found {len(video_files_by_path)} video files in {directories_searched} directories"
+            )
+
+        live.update(
+            f"[dim]Found {len(video_files_by_path)} video files in {directories_searched} directories[/dim]"
+        )
+        live.stop()
+
+    return list(video_files_by_path.values())
 
 
 def discover_video_files(
@@ -146,31 +221,10 @@ def discover_video_files(
     active_filters = filters or set()
     human_readable_filters = " and ".join(f"'{f}'" for f in sorted(active_filters))
 
-    # Keyed by resolved path so a file reached twice, such as through a symlinked
-    # subdirectory, is probed, listed, and cleaned once.
-    video_files_by_path: dict[Path, VideoFile] = {}
-    directories_searched = 0
-    with Live(console=pp.console(), auto_refresh=True) as live:
-        for directories_searched, (_, paths) in enumerate(
-            _walk_video_paths(root, depth=depth), start=1
-        ):
-            for path in paths:
-                # Not `coerce_video_files`: its `cappa.Exit` for a file deleted mid-scan would
-                # end the whole run instead of skipping that file at probe time.
-                video_file = VideoFile(path)
-                video_files_by_path.setdefault(video_file.path, video_file)
-            live.update(
-                f"Found {len(video_files_by_path)} video files in {directories_searched} directories"
-            )
-
-        video_files = list(video_files_by_path.values())
-        live.update(
-            f"[dim]Found {len(video_files)} video files in {directories_searched} directories[/dim]"
-        )
-        live.stop()
+    unreadable: list[VideoProbeError] = []
+    video_files = _collect_video_files(root, depth=depth, unreadable=unreadable)
 
     results: list[SearchResult] = []
-    unreadable: list[VideoProbeError] = []
     for video_file in track(
         video_files,
         description=(
@@ -213,7 +267,7 @@ def discover_video_files(
         )
 
     # Presort by path so ties on the active key (e.g. every bitrate-less file) resolve
-    # deterministically instead of reflecting find_files' arbitrary scan order. `sort`
+    # deterministically instead of reflecting the directory listing's arbitrary order. `sort`
     # is stable, so this ordering survives as the tiebreaker after the real sort below.
     results.sort(key=SORT_KEYS[SortOrder.ALPHA][0])
 

@@ -402,3 +402,17 @@ def test_display_path_is_absolute_outside_cwd(tmp_path, monkeypatch):
     # When: Rendering it
     # Then: The full path is shown
     assert display_path(outside) == str(outside.resolve())
+
+
+def test_display_path_survives_a_deleted_working_directory(tmp_path, monkeypatch):
+    """Verify a deleted working directory does not crash the report."""
+    # Given: A working directory that no longer exists
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    workdir.rmdir()
+    movie = tmp_path / "movie.mkv"
+
+    # When: Rendering a file found by absolute path
+    # Then: The path is shown as found
+    assert display_path(movie) == str(movie)

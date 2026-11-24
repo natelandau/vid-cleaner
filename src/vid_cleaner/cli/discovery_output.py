@@ -107,10 +107,10 @@ def present_discovery(report: DiscoveryReport) -> None:
             produced it.
 
     Raises:
-        cappa.Exit: With code 0 when no video files exist under the searched directory, or code 1 when
-            files were found but none survived the filters.
+        cappa.Exit: With code 0 when no video files exist under the searched directory, or
+            code 1 when files were found but none survived the filters or none could be read.
     """
-    if report.total == 0:
+    if report.total == 0 and not report.skipped:
         pp.warning(f"No video files found in {report.root}")
         raise cappa.Exit(code=0)
 
@@ -132,7 +132,7 @@ def present_discovery(report: DiscoveryReport) -> None:
             else "No video files could be read"
         )
         if report.skipped:
-            message += f" ({len(report.skipped)} file(s) skipped as unreadable)"
+            message += f" ({len(report.skipped)} skipped as unreadable)"
         pp.error(message)
         raise cappa.Exit(code=1)
 

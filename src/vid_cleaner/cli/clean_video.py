@@ -115,7 +115,10 @@ def select_video_files(clean_cmd: CleanCommand) -> list[VideoFile]:
         return coerce_video_files(clean_cmd.files)
 
     report = discover_from_directory(
-        clean_cmd.from_, discovery, argument_name="`--from`", limit=discovery.limit
+        directory=clean_cmd.from_,
+        options=discovery,
+        argument_name="`--from`",
+        limit=discovery.limit,
     )
 
     present_discovery(report)
