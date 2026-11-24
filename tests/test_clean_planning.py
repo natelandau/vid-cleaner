@@ -7,7 +7,7 @@ import pytest
 from iso639 import Lang
 
 from vid_cleaner.config import Config, RunOptions
-from vid_cleaner.constants import CodecTypes
+from vid_cleaner.constants import SCALE_TO_1080P_LABEL, CodecTypes
 from vid_cleaner.exceptions import VideoCleanError
 
 from vid_cleaner.cli.clean_video import clean_video_file  # isort: skip
@@ -686,3 +686,30 @@ def test_forced_downmix_keeps_stereo_in_other_languages(make_video, plan_setting
     assert 4 in mapped
     downmixes = [s.source_index for s in plan.streams if s.stream_filter is not None]
     assert downmixes == [2]
+
+
+@pytest.mark.parametrize(
+    ("width", "force", "expected_upscale_width", "expected_applied"),
+    [
+        pytest.param(1280, True, 1280, True, id="forced narrower source is an upscale"),
+        pytest.param(1280, False, None, False, id="unforced narrower source is skipped"),
+        pytest.param(1920, True, None, True, id="forced 1080p source is not an upscale"),
+        pytest.param(3840, False, None, True, id="4K source is a downscale"),
+    ],
+)
+def test_scale_records_upscale_source_width(
+    make_video, plan_settings, width, force, expected_upscale_width, expected_applied
+):
+    """Verify the plan names the source width only when --1080p would upscale it."""
+    # Given: reference.json with the video stream resized
+    plan_settings.update({"video_1080": True, "force": force})
+    video = make_video("reference.json")
+    next(s for s in video.probe_box.streams if s.codec_type == CodecTypes.VIDEO).width = width
+
+    # When: building the plan
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
+
+    # Then: only a forced narrower source records an upscale
+    assert plan.upscale_source_width == expected_upscale_width
+    scale_action = next(a for a in plan.actions if a.label == SCALE_TO_1080P_LABEL)
+    assert scale_action.applied is expected_applied

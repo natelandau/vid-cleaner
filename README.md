@@ -71,7 +71,7 @@ These are the options you use most:
 | `-l`, `--langs`            | Languages to keep, as comma-separated ISO 639-1 codes (`en,es`)            |
 | `-H`, `--h265`             | Convert the video to H.265                                                 |
 | `-V`, `--vp9`              | Convert the video to VP9, in a WebM container                              |
-| `-p`, `--1080p`            | Convert a 4k video to 1080p                                                |
+| `-p`, `--1080p`            | Convert a 4k video to 1080p. With `--force`, a smaller video is upscaled only after you approve it. |
 | `-d`, `--downmix`          | Add a stereo track if the file has none. With `--force`, replace the stereo track in the language of the surround track. |
 | `-s`, `--keep-subs`        | Keep every subtitle track                                                  |
 | `-c`, `--keep-commentary`  | Keep commentary audio tracks. Without this flag, all commentary tracks are removed, also tracks with no language tag. |

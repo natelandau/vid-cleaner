@@ -1,11 +1,13 @@
 """Clean subcommand."""
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Annotated
 
 import cappa
 from cappa import Dep
 from nclutils import pp
+from rich.prompt import Confirm
 
 from vid_cleaner.cli.discovery_output import (
     confirm_selection,
@@ -13,7 +15,12 @@ from vid_cleaner.cli.discovery_output import (
     present_discovery,
 )
 from vid_cleaner.config import Config, RunOptions
-from vid_cleaner.constants import SYMBOL_CROSS, SortOrder
+from vid_cleaner.constants import (
+    FHD_RESOLUTION,
+    SCALE_TO_1080P_LABEL,
+    SYMBOL_CROSS,
+    SortOrder,
+)
 from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
 from vid_cleaner.utils import (
     coerce_video_files,
@@ -25,7 +32,7 @@ from vid_cleaner.utils import (
 from vid_cleaner.vidcleaner import CleanCommand, build_config, build_run_options
 
 from vid_cleaner.cli.ffmpeg_step import run_ffmpeg_step  # isort: skip
-from vid_cleaner.models.conversion_plan import ConversionPlan  # isort: skip
+from vid_cleaner.models.conversion_plan import ConversionPlan, PlanAction  # isort: skip
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
@@ -83,6 +90,43 @@ def write_output(
     return messages
 
 
+def approve_upscale(video_file: VideoFile, *, source_width: int, dryrun: bool) -> bool:
+    """Warn that `--1080p --force` would upscale a smaller video and ask the user to approve it.
+
+    Upscaling adds no detail and makes the file larger, so the prompt defaults to no. A
+    dry run only warns, since it changes nothing. A run that cannot prompt skips the
+    upscale rather than guessing.
+
+    Args:
+        video_file (VideoFile): The file the plan would upscale.
+        source_width (int): The source video's width in pixels.
+        dryrun (bool): Whether this run only previews its changes.
+
+    Returns:
+        bool: True when the user approves the upscale.
+    """
+    pp.warning(
+        f"`{video_file.name}` is {source_width}px wide. Converting it to 1080p upscales it "
+        f"to {FHD_RESOLUTION.width}px, which adds no detail and makes the file larger."
+    )
+    if dryrun:
+        return True
+
+    no_prompt_message = "Cannot ask for approval in a non-interactive run. Skipping the upscale."
+    if not pp.console().is_terminal:
+        pp.warning(no_prompt_message)
+        return False
+
+    try:
+        approved = Confirm.ask("Upscale this video to 1080p?", default=False, console=pp.console())
+    # `is_terminal` describes the output stream, so a closed or redirected stdin still
+    # reaches the prompt and gets EOF instead of an answer.
+    except EOFError:
+        pp.warning(no_prompt_message)
+        return False
+    return approved
+
+
 def clean_video_file(
     video_file: VideoFile, *, config: Config, options: RunOptions
 ) -> ConversionPlan:
@@ -99,6 +143,14 @@ def clean_video_file(
         ConversionPlan: The plan, whose `output_suffix` names any container change.
     """
     plan = video_file.plan_clean(config=config, options=options)
+
+    if plan.upscale_source_width is not None and not approve_upscale(
+        video_file, source_width=plan.upscale_source_width, dryrun=options.dryrun
+    ):
+        plan = video_file.plan_clean(config=config, options=replace(options, video_1080=False))
+        plan.actions.append(
+            PlanAction(label=SCALE_TO_1080P_LABEL, applied=False, reason="upscale not approved")
+        )
 
     for note in plan.debug_notes:
         pp.debug(note)

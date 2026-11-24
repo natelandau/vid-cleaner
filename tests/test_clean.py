@@ -2020,3 +2020,63 @@ def test_clean_debug_output_reports_unusable_language_tags(
     # Then: The debug output names the stream and its unusable tag
     assert exc_info.value.code == 0
     assert "Stream #3: unusable language tag 'qaa'" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("is_terminal", "answer", "dryrun", "expect_scaled", "expect_prompt"),
+    [
+        pytest.param(True, True, False, True, True, id="approved upscale runs"),
+        pytest.param(True, False, False, False, True, id="declined upscale is skipped"),
+        pytest.param(True, EOFError(), False, False, True, id="closed stdin skips the upscale"),
+        pytest.param(False, None, False, False, False, id="non-interactive skips the upscale"),
+        pytest.param(True, None, True, True, False, id="dry run warns without asking"),
+    ],
+)
+def test_clean_asks_before_upscaling_to_1080p(
+    mocker,
+    mock_ffprobe_box,
+    mock_video_path,
+    capsys,
+    mock_ffmpeg,
+    interactive_console,
+    is_terminal,
+    answer,
+    dryrun,
+    expect_scaled,
+    expect_prompt,
+):
+    """Verify --1080p --force on a smaller video warns and upscales only when approved."""
+    # Given: a 1280px-wide video and a user who answers the upscale prompt
+    probe = mock_ffprobe_box("reference.json")
+    next(s for s in probe.streams if s.codec_type == "video").width = 1280
+    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", return_value=probe)
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved"]),
+    )
+    interactive_console(is_terminal=is_terminal)
+    ask = mocker.patch(
+        "vid_cleaner.cli.clean_video.Confirm.ask",
+        **({"side_effect": answer} if isinstance(answer, Exception) else {"return_value": answer}),
+    )
+    args = [*(["-n"] if dryrun else []), "-vv", "clean", "--1080p", "--force"]
+
+    # When: cleaning the file
+    with pytest.raises(cappa.Exit) as exc_info:
+        invoke(obj=VidCleaner, argv=[*args, str(mock_video_path)], deps=[configure_output])
+
+    # Then: the user was warned, and the video is scaled only when the upscale went ahead
+    captured = capsys.readouterr()
+    output = captured.out + captured.err
+    assert exc_info.value.code == 0
+    assert "1280px wide" in output
+    assert ask.called is expect_prompt
+    if dryrun:
+        mock_ffmpeg.assert_not_called()
+        assert "scale=width=1920" in output
+    else:
+        command = " ".join(mock_ffmpeg.call_args[0][0])
+        assert ("scale=width=1920" in command) is expect_scaled
+    if not expect_scaled:
+        assert "upscale not approved" in output
