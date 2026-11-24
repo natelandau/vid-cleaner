@@ -1,7 +1,7 @@
 {
     // Surround main track plus stereo commentary tracks with NO language tag.
-    // Reproduces the case where untitled-language commentary tracks are kept
-    // (unknown language) and must not block downmixing the main surround track.
+    // With keep_commentary set, the commentary tracks are kept and must not block
+    // downmixing the main surround track.
     "format": {
         "bit_rate": "26192239",
         "duration": "60.268000",

@@ -351,7 +351,7 @@ def test_clean_video_downmix_stereo_commentary_kept(
 ):
     """Verify a kept stereo commentary track does not block downmixing the main track."""
     # Given: A file with a surround main track and a no-language stereo commentary track
-    args = ["clean", "-vv", "--downmix", str(mock_video_path)]
+    args = ["clean", "-vv", "--downmix", "--keep-commentary", str(mock_video_path)]
     mocker.patch(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("commentary_no_lang.json"),
@@ -847,7 +847,7 @@ def test_clean_video_downmix_skip_when_stereo_exists(
     assert exc_info.value.code == 0
     assert "-map 0:4" in command
     assert "-filter:a:" not in command
-    assert "Stereo track already exists" in output
+    assert "✖ Downmix to stereo  (stereo track already exists; use --force)" in output
 
 
 def test_clean_video_downmix_force_recreates_stereo(
@@ -965,7 +965,6 @@ def test_clean_video_downmix_force_no_surround_keeps_stereo(
     # Under -vv every skipped operation is shown (none applied), including the downmix
     # itself, rather than the normal-mode "No changes needed" line.
     assert exc_info.value.code == 0
-    assert "No surround source to recreate stereo" in output
     assert "✖ Downmix to stereo  (no surround source to downmix)" in output
 
 
@@ -1036,7 +1035,7 @@ def test_find_original_language_skips_arr_when_filename_id_resolves(
     mock_query_arr = mocker.patch.object(VideoFile, "_query_arr_apps_for_imdb_id")
 
     # When: finding the original language
-    result = video_file._find_original_language(make_config())  # noqa: SLF001
+    result = video_file._find_original_language(make_config(), notes=[])  # noqa: SLF001
 
     # Then: the filename's IMDb ID resolves the language and Radarr/Sonarr are never queried
     assert result == Lang("en")
@@ -1065,7 +1064,7 @@ def test_find_original_language_consults_arr_when_no_id_resolves(
     )
 
     # When: finding the original language
-    result = video_file._find_original_language(make_config())  # noqa: SLF001
+    result = video_file._find_original_language(make_config(), notes=[])  # noqa: SLF001
 
     # Then: Radarr/Sonarr is queried and its IMDb ID resolves the language
     assert result == Lang("fr")
@@ -1088,8 +1087,8 @@ def test_find_original_language_caches_result(
     )
 
     # When: finding the original language twice
-    first = video_file._find_original_language(make_config())  # noqa: SLF001
-    second = video_file._find_original_language(make_config())  # noqa: SLF001
+    first = video_file._find_original_language(make_config(), notes=[])  # noqa: SLF001
+    second = video_file._find_original_language(make_config(), notes=[])  # noqa: SLF001
 
     # Then: both calls return the cached language but only one query was made
     assert first == Lang("en")
@@ -1116,7 +1115,7 @@ def test_find_original_language_falls_through_failed_candidate(
     )
 
     # When: finding the original language
-    result = video_file._find_original_language(make_config())  # noqa: SLF001
+    result = video_file._find_original_language(make_config(), notes=[])  # noqa: SLF001
 
     # Then: the unresolvable IMDb candidate is skipped and the TMDB candidate resolves
     assert result == Lang("en")
@@ -1143,6 +1142,11 @@ def test_find_original_language_falls_through_failed_candidate(
             {"movie": {"title": "Some Movie"}},
             None,
             id="Radarr matched a movie carrying no imdb id",
+        ),
+        pytest.param(
+            {"parsedMovieInfo": {"movieTitle": "Some Movie"}, "movie": None},
+            None,
+            id="Radarr returned a null movie",
         ),
     ],
 )
@@ -1300,13 +1304,14 @@ def test_clean_continues_after_a_file_fails(capsys, tmp_path, mocker, mock_ffmpe
     second = tmp_path / "second.mkv"
     second.touch()
 
-    def clean(self, config, options):
+    def plan_clean(self, config, options):
         if self.path.name == "first.mkv":
             msg = "no video streams found"
             raise VideoCleanError(path=self.path, reason=msg)
         return ConversionPlan()
 
-    mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", clean)
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.plan_clean", plan_clean)
+    mocker.patch.object(VideoFile, "plan_changes_file", return_value=False)
 
     # When: Cleaning both files
     args = ["-n", "clean", str(first), str(second)]
@@ -1327,7 +1332,8 @@ def test_clean_exits_zero_when_every_file_succeeds(capsys, tmp_path, mocker, moc
     # Given: One file that cleans without error
     video = tmp_path / "movie.mkv"
     video.touch()
-    mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", return_value=ConversionPlan())
+    mocker.patch.object(VideoFile, "plan_clean", return_value=ConversionPlan())
+    mocker.patch.object(VideoFile, "plan_changes_file", return_value=False)
 
     # When: Cleaning it
     args = ["-n", "clean", str(video)]
@@ -1347,12 +1353,13 @@ def test_clean_keyboard_interrupt_aborts_the_whole_batch(capsys, tmp_path, mocke
     second = tmp_path / "second.mkv"
     second.touch()
 
-    def clean(self, config, options):
+    def plan_clean(self, config, options):
         if self.path.name == "first.mkv":
             raise cappa.Exit(code=1)
         return ConversionPlan()
 
-    mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", clean)
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.plan_clean", plan_clean)
+    mocker.patch.object(VideoFile, "plan_changes_file", return_value=False)
 
     # When: Cleaning both files
     args = ["-n", "clean", str(first), str(second)]
@@ -1662,13 +1669,13 @@ def test_clean_failure_lines_name_the_file_exactly_once(capsys, tmp_path, mocker
     second = tmp_path / "second.mkv"
     second.touch()
 
-    def clean(self, config, options):
+    def plan_clean(self, config, options):
         if self.path.name == "first.mkv":
             raise VideoCleanError(path=self.path, reason="no video streams found")
         msg = "boom"
         raise RuntimeError(msg)
 
-    mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", clean)
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.plan_clean", plan_clean)
 
     # When: Cleaning both files
     args = ["-n", "clean", str(first), str(second)]
@@ -1695,10 +1702,10 @@ def test_clean_clears_the_temp_directory_when_a_file_fails(capsys, tmp_path, moc
     video = tmp_path / "movie.mkv"
     video.touch()
 
-    def clean(self, config, options):
+    def plan_clean(self, config, options):
         raise VideoCleanError(path=self.path, reason="no video streams found")
 
-    mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", clean)
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.plan_clean", plan_clean)
     cleanup = mocker.patch.object(TempFile, "clean_up")
 
     # When: Cleaning it
@@ -1719,10 +1726,10 @@ def test_clean_from_cleanup_failure_does_not_mask_the_real_failure(
     video = tmp_path / "movie.mkv"
     video.touch()
 
-    def clean(self, config, options):
+    def plan_clean(self, config, options):
         raise VideoCleanError(path=self.path, reason="no video streams found")
 
-    mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", clean)
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.plan_clean", plan_clean)
     mocker.patch.object(TempFile, "clean_up", side_effect=OSError("temp dir busy"))
 
     # When: Cleaning it
@@ -1902,15 +1909,11 @@ def fake_transcode(mocker):
     """
 
     def _inner() -> None:
-        def run_ffmpeg(self, command, title, suffix=None, step=None, *, config, options):
-            output_path = self.temp_file.new_tmp_path(
-                suffix=suffix or "", step_name=step or "", cache_dir=config.cache_dir
-            )
-            output_path.write_bytes(b"transcoded")
-            self.temp_file.created_temp_file(output_path)
-            return [f"✔ {title}"]
+        def run_ffmpeg(self, command, *, on_progress):
+            command.output_path.write_bytes(b"transcoded")
+            self.temp_file.created_temp_file(command.output_path)
 
-        mocker.patch.object(VideoFile, "_run_ffmpeg", run_ffmpeg)
+        mocker.patch.object(VideoFile, "run_ffmpeg", run_ffmpeg)
 
     return _inner
 
@@ -1963,3 +1966,57 @@ def test_clean_vp9_overwrite_removes_the_original_container(
     assert exc_info.value.code == 0
     assert (tmp_path / "movie.webm").read_bytes() == b"transcoded"
     assert not video.exists()
+
+
+def test_clean_dryrun_writes_nothing_to_the_cache(
+    mocker, mock_ffprobe_box, mock_video_path, capsys, mock_ffmpeg, monkeypatch, tmp_path
+):
+    """Verify a dry run previews the ffmpeg command without creating anything under cache_dir."""
+    # Given: A cache directory inside a parent no one can write to
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    monkeypatch.setenv("VIDCLEANER_CACHE_DIR", str(locked / "cache"))
+    mocker.patch(
+        "vid_cleaner.models.video_file.get_probe_as_box",
+        return_value=mock_ffprobe_box("reference.json"),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+    locked.chmod(0o500)
+
+    # When: Dry-running a clean that would change the file
+    try:
+        with pytest.raises(cappa.Exit) as exc_info:
+            invoke(
+                obj=VidCleaner, argv=["-n", "clean", str(mock_video_path)], deps=[configure_output]
+            )
+    finally:
+        locked.chmod(0o700)
+
+    # Then: The command is previewed, ffmpeg never runs, and nothing was created
+    assert exc_info.value.code == 0
+    assert "Processing (dry run)" in capsys.readouterr().out
+    mock_ffmpeg.assert_not_called()
+    assert not any(locked.iterdir())
+
+
+def test_clean_debug_output_reports_unusable_language_tags(
+    mocker, mock_ffprobe_box, mock_video_path, capsys, mock_ffmpeg
+):
+    """Verify -vv names a language tag that planning treated as unknown."""
+    # Given: reference.json with the French 5.1 track tagged with a reserved code
+    probe = mock_ffprobe_box("reference.json")
+    next(s for s in probe.streams if s.index == 3).language = "qaa"
+    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", return_value=probe)
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+
+    # When: Dry-running clean with debug output
+    with pytest.raises(cappa.Exit) as exc_info:
+        invoke(
+            obj=VidCleaner,
+            argv=["-n", "-vv", "clean", str(mock_video_path)],
+            deps=[configure_output],
+        )
+
+    # Then: The debug output names the stream and its unusable tag
+    assert exc_info.value.code == 0
+    assert "Stream #3: unusable language tag 'qaa'" in capsys.readouterr().out

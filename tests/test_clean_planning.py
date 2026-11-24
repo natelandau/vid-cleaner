@@ -10,6 +10,7 @@ from vid_cleaner.config import Config, RunOptions
 from vid_cleaner.constants import CodecTypes
 from vid_cleaner.exceptions import VideoCleanError
 
+from vid_cleaner.cli.clean_video import clean_video_file  # isort: skip
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
@@ -357,7 +358,7 @@ def test_estimate_cleaned_size_subtracts_dropped_streams(make_video):
 
 
 def test_clean_no_video_streams_raises(make_video, plan_settings):
-    """Verify clean() rejects a file with no video streams before doing any work."""
+    """Verify plan_clean() rejects a file with no video streams before doing any work."""
     # Given: audio_only.json (one audio stream, zero video streams)
     video = make_video("audio_only.json")
 
@@ -365,13 +366,13 @@ def test_clean_no_video_streams_raises(make_video, plan_settings):
     # Then: VideoCleanError is raised, distinct from cappa.Exit, so a batch loop can
     # catch it and continue to the next file without swallowing a real interrupt
     with pytest.raises(VideoCleanError) as exc_info:
-        video.clean(*plan_settings.args())
+        video.plan_clean(*plan_settings.args())
     assert exc_info.value.path == video.path
     assert exc_info.value.reason == "no video streams found"
 
 
 def test_clean_no_audio_streams_raises(make_video, plan_settings):
-    """Verify clean() rejects a file with no audio streams before doing any work."""
+    """Verify plan_clean() rejects a file with no audio streams before doing any work."""
     # Given: video_only.json (one video stream, zero audio streams)
     video = make_video("video_only.json")
 
@@ -379,7 +380,7 @@ def test_clean_no_audio_streams_raises(make_video, plan_settings):
     # Then: VideoCleanError is raised, distinct from cappa.Exit, so a batch loop can
     # catch it and continue to the next file without swallowing a real interrupt
     with pytest.raises(VideoCleanError) as exc_info:
-        video.clean(*plan_settings.args())
+        video.plan_clean(*plan_settings.args())
     assert exc_info.value.path == video.path
     assert exc_info.value.reason == "no audio streams found"
 
@@ -391,7 +392,8 @@ def test_clean_noop_skips_ffmpeg(make_video, mock_ffmpeg, plan_settings):
     video = make_video("unmapped_channels.json")
 
     # When: cleaning
-    result = video.clean(*plan_settings.args())
+    config, options = plan_settings.args()
+    result = clean_video_file(video, config=config, options=options)
 
     # Then: ffmpeg never runs and no action was applied
     mock_ffmpeg.assert_not_called()
@@ -616,8 +618,8 @@ def test_downmix_prefers_first_configured_language(make_video, plan_settings):
 
 def test_downmix_discounts_commentary_source(make_video, plan_settings):
     """Verify a surround commentary track is not chosen as the downmix source."""
-    # Given: an untagged-language 5.1 commentary bed (#1) ahead of the main 5.1 bed (#2)
-    plan_settings.update({"downmix_stereo": True})
+    # Given: a kept, untagged-language 5.1 commentary bed (#1) ahead of the main 5.1 bed (#2)
+    plan_settings.update({"downmix_stereo": True, "keep_commentary": True})
     video = make_video("surround_commentary_no_lang.json")
 
     # When: building the plan
@@ -626,3 +628,61 @@ def test_downmix_discounts_commentary_source(make_video, plan_settings):
     # Then: the main bed alone seeds the downmix, not the commentary bed listed first
     downmixes = [s for s in plan.streams if s.stream_filter is not None]
     assert [s.source_index for s in downmixes] == [2]
+
+
+def test_audio_plan_drops_untagged_commentary(make_video, plan_settings):
+    """Verify an untagged commentary track is dropped unless commentary is kept."""
+    # Given: an untagged-language 5.1 commentary bed (#1) and the main 5.1 bed (#2)
+    video = make_video("surround_commentary_no_lang.json")
+
+    # When: building the plan with the default keep_commentary=false
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
+
+    # Then: the commentary bed is not mapped, but the main bed is
+    audio = [s.source_index for s in plan.streams if s.codec_type == CodecTypes.AUDIO]
+    assert audio == [2]
+
+
+@pytest.mark.parametrize(
+    ("stream_index", "tag", "settings", "expected_kept"),
+    [
+        pytest.param(3, "qaa", {}, True, id="audio reserved code kept as unknown"),
+        pytest.param(3, "iw", {}, True, id="audio deprecated code kept as unknown"),
+        pytest.param(3, "FRA", {}, False, id="audio uppercase code matched case-insensitively"),
+        pytest.param(
+            7, "DAN", {"langs_to_keep": ["da"], "keep_local_subtitles": True}, True, id="subtitle"
+        ),
+        pytest.param(7, "qaa", {"keep_local_subtitles": True}, False, id="subtitle unusable"),
+    ],
+)
+def test_plan_tolerates_unusable_language_tags(
+    make_video, plan_settings, stream_index, tag, settings, expected_kept
+):
+    """Verify a language tag iso639 rejects is treated as unknown instead of aborting the plan."""
+    # Given: reference.json with one stream's language tag replaced
+    plan_settings.update(settings)
+    video = make_video("reference.json")
+    next(s for s in video.probe_box.streams if s.index == stream_index).language = tag
+
+    # When: building the plan
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
+
+    # Then: the stream is kept or dropped by its parsed language
+    assert (stream_index in {s.source_index for s in plan.streams}) is expected_kept
+
+
+def test_forced_downmix_keeps_stereo_in_other_languages(make_video, plan_settings):
+    """Verify a forced downmix drops only the stereo track in the surround source's language."""
+    # Given: reference.json with the English stereo (#4) retagged French, keeping both languages
+    plan_settings.update({"downmix_stereo": True, "force": True, "langs_to_keep": ["en", "fr"]})
+    video = make_video("reference.json")
+    next(s for s in video.probe_box.streams if s.index == 4).language = "fra"
+
+    # When: building the plan
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
+
+    # Then: the French stereo survives next to the stereo rebuilt from the English bed
+    mapped = [s.source_index for s in plan.streams]
+    assert 4 in mapped
+    downmixes = [s.source_index for s in plan.streams if s.stream_filter is not None]
+    assert downmixes == [2]

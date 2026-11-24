@@ -66,12 +66,17 @@ class ConversionPlan:
         global_args (list[str]): Output-wide args appended after per-stream options.
         output_suffix (str | None): Container suffix override (e.g. ".webm").
         actions (list[PlanAction]): Cleaning operations the plan considered.
+        notices (list[str]): Messages for the user that no action records, such as a
+            container change or a stream the target container cannot carry.
+        debug_notes (list[str]): Planning details shown only in debug output.
     """
 
     streams: list[OutputStream] = field(default_factory=list)
     global_args: list[str] = field(default_factory=list)
     output_suffix: str | None = None
     actions: list[PlanAction] = field(default_factory=list)
+    notices: list[str] = field(default_factory=list)
+    debug_notes: list[str] = field(default_factory=list)
 
     def is_noop(self, stream_count: int) -> bool:
         """Check whether executing this plan would change nothing about the file.
