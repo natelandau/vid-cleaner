@@ -1,14 +1,11 @@
 """Test the vidcleaner clip subcommand."""
 
-from pathlib import Path
-
 import cappa
 import pytest
 from cappa.base import invoke
 
-from vid_cleaner import settings
 from vid_cleaner.controllers import TempFile
-from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
+from vid_cleaner.vidcleaner import VidCleaner, configure_output
 
 
 @pytest.mark.parametrize(
@@ -22,11 +19,10 @@ def test_clip_option_errors(debug, tmp_path, capsys, mock_video_path, args, expe
     """Verify clip command validates time format arguments."""
     # Given: Invalid time format arguments
     args = ["clip", *args, str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
 
     # When: Running clip command with invalid arguments
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: Error message is displayed
     output = capsys.readouterr().err
@@ -57,7 +53,6 @@ def test_clipping_video(
     """Verify clip command extracts video segment with specified time range."""
     # Given: Mock video file and time range arguments
     args = ["clip", *args, str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
 
     # And: Mocked video metadata and output path
 
@@ -72,7 +67,7 @@ def test_clipping_video(
 
     # When: Running clip command
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
     # debug(output, "output")
@@ -110,7 +105,6 @@ def test_clipping_video_dryrun(
     """Verify clip command dry-run shows command without execution."""
     # Given: Mock video file and dry-run flag
     args = ["clip", "-n", *args, str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
 
     # And: Mocked video metadata and output path
     mocker.patch(
@@ -124,7 +118,7 @@ def test_clipping_video_dryrun(
 
     # When: Running clip command in dry-run mode
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
     # debug(output, "output")
@@ -146,7 +140,6 @@ def test_clip_cleanup_failure_still_reports_the_save(
     """
     # Given: a clip that writes successfully but whose temp-directory housekeeping raises
     args = ["clip", str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
     mocker.patch(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("reference.json"),
@@ -159,7 +152,7 @@ def test_clip_cleanup_failure_still_reports_the_save(
 
     # When: Running clip
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
 
@@ -179,7 +172,6 @@ def test_clip_rejects_file_without_video_streams(
     """
     # Given: A file that probes cleanly but carries only audio
     args = ["clip", str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
     mocker.patch(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("audio_only.json"),
@@ -187,7 +179,7 @@ def test_clip_rejects_file_without_video_streams(
 
     # When: Running clip
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     captured = capsys.readouterr()
 
@@ -205,7 +197,6 @@ def test_clip_continues_past_a_bad_file(
     good = tmp_path / "good.mp4"
     good.touch()
     args = ["clip", str(mock_video_path), str(good)]
-    settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
 
     # Build both boxes up front and stamp each with the path it describes: `VideoFile`
     # compares `path_to_file` to decide whether its cached probe is still current.
@@ -225,7 +216,7 @@ def test_clip_continues_past_a_bad_file(
 
     # When: Running clip over both
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     captured = capsys.readouterr()
 

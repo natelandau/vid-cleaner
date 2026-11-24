@@ -2,33 +2,64 @@
 
 import copy
 import json
+import os
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from box import Box
 from rich.console import Console
 
-from vid_cleaner import settings
+from vid_cleaner import constants
+from vid_cleaner.config import Config, load_config
 from vid_cleaner.utils import get_probe_as_box
 
 console = Console()
 
 
 @pytest.fixture(autouse=True)
-def _reset_leaky_settings():
-    """Reset the process-wide settings a command run mutates, before and after each test.
+def _isolate_config(tmp_path, monkeypatch):
+    """Keep the developer's own config files and `VIDCLEANER_*` variables out of every test.
 
-    `settings` is a process-wide singleton, so a test that persists a CLI verbosity flag
-    (e.g. via `config_subcommand`) would otherwise leak that value into unrelated tests
-    run later in the same session. `out_path` leaks the same way: the clean and clip
-    commands assign it per file as they iterate, so it outlives the run that set it and
-    a later multi-file test would fail the `--out` conflict check against a path no one
-    passed.
+    The loader reads the user and dev config paths from `constants` at call time, so
+    pointing them at missing files under `tmp_path` leaves only the package default.
     """
-    leaked = {"verbosity": 0, "out_path": None}
-    settings.update(leaked)
-    yield
-    settings.update(leaked)
+    for variable in [name for name in os.environ if name.startswith("VIDCLEANER_")]:
+        monkeypatch.delenv(variable)
+    monkeypatch.setattr(constants, "USER_CONFIG_PATH", tmp_path / "user-config.toml")
+    monkeypatch.setattr(constants, "DEV_CONFIG_PATH", tmp_path / "dev-config.toml")
+    monkeypatch.setenv("VIDCLEANER_CACHE_DIR", str(tmp_path / "cache"))
+
+
+@pytest.fixture
+def user_config(tmp_path):
+    """Write TOML to the user config file the loader reads in tests.
+
+    Returns:
+        Callable[[str], Path]: Writes the text and returns the file path.
+    """
+
+    def _write(text: str) -> Path:
+        path = tmp_path / "user-config.toml"
+        path.write_text(text)
+        return path
+
+    return _write
+
+
+@pytest.fixture
+def make_config(tmp_path):
+    """Build a `Config` from the package defaults, with test overrides.
+
+    Returns:
+        Callable[..., Config]: Accepts `Config` field names as keyword overrides.
+    """
+
+    def _make(**overrides) -> Config:
+        base = load_config(config_paths=[constants.DEFAULT_CONFIG_PATH], environ={}).config
+        return replace(base, cache_dir=tmp_path / "cache", **overrides)
+
+    return _make
 
 
 @pytest.fixture

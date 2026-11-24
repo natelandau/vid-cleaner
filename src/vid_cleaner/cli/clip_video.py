@@ -1,12 +1,13 @@
 """Clip subcommand."""
 
 import re
-from pathlib import Path
+from typing import Annotated
 
 import cappa
+from cappa import Dep
 from nclutils import pp
 
-from vid_cleaner import settings
+from vid_cleaner.config import Config, RunOptions
 from vid_cleaner.constants import SYMBOL_CROSS
 from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
 from vid_cleaner.utils import (
@@ -15,17 +16,22 @@ from vid_cleaner.utils import (
     render_substeps,
     resolve_out_path_override,
 )
-from vid_cleaner.vidcleaner import ClipCommand
+from vid_cleaner.vidcleaner import ClipCommand, build_config, build_run_options
 
 
-def main(clip_cmd: ClipCommand) -> None:
+def main(
+    clip_cmd: ClipCommand,
+    config: Annotated[Config, Dep(build_config)],
+    options: Annotated[RunOptions, Dep(build_run_options)],
+) -> None:
     """Extract video clips based on start time and duration.
 
     Create video clips by copying a section of the source video without re-encoding. Useful for extracting highlights or samples from longer videos.
 
     Args:
-        cmd (VidCleaner): Global command options and configuration
         clip_cmd (ClipCommand): Clip-specific command options
+        config (Config): The settings for this run
+        options (RunOptions): The CLI-only values for this run
 
     Raises:
         cappa.Exit: If start or duration times are not in HH:MM:SS format, or if one or
@@ -41,13 +47,11 @@ def main(clip_cmd: ClipCommand) -> None:
         pp.error("`--duration` must be in format HH:MM:SS")
         raise cappa.Exit(code=1)
 
-    out_path_override = resolve_out_path_override(clip_cmd.files)
+    out_path_override = resolve_out_path_override(clip_cmd.files, out=options.out)
 
     failures: list[str] = []
 
     for video in coerce_video_files(clip_cmd.files):
-        settings.out_path = out_path_override or video.path
-
         # Print the video name first so live progress bars render beneath it, then collect each
         # operation's outcome and render the result tree once the file is done. The render runs in
         # `finally` so completed steps are still shown if a later operation raises.
@@ -55,13 +59,17 @@ def main(clip_cmd: ClipCommand) -> None:
         substeps: list[str] = []
 
         try:
-            substeps.extend(video.clip(clip_cmd.start, clip_cmd.duration))
+            substeps.extend(
+                video.clip(
+                    start=clip_cmd.start, duration=clip_cmd.duration, config=config, options=options
+                )
+            )
 
-            if not settings.dryrun:
+            if not options.dryrun:
                 _, messages = copy_to_output(
                     video.temp_file.latest_temp_path(),
-                    Path(settings.out_path),
-                    overwrite=settings.overwrite,
+                    out_path_override or video.path,
+                    overwrite=config.overwrite,
                 )
                 # The clip is already written, so keep its messages and treat a cleanup
                 # failure as a warning rather than losing the save and raising past main().

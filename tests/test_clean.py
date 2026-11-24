@@ -11,42 +11,21 @@ from vid_cleaner.cli.discovery_output import NOT_AN_EXISTING_DIRECTORY_ERROR
 from vid_cleaner.constants import TREE_LAST
 from vid_cleaner.exceptions import VideoCleanError
 from vid_cleaner.models import video_file as video_file_module
-from vid_cleaner.vidcleaner import CleanCommand, VidCleaner, config_subcommand
+from vid_cleaner.models.conversion_plan import ConversionPlan
+from vid_cleaner.vidcleaner import CleanCommand, VidCleaner, configure_output
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 from vid_cleaner.controllers import TempFile  # isort: skip
-from vid_cleaner import settings
-
-
-@pytest.fixture(autouse=True)
-def set_default_settings(tmp_path, mocker):
-    """Set default settings for tests."""
-    cache_dir = Path(tmp_path) / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    settings.update(
-        {
-            "cache_dir": cache_dir,
-            "langs_to_keep": ["en"],
-            "out_path": None,
-            "downmix_stereo": False,
-            "keep_local_subtitles": False,
-            "keep_commentary": False,
-            "drop_local_subs": False,
-            "keep_all_subtitles": False,
-            "drop_original_audio": False,
-        }
-    )
 
 
 def test_fail_on_flag_conflict(debug, tmp_path, capsys, mock_video_path) -> None:
     """Verify clean command fails when incompatible flags are used."""
     # Given: Conflicting codec conversion flags
     args = ["clean", "-vv", "--h265", "--vp9", str(mock_video_path)]
-    settings.update({"cache_dir": Path(tmp_path), "langs_to_keep": ["en"]})
 
     # When: Running clean command with conflicting flags
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: Error message is displayed
     output = capsys.readouterr().err
@@ -66,7 +45,7 @@ def test_clean_out_with_multiple_files_errors(debug, tmp_path, capsys) -> None:
 
     # When: running clean with --out and multiple files
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: the command exits with an error explaining the conflict
     output = capsys.readouterr().err
@@ -149,7 +128,7 @@ def test_stream_processing(
 
     # When: Running clean command
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
     # debug(output, "output")
@@ -201,7 +180,7 @@ def test_clean_video_foreign_language_keeps_und_subtitle(
 
     # When: processing the video file
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
 
@@ -269,7 +248,7 @@ def test_clean_video_foreign_language(
 
     # When: Processing the video file
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
     # debug(output, "output")
@@ -342,7 +321,7 @@ def test_clean_video_downmix(
 
     # When: Processing the video file
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
     # debug(output, "output")
@@ -385,7 +364,7 @@ def test_clean_video_downmix_stereo_commentary_kept(
 
     # When: Processing the video file with downmix requested
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
 
@@ -427,7 +406,7 @@ def test_clean_video_downmix_unmapped_channel_count(
 
     # When: Processing the video file with downmix requested
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: It completes successfully without raising an unexpected error. Under -vv every
     # skipped operation is shown (none applied), not the normal-mode "No changes needed" line.
@@ -460,7 +439,7 @@ def test_clean_video_downmix_dialogue_forward_filter(
 
     # When: Processing the video file with downmix requested
     with pytest.raises(cappa.Exit):
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: The dialogue-forward chain is applied, the center is dominant, and LFE is dropped
     mock_ffmpeg.assert_called_once()
@@ -495,7 +474,7 @@ def test_clean_video_downmix_atmos(
 
     # When: Processing the video file with downmix requested
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: The Atmos track is downmixed rather than passed through un-downmixed.
     # One audio stream is kept, so the downmix is output audio stream index 1.
@@ -534,7 +513,7 @@ def test_clean_video_downmix_does_not_clobber_kept_stream(
 
     # When: Processing the video file with downmix requested
     with pytest.raises(cappa.Exit):
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: The two kept streams are output audio 0 and 1, and the downmix codec/filter
     # options bind to index 2, so no encode option lands on the copied surround tracks.
@@ -566,7 +545,7 @@ def test_clean_reorganize_streams(
 
     # When: Processing the video file
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
 
@@ -639,7 +618,7 @@ def test_convert_video(
 
     # When: Processing the video file
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
 
@@ -680,7 +659,7 @@ def test_clean_video_h265_skip_shown_in_debug_mode(
 
     # When: running clean in debug mode with --h265 requested
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: the skipped H.265 conversion is reported with its reason
     output = capsys.readouterr().out
@@ -709,12 +688,11 @@ def test_clean_video_h265_skip_hidden_in_normal_mode(
 
     # When: running clean in normal mode with --h265 requested
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: normal mode is genuinely active and the skipped operation is not shown
     output = capsys.readouterr().out
     assert exc_info.value.code == 0
-    assert settings.verbosity == 0
     assert "✖ Convert to H.265" not in output
     assert "already H.265/VP9; use --force" not in output
     # But verify that rendering actually happened (positive assertion)
@@ -750,7 +728,7 @@ def test_clean_multiple_files_use_distinct_output_paths(
 
     # When: cleaning both files in a single invocation
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: each file is copied to its own destination, not both to the first file's path
     assert exc_info.value.code == 0
@@ -787,7 +765,7 @@ def test_clean_multiple_files_overwrite_each_in_place(
 
     # When: cleaning both files in place
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: each file overwrites itself and neither original is deleted
     assert exc_info.value.code == 0
@@ -821,7 +799,7 @@ def test_clean_renders_completed_steps_on_error(
 
     # When: running clean and the output write raises after processing completes
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: the operations render up front, before the failing write, proving the CLI
     # reports what actually happened even when `write_output()` raises. reference.json's
@@ -858,7 +836,7 @@ def test_clean_video_downmix_skip_when_stereo_exists(
 
     # When: Processing with downmix requested but not forced
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
     mock_ffmpeg.assert_called_once()
@@ -895,7 +873,7 @@ def test_clean_video_downmix_force_recreates_stereo(
 
     # When: Processing with downmix forced
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
     mock_ffmpeg.assert_called_once()
@@ -938,7 +916,7 @@ def test_clean_video_downmix_force_recreates_from_multiple_stereo(
 
     # When: Forcing downmix with two stereo tracks present
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
     mock_ffmpeg.assert_called_once()
@@ -979,7 +957,7 @@ def test_clean_video_downmix_force_no_surround_keeps_stereo(
 
     # When: Forcing downmix with no surround source to rebuild from
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
 
@@ -998,6 +976,7 @@ def test_clean_video_downmix_force_noop_without_existing_stereo(
     capsys,
     mock_ffmpeg,
     debug,
+    make_config,
 ):
     """Verify --force does not change the normal downmix path when no stereo track exists."""
     # Given: no_stereo.json (7.1 + 5.1 + a stereo commentary track only)
@@ -1014,7 +993,7 @@ def test_clean_video_downmix_force_noop_without_existing_stereo(
 
     # When: Forcing downmix with no existing stereo mix
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
     mock_ffmpeg.assert_called_once()
@@ -1039,7 +1018,10 @@ def test_clean_video_downmix_force_noop_without_existing_stereo(
 
 
 def test_find_original_language_skips_arr_when_filename_id_resolves(
-    mocker, tmp_path, mock_probe_tags
+    mocker,
+    tmp_path,
+    mock_probe_tags,
+    make_config,
 ) -> None:
     """Verify Radarr/Sonarr are not queried once a filename-derived ID resolves."""
     # Given: a filename carrying a resolvable IMDb ID and no container tags
@@ -1054,16 +1036,19 @@ def test_find_original_language_skips_arr_when_filename_id_resolves(
     mock_query_arr = mocker.patch.object(VideoFile, "_query_arr_apps_for_imdb_id")
 
     # When: finding the original language
-    result = video_file._find_original_language()  # noqa: SLF001
+    result = video_file._find_original_language(make_config())  # noqa: SLF001
 
     # Then: the filename's IMDb ID resolves the language and Radarr/Sonarr are never queried
     assert result == Lang("en")
-    mock_query_tmdb.assert_called_once_with("tt0133093")
+    mock_query_tmdb.assert_called_once_with("tt0133093", api_key=mocker.ANY)
     mock_query_arr.assert_not_called()
 
 
 def test_find_original_language_consults_arr_when_no_id_resolves(
-    mocker, tmp_path, mock_probe_tags
+    mocker,
+    tmp_path,
+    mock_probe_tags,
+    make_config,
 ) -> None:
     """Verify Radarr/Sonarr are consulted as a last resort when no ID is discoverable."""
     # Given: a filename and container with no discoverable media ID
@@ -1080,15 +1065,17 @@ def test_find_original_language_consults_arr_when_no_id_resolves(
     )
 
     # When: finding the original language
-    result = video_file._find_original_language()  # noqa: SLF001
+    result = video_file._find_original_language(make_config())  # noqa: SLF001
 
     # Then: Radarr/Sonarr is queried and its IMDb ID resolves the language
     assert result == Lang("fr")
     mock_query_arr.assert_called_once()
-    mock_query_tmdb.assert_called_once_with("tt0245712")
+    mock_query_tmdb.assert_called_once_with("tt0245712", api_key=mocker.ANY)
 
 
-def test_find_original_language_caches_result(mocker, tmp_path, mock_probe_tags) -> None:
+def test_find_original_language_caches_result(
+    mocker, tmp_path, mock_probe_tags, make_config
+) -> None:
     """Verify a second call reuses the cached language instead of re-querying."""
     # Given: a filename with a resolvable IMDb ID
     path = tmp_path / "Some Movie (1999) tt0133093.mkv"
@@ -1101,8 +1088,8 @@ def test_find_original_language_caches_result(mocker, tmp_path, mock_probe_tags)
     )
 
     # When: finding the original language twice
-    first = video_file._find_original_language()  # noqa: SLF001
-    second = video_file._find_original_language()  # noqa: SLF001
+    first = video_file._find_original_language(make_config())  # noqa: SLF001
+    second = video_file._find_original_language(make_config())  # noqa: SLF001
 
     # Then: both calls return the cached language but only one query was made
     assert first == Lang("en")
@@ -1111,7 +1098,10 @@ def test_find_original_language_caches_result(mocker, tmp_path, mock_probe_tags)
 
 
 def test_find_original_language_falls_through_failed_candidate(
-    mocker, tmp_path, mock_probe_tags
+    mocker,
+    tmp_path,
+    mock_probe_tags,
+    make_config,
 ) -> None:
     """Verify a failed first candidate falls through to the next discovered ID."""
     # Given: a filename IMDb ID that fails to resolve and a container TMDB tag that does
@@ -1126,12 +1116,14 @@ def test_find_original_language_falls_through_failed_candidate(
     )
 
     # When: finding the original language
-    result = video_file._find_original_language()  # noqa: SLF001
+    result = video_file._find_original_language(make_config())  # noqa: SLF001
 
     # Then: the unresolvable IMDb candidate is skipped and the TMDB candidate resolves
     assert result == Lang("en")
-    mock_query_tmdb.assert_called_once_with("tt9999999")
-    mock_query_tmdb_by_id.assert_called_once_with(tmdb_id="1399", media_type="movie")
+    mock_query_tmdb.assert_called_once_with("tt9999999", api_key=mocker.ANY)
+    mock_query_tmdb_by_id.assert_called_once_with(
+        tmdb_id="1399", media_type="movie", api_key=mocker.ANY
+    )
 
 
 @pytest.mark.parametrize(
@@ -1154,7 +1146,9 @@ def test_find_original_language_falls_through_failed_candidate(
         ),
     ],
 )
-def test_query_arr_apps_for_imdb_id_radarr(mocker, tmp_path, radarr_response, expected) -> None:
+def test_query_arr_apps_for_imdb_id_radarr(
+    mocker, tmp_path, radarr_response, expected, make_config
+) -> None:
     """Verify the Radarr response is read for an IMDb ID without raising."""
     # Given: a video file and a Radarr response
     path = tmp_path / "Some Movie (1999).mkv"
@@ -1168,7 +1162,7 @@ def test_query_arr_apps_for_imdb_id_radarr(mocker, tmp_path, radarr_response, ex
     mocker.patch("vid_cleaner.models.video_file.query_sonarr", autospec=True, return_value={})
 
     # When: querying the arr apps for an IMDb ID
-    result = video_file._query_arr_apps_for_imdb_id()  # noqa: SLF001
+    result = video_file._query_arr_apps_for_imdb_id(make_config())  # noqa: SLF001
 
     # Then: the IMDb ID is returned when present, otherwise None
     assert result == expected
@@ -1183,7 +1177,7 @@ def test_clean_rejects_from_with_positional_files(capsys, tmp_path):
 
     # When: Running clean
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: The command errors explaining the conflict
     assert exc_info.value.code == 1
@@ -1197,7 +1191,7 @@ def test_clean_rejects_from_with_out(capsys, tmp_path):
 
     # When: Running clean
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: The command errors
     assert exc_info.value.code == 1
@@ -1217,7 +1211,7 @@ def test_clean_rejects_discovery_flags_without_from(capsys, tmp_path, discovery_
 
     # When: Running clean
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: The command errors naming --from
     assert exc_info.value.code == 1
@@ -1231,7 +1225,7 @@ def test_clean_rejects_no_files_and_no_from(capsys):
 
     # When: Running clean
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: The command errors
     assert exc_info.value.code == 1
@@ -1246,7 +1240,7 @@ def test_clean_from_previews_and_requires_confirmation(capsys, video_library):
 
     # When: Running clean with no TTY and no --yes
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output, error = capsys.readouterr()
 
@@ -1264,7 +1258,7 @@ def test_clean_from_dryrun_skips_the_prompt(capsys, video_library, mock_ffmpeg):
 
     # When: Running a dry run with no TTY and no --yes
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output, error = capsys.readouterr()
 
@@ -1288,7 +1282,7 @@ def test_clean_from_limit_selects_top_results(capsys, video_library, mock_ffmpeg
 
     # When: Previewing the single largest file
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
 
@@ -1306,18 +1300,18 @@ def test_clean_continues_after_a_file_fails(capsys, tmp_path, mocker, mock_ffmpe
     second = tmp_path / "second.mkv"
     second.touch()
 
-    def clean(self):
+    def clean(self, config, options):
         if self.path.name == "first.mkv":
             msg = "no video streams found"
             raise VideoCleanError(path=self.path, reason=msg)
-        return []
+        return ConversionPlan()
 
     mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", clean)
 
     # When: Cleaning both files
     args = ["-n", "clean", str(first), str(second)]
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output, error = capsys.readouterr()
 
@@ -1333,12 +1327,12 @@ def test_clean_exits_zero_when_every_file_succeeds(capsys, tmp_path, mocker, moc
     # Given: One file that cleans without error
     video = tmp_path / "movie.mkv"
     video.touch()
-    mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", return_value=[])
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", return_value=ConversionPlan())
 
     # When: Cleaning it
     args = ["-n", "clean", str(video)]
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: The command exits successfully with no failure report
     assert exc_info.value.code == 0
@@ -1353,17 +1347,17 @@ def test_clean_keyboard_interrupt_aborts_the_whole_batch(capsys, tmp_path, mocke
     second = tmp_path / "second.mkv"
     second.touch()
 
-    def clean(self):
+    def clean(self, config, options):
         if self.path.name == "first.mkv":
             raise cappa.Exit(code=1)
-        return []
+        return ConversionPlan()
 
     mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", clean)
 
     # When: Cleaning both files
     args = ["-n", "clean", str(first), str(second)]
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: The run aborts before reaching the second file
     assert exc_info.value.code == 1
@@ -1398,7 +1392,7 @@ def test_clean_write_output_cleanup_failure_still_reports_the_save(
 
     # When: running clean
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
 
@@ -1419,7 +1413,7 @@ def test_clean_rejects_yes_without_from(capsys, tmp_path):
 
     # When: Running clean
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: The command errors naming --from
     assert exc_info.value.code == 1
@@ -1497,7 +1491,7 @@ def test_clean_rejects_limit_below_one(capsys, tmp_path, limit):
 
     # When: Running clean
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: The command fails with a message naming the acceptable range
     assert exc_info.value.code != 0
@@ -1511,7 +1505,7 @@ def test_clean_rejects_from_that_does_not_exist(capsys, tmp_path):
 
     # When: Running clean
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: The command errors rather than exiting 0
     assert exc_info.value.code == 1
@@ -1527,7 +1521,7 @@ def test_clean_rejects_from_that_is_a_file(capsys, tmp_path):
 
     # When: Running clean
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: The command errors rather than exiting 0
     assert exc_info.value.code == 1
@@ -1543,7 +1537,7 @@ def test_clean_from_empty_directory_still_exits_zero(capsys, tmp_path):
 
     # When: Running clean
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: The command reports the empty directory and exits successfully
     assert exc_info.value.code == 0
@@ -1572,7 +1566,7 @@ def test_clean_removes_the_original_even_when_temp_cleanup_fails(
 
     # When: Running clean
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
 
@@ -1604,7 +1598,7 @@ def test_clean_reports_a_failed_original_removal_accurately(
 
     # When: Running clean
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
 
@@ -1640,7 +1634,7 @@ def test_clean_out_with_overwrite_leaves_the_input_alone(
 
     # When: Running clean
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: The input file is still there
     assert exc_info.value.code == 0
@@ -1668,7 +1662,7 @@ def test_clean_failure_lines_name_the_file_exactly_once(capsys, tmp_path, mocker
     second = tmp_path / "second.mkv"
     second.touch()
 
-    def clean(self):
+    def clean(self, config, options):
         if self.path.name == "first.mkv":
             raise VideoCleanError(path=self.path, reason="no video streams found")
         msg = "boom"
@@ -1679,7 +1673,7 @@ def test_clean_failure_lines_name_the_file_exactly_once(capsys, tmp_path, mocker
     # When: Cleaning both files
     args = ["-n", "clean", str(first), str(second)]
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output, error = capsys.readouterr()
     combined = _normalize(output + error)
@@ -1701,7 +1695,7 @@ def test_clean_clears_the_temp_directory_when_a_file_fails(capsys, tmp_path, moc
     video = tmp_path / "movie.mkv"
     video.touch()
 
-    def clean(self):
+    def clean(self, config, options):
         raise VideoCleanError(path=self.path, reason="no video streams found")
 
     mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", clean)
@@ -1710,7 +1704,7 @@ def test_clean_clears_the_temp_directory_when_a_file_fails(capsys, tmp_path, moc
     # When: Cleaning it
     args = ["-n", "clean", str(video)]
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: The temp directory was cleared as part of handling the failure
     assert exc_info.value.code == 1
@@ -1725,7 +1719,7 @@ def test_clean_from_cleanup_failure_does_not_mask_the_real_failure(
     video = tmp_path / "movie.mkv"
     video.touch()
 
-    def clean(self):
+    def clean(self, config, options):
         raise VideoCleanError(path=self.path, reason="no video streams found")
 
     mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", clean)
@@ -1734,7 +1728,7 @@ def test_clean_from_cleanup_failure_does_not_mask_the_real_failure(
     # When: Cleaning it
     args = ["-n", "clean", str(video)]
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output, error = capsys.readouterr()
     combined = _normalize(output + error)
@@ -1757,7 +1751,7 @@ def test_clean_from_yes_reaches_the_transcode_loop(capsys, video_library, mocker
 
     # When: Running clean with --yes and no TTY
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
 
@@ -1799,7 +1793,7 @@ def test_clean_from_depth_writes_each_file_back_to_its_own_directory(
 
     # When: Cleaning everything discovered one level deep
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: Each file is written back over itself, with no backup kept
     assert exc_info.value.code == 0
@@ -1836,7 +1830,7 @@ def test_clean_from_yes_reuses_the_discovery_probe(capsys, video_library, mocker
 
     # When: Running clean with --yes
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: ffprobe ran exactly once per file
     assert exc_info.value.code == 0
@@ -1858,7 +1852,7 @@ def test_clean_from_declining_the_prompt_changes_nothing(
 
     # When: Running clean and declining
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: Nothing was transcoded, nothing was written, and the file is unchanged
     assert exc_info.value.code == 0
@@ -1885,7 +1879,7 @@ def test_clean_renders_one_tree_per_file(
 
     # When: Running clean
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     output = capsys.readouterr().out
 
@@ -1908,8 +1902,10 @@ def fake_transcode(mocker):
     """
 
     def _inner() -> None:
-        def run_ffmpeg(self, command, title, suffix=None, step=None):
-            output_path = self.temp_file.new_tmp_path(suffix=suffix or "", step_name=step or "")
+        def run_ffmpeg(self, command, title, suffix=None, step=None, *, config, options):
+            output_path = self.temp_file.new_tmp_path(
+                suffix=suffix or "", step_name=step or "", cache_dir=config.cache_dir
+            )
             output_path.write_bytes(b"transcoded")
             self.temp_file.created_temp_file(output_path)
             return [f"✔ {title}"]
@@ -1934,7 +1930,7 @@ def test_clean_vp9_writes_a_webm_file(mocker, mock_ffprobe_box, capsys, tmp_path
     # When: Cleaning it to VP9 without --overwrite
     args = ["clean", "--vp9", str(video)]
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: WebM data lands in a .webm file, the original is untouched, and no pointless
     # backup of a file that was never overwritten is left behind
@@ -1961,7 +1957,7 @@ def test_clean_vp9_overwrite_removes_the_original_container(
     # When: Cleaning it to VP9 in place
     args = ["clean", "--vp9", "--overwrite", str(video)]
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: Only the .webm remains, so the container change does not leave two copies
     assert exc_info.value.code == 0

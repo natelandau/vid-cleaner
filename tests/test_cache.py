@@ -4,8 +4,7 @@ import cappa
 import pytest
 from cappa.base import invoke
 
-from vid_cleaner import settings
-from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
+from vid_cleaner.vidcleaner import VidCleaner, configure_output
 
 
 @pytest.fixture
@@ -30,13 +29,12 @@ def tmp_cache_dir(tmp_path):
 
 def test_cache_list(tmp_cache_dir, capsys, debug):
     """Verify cache list displays directory tree structure."""
-    # Given: Cache directory path in settings
+    # Given: The cache directory that `_isolate_config` points the settings at
     args = ["cache"]
-    settings.update({"cache_dir": tmp_cache_dir})
 
     # When: Invoking cache list command
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: Output contains expected tree structure
     output = capsys.readouterr().out
@@ -48,13 +46,12 @@ def test_cache_list(tmp_cache_dir, capsys, debug):
 
 def test_cache_clean(tmp_cache_dir, capsys, debug):
     """Verify cache clean removes all cached files."""
-    # Given: Cache directory path in settings
+    # Given: The cache directory that `_isolate_config` points the settings at
     args = ["cache", "-c"]
-    settings.update({"cache_dir": tmp_cache_dir})
 
     # When: Invoking cache clean command
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
 
     # Then: Success message is displayed
     output = capsys.readouterr().out

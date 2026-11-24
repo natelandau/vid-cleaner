@@ -23,12 +23,15 @@ uv run duty test -k downmix   # extra args pass through to pytest
 
 ## Settings
 
-- `vid_cleaner.settings` is a process-wide dynaconf singleton that business logic reads directly. A setting a run mutates leaks between tests. Add each leaky setting to the autouse `_reset_leaky_settings` fixture in `tests/conftest.py`.
-- Several `clean` flag defaults are `settings.*` values, and cappa makes a bool flag with a truthy default `store_false`. With `keep_commentary = true` in config, `--keep-commentary` turns it off. Intended and documented, not a bug.
+- `load_config()` in `config.py` resolves each setting: CLI flag, then `VIDCLEANER_*` env var, then config files (default, user, dev). Returns a frozen `Config`.
+- Flag-only values (`dryrun`, `verbosity`, `h265`, `vp9`, `video_1080`, `force`, `out`) go in `RunOptions`, not `Config`.
+- Handlers that read settings take `Annotated[Config, Dep(build_config)]` and `Annotated[RunOptions, Dep(build_run_options)]`. Pass both down as arguments. Nothing reads settings from a module global.
+- A setting with a CLI flag: command attribute named exactly as the `Config` field, default `None`, paired `--x`/`--no-x` as two `cappa.Arg` entries (cappa's `--x/--no-x` shorthand rejects a short flag). `build_config` reads every attribute named in `SETTING_NAMES`.
+- `TempFile` picks its directory on the first `new_tmp_path(cache_dir=...)` call. Pass `config.cache_dir`; never construct `VideoFile` or discovery with a cache path.
+- Never print an API key. Print `Config.redacted()`, and describe HTTP errors with `describe_http_error()`.
 
 ## Command layer
 
-- Attach destructured discovery options under the attribute name `discovery`. `config_subcommand` reads trait filters from every command through that name.
 - Import `command`, `invoke`, and `parse` from `cappa.base`, never as `cappa.invoke(...)`. ty resolves those names on the `cappa` package to same-named submodules (astral-sh/ty#4553).
 
 ## Conversion planners
@@ -53,7 +56,8 @@ Each `_plan_*` method on `VideoFile` adds `OutputStream` and `PlanAction` entrie
 
     ```python
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[config_subcommand])
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
     ```
 
+- The autouse `_isolate_config` fixture points the user and dev config paths at `tmp_path` and clears `VIDCLEANER_*` vars. Write a test config with the `user_config` fixture; build objects with `make_config` and `make_run_options`.
 - `VideoFile.probe_box` re-probes whenever the cached box's `path_to_file` differs from `latest_temp_path()`, so a `get_probe_as_box` mock fires more than once per file. A call-count assertion on it must count those re-probes.

@@ -1,29 +1,11 @@
 """Test VideoFile trait derivation."""
 
-from pathlib import Path
-
 import pytest
 from iso639 import Lang
 
-from vid_cleaner import settings
 from vid_cleaner.constants import VideoTrait
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
-
-
-@pytest.fixture(autouse=True)
-def set_default_settings(tmp_path):
-    """Set default settings for trait tests."""
-    cache_dir = Path(tmp_path) / "cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    settings.update(
-        {
-            "cache_dir": cache_dir,
-            "langs_to_keep": ["en"],
-            "keep_commentary": False,
-            "force": False,
-        }
-    )
 
 
 @pytest.fixture
@@ -104,7 +86,7 @@ def test_get_traits_needs_stereo_agrees_with_downmix_planner(make_video, fixture
 
     # When: comparing the trait against what the downmix planner would produce
     tagged = VideoTrait.NEEDS_STEREO in video.get_traits()
-    downmix_streams, _, _ = video._plan_downmix(streams=video.audio_streams, langs=[])  # noqa: SLF001
+    downmix_streams, _, _ = video._plan_downmix(streams=video.audio_streams, langs=[], force=False)  # noqa: SLF001
 
     # Then: the tag promises exactly what the planner delivers
     assert tagged == bool(downmix_streams)

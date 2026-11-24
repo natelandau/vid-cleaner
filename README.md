@@ -77,6 +77,8 @@ These are the options you use most:
 | `-c`, `--keep-commentary`  | Keep commentary audio tracks                                               |
 | `-f`, `--force`            | Process the file even if it is already in the requested format             |
 
+Each on-or-off option in the `Configuration` group of `vidcleaner clean --help` also has a `--no-` form, such as `--no-downmix` or `--no-keep-commentary`. Use the `--no-` form to turn off for one run an option that your configuration file turns on.
+
 Run `vidcleaner clean --help` for the full list. To act on every file that matches a query, see [Cleaning what you searched for](#cleaning-what-you-searched-for).
 
 ### Making a clip
@@ -137,6 +139,8 @@ These rules apply to `--from`:
 
 > **CAUTION:** Do not use `--overwrite` unless you have a copy of the original. `--overwrite` replaces the original with no backup.
 
+`overwrite = true` in the configuration file has the same effect as `--overwrite`. To keep a backup for one run, use `--no-overwrite`.
+
 `--vp9` writes a new file, because VP9 must go in a WebM container. `vidcleaner clean --vp9 movie.mkv` writes `movie.webm` in the same directory and keeps `movie.mkv`. With `--overwrite`, the command deletes `movie.mkv`.
 
 If one file fails when you clean or clip several files, the command continues with the other files. At the end, it lists the failures and exits with a non-zero status. `clean` and `clip` refuse a file that has no video stream.
@@ -186,11 +190,17 @@ vidcleaner check --from /media --filters=4k --deep
 
 ### Configuration
 
-The configuration file `~/.config/vid-cleaner/config.toml` sets the defaults for `clean`. If the file does not exist, vid-cleaner creates it with the defaults below the first time it runs.
+The configuration file `~/.config/vid-cleaner/config.toml` sets the defaults for `clean` and `clip`. If the file does not exist, vid-cleaner creates it with the defaults below the first time it runs. Only your user account can read the file, because it can hold API keys. If other users can read a file that holds API keys, vid-cleaner shows a warning with the `chmod` command that corrects it.
 
-Each track option in the file (`langs_to_keep`, `keep_*`, `drop_*`, and `downmix_stereo`) has a `clean` flag. A flag reverses a `true` setting. For example, if you set `downmix_stereo = true`, then `--downmix` turns downmixing off for that run.
+vid-cleaner gets each setting from the first of these sources that sets it:
 
-To set a value without a change to the file, use an environment variable with the `VIDCLEANER_` prefix and the key in uppercase. For example, `VIDCLEANER_TMDB_API_KEY` sets `tmdb_api_key`. An environment variable overrides the file.
+1. A command-line flag, such as `--downmix` or `--no-downmix`.
+2. An environment variable with the `VIDCLEANER_` prefix and the key in uppercase. For example, `VIDCLEANER_TMDB_API_KEY` sets `tmdb_api_key`.
+3. The configuration file.
+
+An environment variable for an on-or-off setting takes `true`, `false`, `1`, or `0`. An environment variable for `langs_to_keep` takes a comma-separated list, such as `VIDCLEANER_LANGS_TO_KEEP=en,fr`, or a TOML array, such as `VIDCLEANER_LANGS_TO_KEEP='["en", "fr"]'`. vid-cleaner ignores an empty environment variable.
+
+If a setting has a value that is not valid, `clean`, `clip`, and `cache` stop and list each setting that is not valid, with its source. The other commands do not read the settings, so they continue to work. If the file has a key that vid-cleaner does not know, vid-cleaner shows a warning and ignores the key.
 
 vid-cleaner uses the original language of a video to select the audio and subtitle tracks to keep. To find that language, it looks for an IMDb or TMDB ID in three places, and stops at the first one that it finds:
 
@@ -222,6 +232,9 @@ drop_original_audio = false
 # Always create a stereo track
 downmix_stereo = false
 
+# Replace the original file without keeping a timestamped .bak copy
+overwrite = false
+
 # External services used to determine the original language of a movie or TV show
 radarr_api_key = ""
 radarr_url     = ""
@@ -235,7 +248,7 @@ tmdb_api_key   = ""
 vid-cleaner keeps its files in the locations that the [XDG Base Directory specification](https://specifications.freedesktop.org/basedir-spec/latest/) defines:
 
 -   Configuration file: `~/.config/vid-cleaner/config.toml`, or `$XDG_CONFIG_HOME/vid-cleaner/config.toml` if `XDG_CONFIG_HOME` is set
--   Cache: `~/.cache/vid-cleaner`, or `$XDG_CACHE_HOME/vid-cleaner` if `XDG_CACHE_HOME` is set
+-   Cache: `~/.cache/vid-cleaner`, or `$XDG_CACHE_HOME/vid-cleaner` if `XDG_CACHE_HOME` is set. To use a different directory, set `cache_dir` in the configuration file or `VIDCLEANER_CACHE_DIR`.
 
 To print the contents of the cache, run `vidcleaner cache`. To empty the cache, run `vidcleaner cache --clear`.
 
