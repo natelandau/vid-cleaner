@@ -194,6 +194,32 @@ def test_discover_ignores_appledouble_sidecars(video_library):
     assert report.skipped == []
 
 
+def test_discover_matches_extensions_case_insensitively(video_library):
+    """Verify a file with an uppercase video extension is discovered."""
+    # Given: A video whose extension is uppercase
+    directory = video_library([("MOVIE.MKV", 100, 1_000_000)])
+
+    # When: Discovering video files
+    report = discover_video_files(directory)
+
+    # Then: The file is found
+    assert [r.video_file.path.name for r in report.results] == ["MOVIE.MKV"]
+
+
+def test_discover_lists_a_file_reached_through_a_symlink_once(video_library):
+    """Verify a symlinked subdirectory does not list, and so clean, its files twice."""
+    # Given: A nested video and a sibling symlink pointing at its directory
+    directory = video_library([("nested/deep.mkv", 100, 1_000_000)])
+    (directory / "latest").symlink_to(directory / "nested", target_is_directory=True)
+
+    # When: Discovering one level deep, which visits both directories
+    report = discover_video_files(directory, depth=1)
+
+    # Then: The file appears once
+    assert [r.video_file.path.name for r in report.results] == ["deep.mkv"]
+    assert report.total == 1
+
+
 def test_discover_depth_zero_ignores_subdirectories(video_library):
     """Verify the default depth does not descend into subdirectories."""
     # Given: One top-level file and one nested a directory below

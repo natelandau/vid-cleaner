@@ -14,9 +14,9 @@ from rich.progress import track
 
 from vid_cleaner.constants import SortOrder, VideoContainerTypes, VideoTrait
 from vid_cleaner.exceptions import VideoProbeError
-from vid_cleaner.models import SearchResult
-from vid_cleaner.utils import coerce_video_files
+from vid_cleaner.models import SearchResult, VideoFile
 
+VIDEO_SUFFIXES = frozenset(container_type.value for container_type in VideoContainerTypes)
 # Each key pairs a getter with the direction that reads naturally for it: names ascend,
 # magnitudes descend. `reverse` flips whichever is active.
 SortKey = Callable[[SearchResult], Any]
@@ -114,26 +114,29 @@ def discover_video_files(
 
     directories_to_search = [*find_subdirectories(root, depth=depth), root] if depth > 0 else [root]
 
-    video_files = []
+    # Keyed by resolved path so a file reached twice, such as through a symlinked
+    # subdirectory, is probed, listed, and cleaned once.
+    video_files_by_path: dict[Path, VideoFile] = {}
     with Live(console=pp.console(), auto_refresh=True) as live:
         for i, directory in enumerate(directories_to_search):
-            matching_paths = find_files(
-                directory,
-                globs=[f"*{container_type.value}" for container_type in VideoContainerTypes],
-            )
+            # Compare suffixes rather than globbing, since glob is case-sensitive on POSIX
+            # and would miss `MOVIE.MKV`.
             # macOS writes an AppleDouble `._` metadata sidecar beside every file it copies to
             # a non-HFS volume. They share the video's extension but hold no video, so probing
             # them only slows the scan and floods the skipped-file report. Other dotfiles stay
             # in scope because a user may deliberately hide a real video.
-            video_files.extend(
-                coerce_video_files(
-                    [path for path in matching_paths if not path.name.startswith("._")]
-                )
-            )
+            for path in find_files(directory):
+                if path.suffix.lower() not in VIDEO_SUFFIXES or path.name.startswith("._"):
+                    continue
+                # Not `coerce_video_files`: its `cappa.Exit` for a file deleted mid-scan would
+                # end the whole run instead of skipping that file at probe time.
+                video_file = VideoFile(path)
+                video_files_by_path.setdefault(video_file.path, video_file)
             live.update(
-                f"Found {len(video_files)} video files in {i + 1}/{len(directories_to_search)} directories"
+                f"Found {len(video_files_by_path)} video files in {i + 1}/{len(directories_to_search)} directories"
             )
 
+        video_files = list(video_files_by_path.values())
         live.update(
             f"[dim]Found {len(video_files)} video files in {len(directories_to_search)}/{len(directories_to_search)} directories[/dim]"
         )
@@ -143,7 +146,11 @@ def discover_video_files(
     unreadable: list[VideoProbeError] = []
     for video_file in track(
         video_files,
-        description=f"Filtering {len(video_files)} files for {human_readable_filters}...",
+        description=(
+            f"Filtering {len(video_files)} files for {human_readable_filters}..."
+            if active_filters
+            else f"Reading {len(video_files)} files..."
+        ),
         transient=True,
     ):
         # A video extension is no guarantee of video content; corrupt or truncated files
