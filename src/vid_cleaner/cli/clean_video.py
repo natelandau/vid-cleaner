@@ -1,11 +1,13 @@
 """Clean subcommand."""
 
+from dataclasses import replace
 from pathlib import Path
 from typing import Annotated
 
 import cappa
 from cappa import Dep
 from nclutils import pp
+from rich.prompt import Confirm
 
 from vid_cleaner.cli.discovery_output import (
     confirm_selection,
@@ -13,16 +15,24 @@ from vid_cleaner.cli.discovery_output import (
     present_discovery,
 )
 from vid_cleaner.config import Config, RunOptions
-from vid_cleaner.constants import SYMBOL_CROSS, SortOrder
+from vid_cleaner.constants import (
+    FHD_RESOLUTION,
+    SCALE_TO_1080P_LABEL,
+    SYMBOL_CROSS,
+    SortOrder,
+)
 from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
 from vid_cleaner.utils import (
     coerce_video_files,
     copy_to_output,
+    render_operations,
     render_substeps,
     resolve_out_path_override,
 )
 from vid_cleaner.vidcleaner import CleanCommand, build_config, build_run_options
 
+from vid_cleaner.cli.ffmpeg_step import run_ffmpeg_step  # isort: skip
+from vid_cleaner.models.conversion_plan import ConversionPlan, PlanAction  # isort: skip
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
@@ -78,6 +88,90 @@ def write_output(
             )
 
     return messages
+
+
+def approve_upscale(video_file: VideoFile, *, source_width: int, dryrun: bool) -> bool:
+    """Warn that `--1080p --force` would upscale a smaller video and ask the user to approve it.
+
+    Upscaling adds no detail and makes the file larger, so the prompt defaults to no. A
+    dry run only warns, since it changes nothing. A run that cannot prompt skips the
+    upscale rather than guessing.
+
+    Args:
+        video_file (VideoFile): The file the plan would upscale.
+        source_width (int): The source video's width in pixels.
+        dryrun (bool): Whether this run only previews its changes.
+
+    Returns:
+        bool: True when the user approves the upscale.
+    """
+    pp.warning(
+        f"`{video_file.name}` is {source_width}px wide. Converting it to 1080p upscales it "
+        f"to {FHD_RESOLUTION.width}px, which adds no detail and makes the file larger."
+    )
+    if dryrun:
+        return True
+
+    no_prompt_message = "Cannot ask for approval in a non-interactive run. Skipping the upscale."
+    if not pp.console().is_terminal:
+        pp.warning(no_prompt_message)
+        return False
+
+    try:
+        approved = Confirm.ask("Upscale this video to 1080p?", default=False, console=pp.console())
+    # `is_terminal` describes the output stream, so a closed or redirected stdin still
+    # reaches the prompt and gets EOF instead of an answer.
+    except EOFError:
+        pp.warning(no_prompt_message)
+        return False
+    return approved
+
+
+def clean_video_file(
+    video_file: VideoFile, *, config: Config, options: RunOptions
+) -> ConversionPlan:
+    """Plan a file's cleaning, report the plan, and run it unless it changes nothing.
+
+    Report the operations up front, before the ffmpeg progress bar starts.
+
+    Args:
+        video_file (VideoFile): The file to clean.
+        config (Config): The settings for this run.
+        options (RunOptions): The CLI-only values for this run.
+
+    Returns:
+        ConversionPlan: The plan, whose `output_suffix` names any container change.
+    """
+    plan = video_file.plan_clean(config=config, options=options)
+
+    if plan.upscale_source_width is not None and not approve_upscale(
+        video_file, source_width=plan.upscale_source_width, dryrun=options.dryrun
+    ):
+        plan = video_file.plan_clean(config=config, options=replace(options, video_1080=False))
+        plan.actions.append(
+            PlanAction(label=SCALE_TO_1080P_LABEL, applied=False, reason="upscale not approved")
+        )
+
+    for note in plan.debug_notes:
+        pp.debug(note)
+    for notice in plan.notices:
+        pp.info(notice)
+
+    # A real run always follows these with write-outcome substeps, so leave the tree
+    # open for them; a dry run writes nothing, making the operations its last lines.
+    render_operations(plan.actions, debug=options.verbosity >= 1, closes_tree=options.dryrun)
+
+    # Nothing to encode: the operations above already reported "No changes needed"
+    if video_file.plan_changes_file(plan):
+        command = video_file.prepare_ffmpeg(
+            plan.build_command(),
+            suffix=plan.output_suffix,
+            step="clean",
+            config=config,
+            dryrun=options.dryrun,
+        )
+        run_ffmpeg_step(video_file, command, title="Processing", dryrun=options.dryrun)
+    return plan
 
 
 def select_video_files(
@@ -187,7 +281,7 @@ def main(
         substeps: list[str] = []
 
         try:
-            plan = video_file.clean(config=config, options=options)
+            plan = clean_video_file(video_file, config=config, options=options)
             destination = out_path_override or video_file.path
             if plan.output_suffix:
                 destination = destination.with_suffix(plan.output_suffix)

@@ -98,15 +98,47 @@ class TempFile:
             atexit.register(cleanup_on_exit, self)
             self._cleanup_registered = True
 
-        if not step_name:
-            step_name = "no_step"
+        self.tmp_file_number = self._next_tmp_file_number(self.tmp_dir)
+        file_name = f"{self.tmp_file_number}_{step_name or 'no_step'}{suffix}"
+        pp.trace(f"Create new tmp file: {file_name}")
+        return self.tmp_dir / file_name
 
-        # Create a new tmp file name
-        for file in self.tmp_dir.iterdir():
-            if file.stem.startswith(f"{self.tmp_file_number}_"):
-                self.tmp_file_number += 1
-        pp.trace(f"Create new tmp file: {self.tmp_file_number}_{step_name}{suffix}")
-        return self.tmp_dir / f"{self.tmp_file_number}_{step_name}{suffix}"
+    def preview_tmp_path(
+        self, suffix: str | None = None, step_name: str | None = None, *, cache_dir: Path
+    ) -> Path:
+        """Build the path `new_tmp_path` would return, without touching the filesystem.
+
+        Use for a dry run, which shows the ffmpeg command but must not create directories
+        or register cleanup for files that will never exist.
+
+        Args:
+            suffix (str | None, optional): File extension to use. Defaults to original file's suffix.
+            step_name (str | None, optional): Name of processing step to include in filename. Defaults to None.
+            cache_dir (Path): Directory that would hold this instance's temporary directory.
+
+        Returns:
+            Path: Path the next temporary file would get.
+        """
+        # A placeholder stands in for the directory name `new_tmp_path` has not chosen yet
+        tmp_dir = self.tmp_dir or cache_dir / "<temp>"
+        number = self._next_tmp_file_number(tmp_dir)
+        return tmp_dir / f"{number}_{step_name or 'no_step'}{suffix or self.suffix}"
+
+    def _next_tmp_file_number(self, tmp_dir: Path) -> int:
+        """Find the first file number not already used in the temporary directory.
+
+        Args:
+            tmp_dir (Path): The directory to check. A missing directory uses no numbers.
+
+        Returns:
+            int: The number for the next temporary file.
+        """
+        number = self.tmp_file_number
+        if tmp_dir.is_dir():
+            for file in tmp_dir.iterdir():
+                if file.stem.startswith(f"{number}_"):
+                    number += 1
+        return number
 
     def created_temp_file(self, path: Path) -> None:
         """Register a newly created temporary file.

@@ -278,7 +278,8 @@ def captured_clean(mocker):
         captured["options"] = options
         return ConversionPlan()
 
-    mocker.patch("vid_cleaner.models.video_file.VideoFile.clean", _record)
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.plan_clean", _record)
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.plan_changes_file", return_value=False)
     return captured
 
 

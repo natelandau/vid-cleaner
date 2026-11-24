@@ -71,10 +71,10 @@ These are the options you use most:
 | `-l`, `--langs`            | Languages to keep, as comma-separated ISO 639-1 codes (`en,es`)            |
 | `-H`, `--h265`             | Convert the video to H.265                                                 |
 | `-V`, `--vp9`              | Convert the video to VP9, in a WebM container                              |
-| `-p`, `--1080p`            | Convert a 4k video to 1080p                                                |
-| `-d`, `--downmix`          | Add a stereo track if the file has none. Add `--force` to recreate one.    |
+| `-p`, `--1080p`            | Convert a 4k video to 1080p. With `--force`, a smaller video is upscaled only after you approve it. |
+| `-d`, `--downmix`          | Add a stereo track if the file has none. With `--force`, replace the stereo track in the language of the surround track. |
 | `-s`, `--keep-subs`        | Keep every subtitle track                                                  |
-| `-c`, `--keep-commentary`  | Keep commentary audio tracks                                               |
+| `-c`, `--keep-commentary`  | Keep commentary audio tracks. Without this flag, all commentary tracks are removed, also tracks with no language tag. |
 | `-f`, `--force`            | Process the file even if it is already in the requested format             |
 
 Each on-or-off option in the `Configuration` group of `vidcleaner clean --help` also has a `--no-` form, such as `--no-downmix` or `--no-keep-commentary`. Use the `--no-` form to turn off for one run an option that your configuration file turns on.
