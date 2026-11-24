@@ -215,6 +215,30 @@ class VideoFile:
         )
 
     @staticmethod
+    def _stream_language(stream: Box) -> Lang | None:
+        """Parse a stream's language tag so it can be compared with the keep languages.
+
+        Files carry tags that are not valid ISO 639 codes, such as `qaa`, uppercase `ENG`, or
+        deprecated `iw`. Treat those as unknown rather than letting one bad tag abort the run.
+
+        Args:
+            stream (Box): The stream to inspect.
+
+        Returns:
+            Lang | None: The tagged language, or None when the tag is missing, `und`, or not a
+                usable ISO 639 code.
+        """
+        if not stream.language:
+            return None
+        tag = str(stream.language).lower()
+        if tag == "und":
+            return None
+        try:
+            return Lang(tag)
+        except (InvalidLanguageValue, DeprecatedLanguageValue):
+            return None
+
+    @staticmethod
     def _is_surround_stream(stream: Box) -> bool:
         """Check whether a stream carries a surround bed a stereo mix can be downmixed from.
 
@@ -276,15 +300,11 @@ class VideoFile:
             tuple[bool, int, int]: Sort key of (is commentary, language rank, layout tier).
         """
         unknown_rank = len(langs)
-        if not stream.language or stream.language == "und":
+        lang = VideoFile._stream_language(stream)
+        if lang is None:
             lang_rank = unknown_rank
         else:
-            try:
-                lang = Lang(stream.language)
-            except (InvalidLanguageValue, DeprecatedLanguageValue):
-                lang_rank = unknown_rank
-            else:
-                lang_rank = langs.index(lang) if lang in langs else unknown_rank + 1
+            lang_rank = langs.index(lang) if lang in langs else unknown_rank + 1
 
         if stream.channel_count <= AudioLayout.SURROUND5.value:
             tier = 0
@@ -302,9 +322,10 @@ class VideoFile:
         """Plan a downmix of the best surround bed to a dialogue-forward stereo track.
 
         Skip the work when a non-commentary stereo mix already exists, unless
-        `force` is set, in which case the existing stereo track(s) are dropped
-        and rebuilt from the surround bed. Notify the user when downmix is skipped or
-        cannot be recreated.
+        `force` is set, in which case the existing stereo track(s) in the surround
+        bed's language are dropped and rebuilt from that bed. Stereo tracks in other
+        languages are kept, since the single rebuilt track does not replace them.
+        Notify the user when downmix is skipped or cannot be recreated.
 
         Args:
             streams (list[Box]): Audio streams that would otherwise be kept.
@@ -358,7 +379,12 @@ class VideoFile:
                 )
                 return downmix_streams, streams_to_drop, action
             # Forced recreation: drop the existing stereo mix and rebuild it from the surround bed
-            streams_to_drop = existing_stereo
+            source_language = VideoFile._stream_language(surround_source)
+            streams_to_drop = [
+                stream
+                for stream in existing_stereo
+                if VideoFile._stream_language(stream) == source_language
+            ]
 
         if surround_source is not None:
             downmix_streams.append(
@@ -402,17 +428,14 @@ class VideoFile:
 
         streams_to_keep: list[Box] = []
         for stream in self.audio_streams:
-            # Unknown language streams are kept to avoid removing potentially important audio
-            if not stream.language:
-                streams_to_keep.append(stream)
-                continue
-
             # Commentary tracks are often unwanted and take up space
             if not config.keep_commentary and self._is_commentary_stream(stream):
                 pp.debug(rf"PLAN AUDIO: Remove stream #{stream.index} [commentary]")
                 continue
 
-            if stream.language == "und" or Lang(stream.language) in langs:
+            # Unknown language streams are kept to avoid removing potentially important audio
+            language = self._stream_language(stream)
+            if language is None or language in langs:
                 streams_to_keep.append(stream)
                 continue
 
@@ -477,11 +500,13 @@ class VideoFile:
         if not stream.language:
             return False
 
-        # Keep undefined language streams and streams matching user preferences
-        # This ensures we don't accidentally remove important subtitles
-        if config.keep_local_subtitles and (
-            stream.language.lower() == "und" or Lang(stream.language) in langs
-        ):
+        # Undefined-language streams count as a match so important subtitles are not removed
+        language = VideoFile._stream_language(stream)
+        matches_keep_languages = str(stream.language).lower() == "und" or (
+            language is not None and language in langs
+        )
+
+        if config.keep_local_subtitles and matches_keep_languages:
             return True
 
         # Keep subtitles in user's languages when original audio differs
@@ -490,7 +515,7 @@ class VideoFile:
             not config.drop_local_subs
             and langs
             and original_language not in langs
-            and (stream.language.lower() == "und" or Lang(stream.language) in langs)
+            and matches_keep_languages
         )
 
     def _plan_subtitle_streams(self, plan: ConversionPlan, config: Config) -> list[OutputStream]:
@@ -965,15 +990,30 @@ class VideoFile:
         Returns:
             str | None: The IMDb ID if found, otherwise None.
         """
-        response = query_radarr(self.name, url=config.radarr_url, api_key=config.radarr_api_key)
-        if response and "movie" in response and "imdbId" in response["movie"]:
-            return response["movie"]["imdbId"]
+        radarr = query_radarr(self.name, url=config.radarr_url, api_key=config.radarr_api_key)
+        if imdb_id := self._imdb_id_from_arr_response(response=radarr, media_key="movie"):
+            return imdb_id
 
-        response = query_sonarr(self.name, url=config.sonarr_url, api_key=config.sonarr_api_key)
-        if response and "series" in response and "imdbId" in response["series"]:
-            return response["series"]["imdbId"]
+        sonarr = query_sonarr(self.name, url=config.sonarr_url, api_key=config.sonarr_api_key)
+        return self._imdb_id_from_arr_response(response=sonarr, media_key="series")
 
-        return None
+    @staticmethod
+    def _imdb_id_from_arr_response(response: dict[str, Any], media_key: str) -> str | None:
+        """Read the IMDb ID from a Radarr or Sonarr parse response.
+
+        An unmatched title can come back with the media object null or missing, and a match
+        can lack an IMDb ID, so every level is checked before reading it.
+
+        Args:
+            response (dict[str, Any]): The parse response body.
+            media_key (str): The key holding the matched media, `movie` or `series`.
+
+        Returns:
+            str | None: The IMDb ID, or None when the response has none.
+        """
+        media = response.get(media_key) if isinstance(response, dict) else None
+        imdb_id = media.get("imdbId") if isinstance(media, dict) else None
+        return imdb_id if isinstance(imdb_id, str) and imdb_id else None
 
     def _run_ffmpeg(
         self,

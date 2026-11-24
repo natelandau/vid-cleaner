@@ -351,7 +351,7 @@ def test_clean_video_downmix_stereo_commentary_kept(
 ):
     """Verify a kept stereo commentary track does not block downmixing the main track."""
     # Given: A file with a surround main track and a no-language stereo commentary track
-    args = ["clean", "-vv", "--downmix", str(mock_video_path)]
+    args = ["clean", "-vv", "--downmix", "--keep-commentary", str(mock_video_path)]
     mocker.patch(
         "vid_cleaner.models.video_file.get_probe_as_box",
         return_value=mock_ffprobe_box("commentary_no_lang.json"),
@@ -1143,6 +1143,11 @@ def test_find_original_language_falls_through_failed_candidate(
             {"movie": {"title": "Some Movie"}},
             None,
             id="Radarr matched a movie carrying no imdb id",
+        ),
+        pytest.param(
+            {"parsedMovieInfo": {"movieTitle": "Some Movie"}, "movie": None},
+            None,
+            id="Radarr returned a null movie",
         ),
     ],
 )
