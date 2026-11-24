@@ -8,6 +8,7 @@ from cappa.base import invoke
 
 from vid_cleaner import settings
 from vid_cleaner.cli.check_video import display_path
+from vid_cleaner.cli.discovery_output import NOT_AN_EXISTING_DIRECTORY_ERROR
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 
@@ -271,7 +272,7 @@ def test_check_from_nonexistent_directory_errors(capsys, tmp_path):
 
     # Then: The bad path is named
     assert exc_info.value.code == 1
-    assert "must be an existing directory" in captured.err
+    assert NOT_AN_EXISTING_DIRECTORY_ERROR in captured.err
 
 
 def test_check_rejects_from_combined_with_files(capsys, tmp_path, mock_video_path):
@@ -401,3 +402,17 @@ def test_display_path_is_absolute_outside_cwd(tmp_path, monkeypatch):
     # When: Rendering it
     # Then: The full path is shown
     assert display_path(outside) == str(outside.resolve())
+
+
+def test_display_path_survives_a_deleted_working_directory(tmp_path, monkeypatch):
+    """Verify a deleted working directory does not crash the report."""
+    # Given: A working directory that no longer exists
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    workdir.rmdir()
+    movie = tmp_path / "movie.mkv"
+
+    # When: Rendering a file found by absolute path
+    # Then: The path is shown as found
+    assert display_path(movie) == str(movie)

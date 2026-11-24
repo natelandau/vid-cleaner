@@ -20,6 +20,7 @@ def make_report(**overrides) -> DiscoveryReport:
         DiscoveryReport: A report with every field defaulted unless overridden.
     """
     defaults = DiscoveryReport(
+        root=Path("/library"),
         results=[],
         total=0,
         skipped=[],
@@ -39,7 +40,7 @@ def test_present_exits_zero_when_nothing_found(capsys, tmp_path):
 
     # When: Presenting it
     with pytest.raises(cappa.Exit) as exc_info:
-        present_discovery(report, root=tmp_path)
+        present_discovery(report)
 
     # Then: The command warns and exits successfully
     assert exc_info.value.code == 0
@@ -53,11 +54,28 @@ def test_present_exits_one_when_nothing_matched(capsys, tmp_path):
 
     # When: Presenting it with an active filter
     with pytest.raises(cappa.Exit) as exc_info:
-        present_discovery(report, root=tmp_path)
+        present_discovery(report)
 
     # Then: The command errors and names the unmatched filter
     assert exc_info.value.code == 1
     assert "No video files found matching 'reorder'" in capsys.readouterr().err
+
+
+def test_present_errors_when_the_searched_directory_could_not_be_listed(capsys, tmp_path):
+    """Verify an unlistable directory is an error, not an empty library that exits 0."""
+    # Given: A report that found no files because its directory could not be listed
+    report = make_report(
+        total=0,
+        skipped=[VideoProbeError(path=tmp_path, reason="directory could not be listed")],
+    )
+
+    # When: Presenting it
+    with pytest.raises(cappa.Exit) as exc_info:
+        present_discovery(report)
+
+    # Then: The command errors instead of reporting an empty directory
+    assert exc_info.value.code == 1
+    assert "No video files found in" not in capsys.readouterr().out
 
 
 def test_present_empty_match_reports_skipped_count(capsys, tmp_path):
@@ -71,12 +89,12 @@ def test_present_empty_match_reports_skipped_count(capsys, tmp_path):
 
     # When: Presenting it
     with pytest.raises(cappa.Exit) as exc_info:
-        present_discovery(report, root=tmp_path)
+        present_discovery(report)
 
-    # Then: The error reports the skipped file alongside the mismatch
+    # Then: The error reports the skipped count alongside the mismatch
     error = capsys.readouterr().err
     assert exc_info.value.code == 1
-    assert "1 file(s) skipped as unreadable" in error
+    assert "1 skipped" in error
 
 
 def test_present_unfiltered_empty_match_says_unreadable(capsys, tmp_path):
@@ -86,7 +104,7 @@ def test_present_unfiltered_empty_match_says_unreadable(capsys, tmp_path):
 
     # When: Presenting it
     with pytest.raises(cappa.Exit) as exc_info:
-        present_discovery(report, root=tmp_path)
+        present_discovery(report)
 
     # Then: The error explains that nothing could be read
     assert exc_info.value.code == 1

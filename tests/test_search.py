@@ -7,6 +7,7 @@ import pytest
 from cappa.base import invoke
 
 from vid_cleaner import settings
+from vid_cleaner.cli.discovery_output import NOT_AN_EXISTING_DIRECTORY_ERROR
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.vidcleaner import VidCleaner, config_subcommand
 
@@ -76,7 +77,6 @@ def test_search_with_results(
     # debug(output, "output")
 
     assert exc_info.value.code == 0
-    assert "Found 1 video files in 1/1 directories" in output
     assert "test_video.mp4" in output
     assert "h264" in output
 
@@ -108,7 +108,6 @@ def test_search_with_no_results(
     # debug(output, "output")
 
     assert exc_info.value.code == 1
-    assert "Found 1 video files in 1/1 directories" in output
     assert "No video files found matching 'reorder'" in error
     assert "Bitrate" not in output
 
@@ -353,10 +352,13 @@ def test_search_sort_ties_are_deterministic(capsys, video_library, mocker):
     directory = video_library(
         [("alpha.mkv", 100, 0), ("bravo.mkv", 100, 0), ("charlie.mkv", 100, 0)]
     )
-    # find_files' scan order is arbitrary; scramble it here to prove the table's row
+    # Directory listing order is arbitrary; scramble it here to prove the table's row
     # order does not simply mirror whatever order the filesystem happened to return.
     scrambled = [directory / "bravo.mkv", directory / "charlie.mkv", directory / "alpha.mkv"]
-    mocker.patch("vid_cleaner.controllers.discovery.find_files", return_value=scrambled)
+    mocker.patch(
+        "vid_cleaner.controllers.discovery._walk_video_paths",
+        return_value=[(directory, scrambled)],
+    )
 
     # When: Sorting by size
     args = ["search", str(directory), "--filters", "h264", "--sort", "size"]
@@ -560,10 +562,17 @@ def test_search_table_caption_reports_skipped_files(
     assert "1 skipped" in output
 
 
-def test_search_rejects_directory_that_does_not_exist(capsys, tmp_path):
+@pytest.mark.parametrize(
+    "build_search_path",
+    [
+        pytest.param(lambda tmp_path: str(tmp_path / "does-not-exist"), id="missing_directory"),
+        pytest.param(lambda _: "~vidcleaner-no-such-user/movies", id="unknown_user_home"),
+    ],
+)
+def test_search_rejects_directory_that_does_not_exist(capsys, tmp_path, build_search_path):
     """Verify a mistyped search path fails instead of reporting an empty library."""
     # Given: A search path that does not exist
-    args = ["search", str(tmp_path / "does-not-exist")]
+    args = ["search", build_search_path(tmp_path)]
 
     # When: Running search
     with pytest.raises(cappa.Exit) as exc_info:
@@ -571,7 +580,7 @@ def test_search_rejects_directory_that_does_not_exist(capsys, tmp_path):
 
     # Then: The command errors rather than exiting 0
     assert exc_info.value.code == 1
-    assert "must be an existing directory" in capsys.readouterr().err
+    assert NOT_AN_EXISTING_DIRECTORY_ERROR in capsys.readouterr().err
 
 
 def test_search_expands_a_literal_tilde(capsys, video_library, monkeypatch):

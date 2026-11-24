@@ -158,7 +158,7 @@ def sort_header(label: str, *, active: bool, descending: bool) -> Text:
     return Text(f"{label} {'↓' if descending else '↑'}", style="bold cyan")
 
 
-def search_table(report: DiscoveryReport, *, root: Path | None = None) -> Table:
+def search_table(report: DiscoveryReport) -> Table:
     """Build the discovery results table shared by `search` and `clean`.
 
     Stack each file's traits beneath its name inside one cell so the filename gets the
@@ -166,11 +166,10 @@ def search_table(report: DiscoveryReport, *, root: Path | None = None) -> Table:
     can be shown as emphasis rather than as a second column repeating the same tokens.
 
     Args:
-        report (DiscoveryReport): The ranked selection and the counts describing it.
-        root (Path | None): The directory a recursive search started from. When set,
-            each row's directory renders as a dim segment ahead of its filename so
-            same-named files in different directories stay distinguishable. Omitted
-            for a non-recursive (depth 0) search.
+        report (DiscoveryReport): The ranked selection and the counts describing it. A
+            recursive search renders each row's directory, relative to the searched
+            root, as a dim segment ahead of its filename so same-named files in
+            different directories stay distinguishable.
 
     Returns:
         Table: Rich table ready to print.
@@ -220,9 +219,9 @@ def search_table(report: DiscoveryReport, *, root: Path | None = None) -> Table:
 
     for index, result in enumerate(report.results, start=1):
         parent = ""
-        if root is not None:
+        if report.recursive:
             try:
-                relative_dir = result.video_file.path.parent.relative_to(root)
+                relative_dir = result.video_file.path.parent.relative_to(report.root)
             except ValueError:
                 # A result outside the search root (should not happen in practice)
                 # falls back to the bare filename rather than raising.

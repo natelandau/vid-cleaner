@@ -32,6 +32,10 @@ class VideoContainerTypes(StrEnum):
     M4V = ".m4v"
 
 
+# Compare against `path.suffix.lower()`, so `MOVIE.MKV` counts as a video too.
+VIDEO_SUFFIXES = frozenset(container_type.value for container_type in VideoContainerTypes)
+
+
 class CodecTypes(StrEnum):
     """Codec types for vid-cleaner."""
 

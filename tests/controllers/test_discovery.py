@@ -1,9 +1,16 @@
 """Test the discovery controller."""
 
+import os
+
 import pytest
 
 from vid_cleaner.constants import SortOrder, VideoTrait
-from vid_cleaner.controllers.discovery import DiscoveryReport, coerce_bitrate, discover_video_files
+from vid_cleaner.controllers.discovery import (
+    DiscoveryReport,
+    _walk_video_paths,
+    coerce_bitrate,
+    discover_video_files,
+)
 from vid_cleaner.exceptions import VideoProbeError
 
 
@@ -194,6 +201,92 @@ def test_discover_ignores_appledouble_sidecars(video_library):
     assert report.skipped == []
 
 
+@pytest.mark.parametrize(
+    "make_entry",
+    [
+        pytest.param(os.mkfifo, id="fifo"),
+        pytest.param(lambda path: path.symlink_to(path.name), id="symlink_loop"),
+        pytest.param(lambda path: path.symlink_to("missing.mkv"), id="dangling_symlink"),
+    ],
+)
+def test_discover_ignores_entries_that_are_not_regular_files(video_library, make_entry):
+    """Verify a video-named entry that is not a regular file is never probed."""
+    # Given: A real video beside a video-named entry that is not a regular file
+    directory = video_library([("movie.mkv", 100, 1_000_000)])
+    make_entry(directory / "odd.mkv")
+
+    # When: Discovering video files
+    report = discover_video_files(directory)
+
+    # Then: Only the real video is counted, and nothing is reported as skipped
+    assert [r.video_file.path.name for r in report.results] == ["movie.mkv"]
+    assert report.total == 1
+    assert report.skipped == []
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can list any directory")
+def test_discover_reports_a_directory_it_cannot_list(video_library):
+    """Verify an unlistable subdirectory is reported rather than silently searched as empty."""
+    # Given: A readable video and a subdirectory with no permissions
+    directory = video_library([("movie.mkv", 100, 1_000_000), ("locked/hidden.mkv", 100, 0)])
+    locked = directory / "locked"
+    locked.chmod(0)
+
+    # When: Discovering one level deep
+    try:
+        report = discover_video_files(directory, depth=1)
+    finally:
+        locked.chmod(0o755)
+
+    # Then: The readable video is found and the locked directory is reported as skipped
+    assert [r.video_file.path.name for r in report.results] == ["movie.mkv"]
+    assert [error.path for error in report.skipped] == [locked]
+
+
+def test_walk_visits_each_directory_once_through_a_symlink_cycle(tmp_path):
+    """Verify links back to an ancestor do not multiply the walk at every level."""
+    # Given: Two subdirectories that each link back to the root
+    for name in ("a", "b"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "up").symlink_to("..", target_is_directory=True)
+
+    # When: Walking far deeper than the tree
+    errors: list[OSError] = []
+    walked = [
+        directory for directory, _ in _walk_video_paths(tmp_path, depth=16, on_error=errors.append)
+    ]
+
+    # Then: Each real directory is walked once
+    assert errors == []
+    assert sorted(walked) == [tmp_path, tmp_path / "a", tmp_path / "b"]
+
+
+def test_discover_matches_extensions_case_insensitively(video_library):
+    """Verify a file with an uppercase video extension is discovered."""
+    # Given: A video whose extension is uppercase
+    directory = video_library([("MOVIE.MKV", 100, 1_000_000)])
+
+    # When: Discovering video files
+    report = discover_video_files(directory)
+
+    # Then: The file is found
+    assert [r.video_file.path.name for r in report.results] == ["MOVIE.MKV"]
+
+
+def test_discover_lists_a_file_reached_through_a_symlink_once(video_library):
+    """Verify a symlinked subdirectory does not list, and so clean, its files twice."""
+    # Given: A nested video and a sibling symlink pointing at its directory
+    directory = video_library([("nested/deep.mkv", 100, 1_000_000)])
+    (directory / "latest").symlink_to(directory / "nested", target_is_directory=True)
+
+    # When: Discovering one level deep, which visits both directories
+    report = discover_video_files(directory, depth=1)
+
+    # Then: The file appears once
+    assert [r.video_file.path.name for r in report.results] == ["deep.mkv"]
+    assert report.total == 1
+
+
 def test_discover_depth_zero_ignores_subdirectories(video_library):
     """Verify the default depth does not descend into subdirectories."""
     # Given: One top-level file and one nested a directory below
@@ -224,9 +317,12 @@ def test_discover_ties_break_alphabetically(video_library, mocker):
     directory = video_library(
         [("alpha.mkv", 100, 0), ("bravo.mkv", 100, 0), ("charlie.mkv", 100, 0)]
     )
-    # find_files' scan order is arbitrary; scramble it to prove the tiebreaker is real.
+    # Directory listing order is arbitrary; scramble it to prove the tiebreaker is real.
     scrambled = [directory / "bravo.mkv", directory / "charlie.mkv", directory / "alpha.mkv"]
-    mocker.patch("vid_cleaner.controllers.discovery.find_files", return_value=scrambled)
+    mocker.patch(
+        "vid_cleaner.controllers.discovery._walk_video_paths",
+        return_value=[(directory, scrambled)],
+    )
 
     # When: Sorting by a key that cannot break the tie
     report = discover_video_files(directory, sort=SortOrder.SIZE)

@@ -6,10 +6,9 @@ import cappa
 from nclutils import pp
 from rich.progress import track
 
-from vid_cleaner import settings
-from vid_cleaner.cli.discovery_output import resolve_discovery_root
+from vid_cleaner.cli.discovery_output import discover_from_directory
 from vid_cleaner.constants import SortOrder
-from vid_cleaner.controllers.discovery import discover_video_files
+from vid_cleaner.controllers.discovery import DiscoveryReport
 from vid_cleaner.controllers.validation import CheckResult, check_probed_video, check_video_file
 from vid_cleaner.vidcleaner import CheckCommand
 
@@ -27,7 +26,11 @@ def display_path(path: Path) -> str:
     Returns:
         str: The path to print.
     """
-    cwd = Path.cwd()
+    try:
+        cwd = Path.cwd()
+    except FileNotFoundError:
+        # A deleted working directory leaves nothing to shorten the path against.
+        return str(path.expanduser())
     resolved = path.expanduser().resolve()
 
     if resolved.parent == cwd:
@@ -39,32 +42,21 @@ def display_path(path: Path) -> str:
         return str(resolved)
 
 
-def check_from_directory(check_cmd: CheckCommand, *, from_dir: Path) -> list[CheckResult]:
-    """Check every video file under the `--from` directory.
+def check_discovered_files(report: DiscoveryReport, *, deep: bool) -> list[CheckResult]:
+    """Check every video file a `--from` discovery found.
 
     Args:
-        check_cmd (CheckCommand): The parsed check command.
-        from_dir (Path): The `--from` directory as the user typed it.
+        report (DiscoveryReport): The files discovery found under the `--from` directory.
+        deep (bool): Decode every frame instead of trusting the header.
 
     Returns:
         list[CheckResult]: A verdict per file found, unreadable files included.
 
     Raises:
-        cappa.Exit: If `--from` does not name an existing directory.
+        cappa.Exit: With code 0 when the directory holds no video files.
     """
-    root = resolve_discovery_root(from_dir, argument_name="`--from`")
-
-    discovery = check_cmd.discovery
-    report = discover_video_files(
-        root,
-        depth=discovery.depth,
-        filters=set(settings.filters),
-        sort=discovery.sort,
-        reverse=discovery.reverse,
-    )
-
-    if report.total == 0:
-        pp.warning(f"No video files found in {root}")
+    if report.total == 0 and not report.skipped:
+        pp.warning(f"No video files found in {report.root}")
         raise cappa.Exit(code=0)
 
     # Discovery reports the files it could not read separately from the ones it kept, and
@@ -77,12 +69,12 @@ def check_from_directory(check_cmd: CheckCommand, *, from_dir: Path) -> list[Che
     # Discovery already probed every file it kept and `VideoFile` caches its probe, so
     # finishing the verdict here costs no second ffprobe.
     passes = [
-        check_probed_video(result.video_file, deep=check_cmd.deep)
+        check_probed_video(result.video_file, deep=deep)
         for result in track(
             report.results,
             description=f"Decoding {len(report.results)} files...",
             transient=True,
-            disable=not check_cmd.deep,
+            disable=not deep,
         )
     ]
 
@@ -144,7 +136,10 @@ def select_results(check_cmd: CheckCommand) -> list[CheckResult]:
         raise cappa.Exit(code=1)
 
     if check_cmd.from_ is not None:
-        return check_from_directory(check_cmd, from_dir=check_cmd.from_)
+        report = discover_from_directory(
+            directory=check_cmd.from_, options=check_cmd.discovery, argument_name="`--from`"
+        )
+        return check_discovered_files(report, deep=check_cmd.deep)
 
     if not check_cmd.files:
         pp.error("Provide file path(s) or `--from` to discover them")

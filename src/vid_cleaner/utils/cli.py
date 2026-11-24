@@ -17,7 +17,7 @@ from vid_cleaner.constants import (
     REQUIRED_BINARIES,
     SYMBOL_CHECK,
     USER_CONFIG_PATH,
-    VideoContainerTypes,
+    VIDEO_SUFFIXES,
     VideoTrait,
 )
 
@@ -50,7 +50,7 @@ def coerce_video_files(files: list[Path]) -> list["VideoFile"]:
             msg = f"File '{file}' does not exist"
             raise cappa.Exit(msg, code=1)
 
-        if f.suffix.lower() not in [container.value for container in VideoContainerTypes]:
+        if f.suffix.lower() not in VIDEO_SUFFIXES:
             msg = f"File {file} is not a video file"
             raise cappa.Exit(msg, code=1)
 
