@@ -18,6 +18,8 @@ from vid_cleaner.utils import (
 )
 from vid_cleaner.vidcleaner import ClipCommand, build_config, build_run_options
 
+from vid_cleaner.cli.ffmpeg_step import run_ffmpeg_step  # isort: skip
+
 
 def main(
     clip_cmd: ClipCommand,
@@ -59,10 +61,14 @@ def main(
         substeps: list[str] = []
 
         try:
+            command = video.prepare_ffmpeg(
+                video.clip_arguments(start=clip_cmd.start, duration=clip_cmd.duration),
+                step="clip",
+                config=config,
+                dryrun=options.dryrun,
+            )
             substeps.extend(
-                video.clip(
-                    start=clip_cmd.start, duration=clip_cmd.duration, config=config, options=options
-                )
+                run_ffmpeg_step(video, command, title="Clip video", dryrun=options.dryrun)
             )
 
             if not options.dryrun:

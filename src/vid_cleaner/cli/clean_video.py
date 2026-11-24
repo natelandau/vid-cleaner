@@ -18,11 +18,14 @@ from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
 from vid_cleaner.utils import (
     coerce_video_files,
     copy_to_output,
+    render_operations,
     render_substeps,
     resolve_out_path_override,
 )
 from vid_cleaner.vidcleaner import CleanCommand, build_config, build_run_options
 
+from vid_cleaner.cli.ffmpeg_step import run_ffmpeg_step  # isort: skip
+from vid_cleaner.models.conversion_plan import ConversionPlan  # isort: skip
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
@@ -78,6 +81,45 @@ def write_output(
             )
 
     return messages
+
+
+def clean_video_file(
+    video_file: VideoFile, *, config: Config, options: RunOptions
+) -> ConversionPlan:
+    """Plan a file's cleaning, report the plan, and run it unless it changes nothing.
+
+    Report the operations up front, before the ffmpeg progress bar starts.
+
+    Args:
+        video_file (VideoFile): The file to clean.
+        config (Config): The settings for this run.
+        options (RunOptions): The CLI-only values for this run.
+
+    Returns:
+        ConversionPlan: The plan, whose `output_suffix` names any container change.
+    """
+    plan = video_file.plan_clean(config=config, options=options)
+
+    for note in plan.debug_notes:
+        pp.debug(note)
+    for notice in plan.notices:
+        pp.info(notice)
+
+    # A real run always follows these with write-outcome substeps, so leave the tree
+    # open for them; a dry run writes nothing, making the operations its last lines.
+    render_operations(plan.actions, debug=options.verbosity >= 1, closes_tree=options.dryrun)
+
+    # Nothing to encode: the operations above already reported "No changes needed"
+    if video_file.plan_changes_file(plan):
+        command = video_file.prepare_ffmpeg(
+            plan.build_command(),
+            suffix=plan.output_suffix,
+            step="clean",
+            config=config,
+            dryrun=options.dryrun,
+        )
+        run_ffmpeg_step(video_file, command, title="Processing", dryrun=options.dryrun)
+    return plan
 
 
 def select_video_files(
@@ -187,7 +229,7 @@ def main(
         substeps: list[str] = []
 
         try:
-            plan = video_file.clean(config=config, options=options)
+            plan = clean_video_file(video_file, config=config, options=options)
             destination = out_path_override or video_file.path
             if plan.output_suffix:
                 destination = destination.with_suffix(plan.output_suffix)

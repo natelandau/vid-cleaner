@@ -1,6 +1,8 @@
 """VideoFile model."""
 
 import re
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -9,9 +11,6 @@ from box import Box
 from ffmpeg_progress_yield import FfmpegProgress
 from iso639 import Lang
 from iso639.exceptions import DeprecatedLanguageValue, InvalidLanguageValue
-from nclutils import pp
-from rich.markdown import Markdown
-from rich.progress import Progress
 
 from vid_cleaner.config import Config, RunOptions
 from vid_cleaner.constants import (
@@ -26,7 +25,6 @@ from vid_cleaner.constants import (
     HDTV_RESOLUTION,
     MIN_SURROUND_CHANNELS,
     SDTV_RESOLUTION,
-    SYMBOL_CHECK,
     TEXT_SUBTITLE_CODECS,
     UHDTV_RESOLUTION,
     AudioLayout,
@@ -43,11 +41,23 @@ from vid_cleaner.utils import (
     query_sonarr,
     query_tmdb,
     query_tmdb_by_id,
-    render_operations,
     run_ffprobe,
 )
 
 from vid_cleaner.controllers import TempFile  # isort: skip
+
+
+@dataclass(frozen=True)
+class FfmpegCommand:
+    """A complete ffmpeg command line and the temporary file it writes.
+
+    Attributes:
+        arguments (list[str]): The command line, starting with `ffmpeg`.
+        output_path (Path): The temporary file the command writes.
+    """
+
+    arguments: list[str]
+    output_path: Path
 
 
 class VideoFile:
@@ -233,10 +243,25 @@ class VideoFile:
         tag = str(stream.language).lower()
         if tag == "und":
             return None
+        # `_note_unusable_language_tags` reports these tags in the plan's debug notes
         try:
             return Lang(tag)
         except (InvalidLanguageValue, DeprecatedLanguageValue):
             return None
+
+    def _note_unusable_language_tags(self, plan: ConversionPlan) -> None:
+        """Record each audio or subtitle language tag that planning treats as unknown.
+
+        Args:
+            plan (ConversionPlan): The plan whose debug notes receive the findings.
+        """
+        plan.debug_notes.extend(
+            f"Stream #{stream.index}: unusable language tag '{stream.language}', treated as unknown"
+            for stream in self.audio_streams + self.subtitle_streams
+            if stream.language
+            and str(stream.language).lower() != "und"
+            and self._stream_language(stream) is None
+        )
 
     @staticmethod
     def _is_surround_stream(stream: Box) -> bool:
@@ -325,7 +350,7 @@ class VideoFile:
         `force` is set, in which case the existing stereo track(s) in the surround
         bed's language are dropped and rebuilt from that bed. Stereo tracks in other
         languages are kept, since the single rebuilt track does not replace them.
-        Notify the user when downmix is skipped or cannot be recreated.
+        The returned action says why a downmix was skipped.
 
         Args:
             streams (list[Box]): Audio streams that would otherwise be kept.
@@ -361,9 +386,6 @@ class VideoFile:
 
         if existing_stereo:
             if not force:
-                pp.info(
-                    "Stereo track already exists; skipping downmix. Use --force to recreate it."
-                )
                 action = PlanAction(
                     label="Downmix to stereo",
                     applied=False,
@@ -371,9 +393,6 @@ class VideoFile:
                 )
                 return downmix_streams, streams_to_drop, action
             if surround_source is None:
-                pp.info(
-                    "No surround source to recreate stereo from; keeping existing stereo track."
-                )
                 action = PlanAction(
                     label="Downmix to stereo", applied=False, reason="no surround source to downmix"
                 )
@@ -422,7 +441,7 @@ class VideoFile:
 
         # Add original language to list of languages to keep if not explicitly dropping it
         if not config.drop_original_audio:
-            original_language = self._find_original_language(config)
+            original_language = self._find_original_language(config, notes=plan.debug_notes)
             if original_language and original_language not in langs:
                 langs.append(original_language)
 
@@ -430,7 +449,7 @@ class VideoFile:
         for stream in self.audio_streams:
             # Commentary tracks are often unwanted and take up space
             if not config.keep_commentary and self._is_commentary_stream(stream):
-                pp.debug(rf"PLAN AUDIO: Remove stream #{stream.index} [commentary]")
+                plan.debug_notes.append(f"PLAN AUDIO: Remove stream #{stream.index} [commentary]")
                 continue
 
             # Unknown language streams are kept to avoid removing potentially important audio
@@ -439,7 +458,7 @@ class VideoFile:
                 streams_to_keep.append(stream)
                 continue
 
-            pp.debug(f"PLAN AUDIO: Remove stream #{stream.index}")
+            plan.debug_notes.append(f"PLAN AUDIO: Remove stream #{stream.index}")
 
         # If every stream would be removed, keep them all to prevent silent video
         fallback_triggered = not streams_to_keep
@@ -535,7 +554,11 @@ class VideoFile:
 
         # Only look up original language if we're not explicitly dropping local subs
         # This avoids unnecessary API calls
-        original_language = None if config.drop_local_subs else self._find_original_language(config)
+        original_language = (
+            None
+            if config.drop_local_subs
+            else self._find_original_language(config, notes=plan.debug_notes)
+        )
 
         # Skip evaluating streams entirely when settings drop every local subtitle;
         # a single return path below still records the drop-subtitles action.
@@ -550,7 +573,9 @@ class VideoFile:
                 # Remove commentary/SDH/description tracks unless explicitly kept
                 # These are typically supplementary and take up extra space
                 if not config.keep_commentary and self._is_commentary_stream(stream):
-                    pp.debug(rf"PLAN SUBTITLES: Remove stream #{stream.index} [commentary]")
+                    plan.debug_notes.append(
+                        f"PLAN SUBTITLES: Remove stream #{stream.index} [commentary]"
+                    )
                     continue
 
                 if self._should_keep_subtitle(
@@ -561,7 +586,7 @@ class VideoFile:
                     )
                     continue
 
-                pp.debug(f"PLAN SUBTITLES: Remove stream #{stream.index}")
+                plan.debug_notes.append(f"PLAN SUBTITLES: Remove stream #{stream.index}")
 
         dropped = len(self.subtitle_streams) - len(keep)
         if dropped > 0:
@@ -623,17 +648,12 @@ class VideoFile:
         """
         video_stream = self._first_video_stream()
         if not video_stream:
-            pp.error("No video stream found")
             plan.actions.append(
                 PlanAction(label="Convert to H.265", applied=False, reason="no video stream")
             )
             return
 
         if not options.force and video_stream.codec_name.lower() in H265_CODECS:
-            pp.warning(
-                "H265 ENCODE: Video already H.265 or VP9.",
-                details=["Run with `--force` to re-encode.", "Skipping"],
-            )
             plan.actions.append(
                 PlanAction(
                     label="Convert to H.265", applied=False, reason="already H.265/VP9; use --force"
@@ -645,7 +665,6 @@ class VideoFile:
         # This formula provides good quality while maintaining reasonable file sizes
         stream_duration = float(self.probe_box.duration or 0) or float(video_stream.duration or 0)
         if not stream_duration:
-            pp.error("Could not calculate video duration")
             plan.actions.append(
                 PlanAction(
                     label="Convert to H.265", applied=False, reason="could not determine duration"
@@ -702,7 +721,6 @@ class VideoFile:
         """
         video_stream = self._first_video_stream()
         if not video_stream:
-            pp.error("No video stream found")
             plan.actions.append(
                 PlanAction(label="Convert to VP9", applied=False, reason="no video stream")
             )
@@ -710,10 +728,6 @@ class VideoFile:
 
         # Skip re-encoding if already in modern codec unless forced
         if not options.force and video_stream.codec_name.lower() in H265_CODECS:
-            pp.warning(
-                "VP9 ENCODE: Video already H.265 or VP9.",
-                details=["Run with `--force` to re-encode.", "Skipping"],
-            )
             plan.actions.append(
                 PlanAction(
                     label="Convert to VP9", applied=False, reason="already H.265/VP9; use --force"
@@ -723,7 +737,7 @@ class VideoFile:
 
         destination = options.out or self.path
         if destination.suffix != ".webm":
-            pp.info(
+            plan.notices.append(
                 f"Converting to VP9, setting output to `{destination.with_suffix('.webm').name}`"
             )
         plan.output_suffix = ".webm"
@@ -743,7 +757,7 @@ class VideoFile:
                 if codec_names.get(stream.source_index) in TEXT_SUBTITLE_CODECS:
                     stream.codec = "webvtt"
                 else:
-                    pp.info(
+                    plan.notices.append(
                         f"Dropping image-based subtitle stream 0:{stream.source_index}; WebM only supports WebVTT"
                     )
                     self._mark_subtitles_dropped(plan)
@@ -777,7 +791,6 @@ class VideoFile:
         """
         video_stream = self._first_video_stream()
         if not video_stream:
-            pp.error("No video stream found")
             plan.actions.append(
                 PlanAction(label="Convert to 1080p", applied=False, reason="no video stream")
             )
@@ -827,13 +840,12 @@ class VideoFile:
 
         return plan
 
-    def clean(self, config: Config, options: RunOptions) -> ConversionPlan:
-        """Apply every requested cleaning operation in a single ffmpeg pass.
+    def plan_clean(self, config: Config, options: RunOptions) -> ConversionPlan:
+        """Plan every requested cleaning operation as a single ffmpeg pass.
 
         Compose stream selection, reordering, downmix, scaling, and codec conversion
-        into one command so the file is decoded and written exactly once. Skip ffmpeg
-        entirely when the plan would change nothing. Report the operations considered,
-        up front, before the ffmpeg progress bar starts.
+        into one plan so the file is decoded and written exactly once. The plan carries
+        everything the caller reports: its actions, notices, and debug notes.
 
         Args:
             config (Config): The settings for this run.
@@ -852,6 +864,7 @@ class VideoFile:
             raise VideoCleanError(path=self.path, reason="no audio streams found")
 
         plan = self._build_plan(config=config, options=options)
+        self._note_unusable_language_tags(plan)
 
         needs_reorder = self._need_stream_reorder()
         plan.actions.insert(
@@ -862,32 +875,26 @@ class VideoFile:
                 reason=None if needs_reorder else "streams already in order",
             ),
         )
-
-        debug = options.verbosity >= 1
-        # A real run always follows these with write-outcome substeps, so leave the tree
-        # open for them; a dry run writes nothing, making the operations its last lines.
-        render_operations(plan.actions, debug=debug, closes_tree=options.dryrun)
-
-        # Nothing to encode: the up-front render already reported "No changes needed".
-        if plan.is_noop(stream_count=len(self.all_streams)) and not needs_reorder:
-            return plan
-
-        self._run_ffmpeg(
-            plan.build_command(),
-            title="Processing",
-            suffix=plan.output_suffix,
-            step="clean",
-            config=config,
-            options=options,
-        )
         return plan
 
-    def _language_for(self, media_id: MediaId, config: Config) -> Lang | None:
+    def plan_changes_file(self, plan: ConversionPlan) -> bool:
+        """Check whether running a plan would change the file, so a no-op can skip ffmpeg.
+
+        Args:
+            plan (ConversionPlan): A plan from `plan_clean`.
+
+        Returns:
+            bool: True when the plan maps, reorders, or encodes anything differently.
+        """
+        return not plan.is_noop(stream_count=len(self.all_streams)) or self._need_stream_reorder()
+
+    def _language_for(self, media_id: MediaId, config: Config, notes: list[str]) -> Lang | None:
         """Resolve a single media ID to the content's original language.
 
         Args:
             media_id (MediaId): The identifier to look up.
             config (Config): The settings holding the TMDB API key.
+            notes (list[str]): Debug notes that receive an unusable language code.
 
         Returns:
             Lang | None: The original language, or None when it cannot be resolved.
@@ -914,10 +921,10 @@ class VideoFile:
         try:
             return Lang(original_language)
         except (InvalidLanguageValue, DeprecatedLanguageValue):
-            pp.debug(f"iso639: Unusable language '{original_language}' for: {self.name}")
+            notes.append(f"iso639: Unusable language '{original_language}' for: {self.name}")
             return None
 
-    def _find_original_language(self, config: Config) -> Lang | None:
+    def _find_original_language(self, config: Config, *, notes: list[str]) -> Lang | None:
         """Find the original language of the video content.
 
         Check every ID discoverable from the filename and container tags, then fall back
@@ -925,6 +932,8 @@ class VideoFile:
 
         Args:
             config (Config): The settings holding the API credentials.
+            notes (list[str]): Debug notes that receive why a lookup failed. Only the
+                first, uncached call adds to them.
 
         Returns:
             Lang | None: The determined language, or None when none could be found.
@@ -938,7 +947,7 @@ class VideoFile:
         media_ids = find_media_ids(stem=self.stem, format_tags=self.probe_box.format.tags)
 
         for media_id in media_ids:
-            if language := self._language_for(media_id=media_id, config=config):
+            if language := self._language_for(media_id=media_id, config=config, notes=notes):
                 self.language = language
                 return language
 
@@ -954,14 +963,14 @@ class VideoFile:
             and imdb_id not in tried_imdb_ids
             and (
                 language := self._language_for(
-                    media_id=MediaId(source="imdb", value=imdb_id), config=config
+                    media_id=MediaId(source="imdb", value=imdb_id), config=config, notes=notes
                 )
             )
         ):
             self.language = language
             return language
 
-        pp.debug(f"Could not find original language for: {self.name}")
+        notes.append(f"Could not find original language for: {self.name}")
         return None
 
     def _need_stream_reorder(self) -> bool:
@@ -1015,85 +1024,80 @@ class VideoFile:
         imdb_id = media.get("imdbId") if isinstance(media, dict) else None
         return imdb_id if isinstance(imdb_id, str) and imdb_id else None
 
-    def _run_ffmpeg(
+    def prepare_ffmpeg(
         self,
-        command: list[str],
-        title: str,
+        arguments: list[str],
+        *,
         suffix: str | None = None,
         step: str | None = None,
-        *,
         config: Config,
-        options: RunOptions,
-    ) -> list[str]:
-        """Execute an ffmpeg command and return its outcome for the caller to display.
+        dryrun: bool,
+    ) -> FfmpegCommand:
+        """Build the full ffmpeg command for one processing step on this file.
 
-        Run the provided ffmpeg command, showing progress and logging information. Determine input and output paths, and manage temporary files related to the operation. Return the substep message describing the result rather than printing it, so the CLI layer owns presentation.
+        Read from the latest temporary file so steps chain, and write to the next one. A dry
+        run gets a preview output path, so building its command touches nothing on disk.
 
         Args:
-            command (list[str]): The ffmpeg command to execute.
-            title (str): Title for logging the process.
+            arguments (list[str]): The step's ffmpeg arguments, placed between the input
+                and the output.
             suffix (str | None, optional): Suffix for the output file. Use when creating a new container mime type. Defaults to None.
-            step (str | None, optional): Step name for file naming. Used when creating a new temporary file. Defaults to None.
+            step (str | None, optional): Step name for file naming. Defaults to None.
             config (Config): The settings for this run, which name the cache directory.
-            options (RunOptions): The CLI-only values for this run. A dry run prints the
-                command instead of running it.
+            dryrun (bool): Preview the command instead of preparing to run it.
 
         Returns:
-            list[str]: Substep messages describing the outcome. Empty on a dry run, since the command is previewed instead of executed.
-
-        Raises:
-            cappa.Exit: If KeyboardInterrupt occurs during the ffmpeg command.
+            FfmpegCommand: The command and the temporary file it writes.
         """
         input_path = self.temp_file.latest_temp_path()
-        output_path = self.temp_file.new_tmp_path(
-            suffix=suffix, step_name=step, cache_dir=config.cache_dir
-        )
+        make_path = self.temp_file.preview_tmp_path if dryrun else self.temp_file.new_tmp_path
+        output_path = make_path(suffix=suffix, step_name=step, cache_dir=config.cache_dir)
 
         # Prepend global ffmpeg options before input file to ensure consistent behavior
-        cmd: list[str] = ["ffmpeg", *FFMPEG_PREPEND, "-i", str(input_path)]
-        cmd.extend(command)
-        cmd.extend([*FFMPEG_APPEND, str(output_path)])
+        command = [
+            "ffmpeg",
+            *FFMPEG_PREPEND,
+            "-i",
+            str(input_path),
+            *arguments,
+            *FFMPEG_APPEND,
+            str(output_path),
+        ]
+        return FfmpegCommand(arguments=command, output_path=output_path)
 
-        pp.trace(f"RUN FFMPEG:\n{' '.join(cmd)}")
+    def run_ffmpeg(self, command: FfmpegCommand, *, on_progress: Callable[[float], None]) -> None:
+        """Run a prepared ffmpeg command and make its output the file's latest version.
 
-        if options.dryrun:
-            pp.header(f"{title} (dry run)")
-            markdown_command = Markdown(f"```console\n{' '.join(cmd)}\n```")
-            pp.console().print(markdown_command)
-            return []
+        Args:
+            command (FfmpegCommand): A command from `prepare_ffmpeg` with `dryrun` unset.
+            on_progress (Callable[[float], None]): Receives the percent complete as ffmpeg
+                reports it, so the caller can show progress.
 
-        # Use FfmpegProgress to get real-time progress updates during encoding
-        ff = FfmpegProgress(cmd)
+        Raises:
+            cappa.Exit: If the user interrupts ffmpeg, after removing temporary files.
+        """
+        ff = FfmpegProgress(command.arguments)
 
         try:
-            with Progress(transient=True) as progress:
-                task = progress.add_task(f"{title}…", total=100)
-                for complete in ff.run_command_with_progress():
-                    progress.update(task, completed=complete)
+            for complete in ff.run_command_with_progress():
+                on_progress(complete)
         except KeyboardInterrupt as e:
             # Clean up temporary files if user interrupts to avoid orphaned files
             self.temp_file.clean_up()
-            pp.warning(f"KeyboardInterrupt during {title.lower()}")
-            pp.info("Exiting...")
-            raise cappa.Exit(code=1) from e
+            message = "Interrupted while running ffmpeg. Exiting..."
+            raise cappa.Exit(message, code=1) from e
 
-        self.temp_file.created_temp_file(output_path)
-        pp.trace(f"Created temp file: {output_path}")
-        return [f"{SYMBOL_CHECK} {title}"]
+        self.temp_file.created_temp_file(command.output_path)
 
-    def clip(self, start: str, duration: str, config: Config, options: RunOptions) -> list[str]:
-        """Clip a segment from the video.
-
-        Extract a specific portion of the video based on the given start time and duration. Utilize ffmpeg to perform the clipping operation.
+    def clip_arguments(self, start: str, duration: str) -> list[str]:
+        """Build the ffmpeg arguments that copy a segment of the video without re-encoding.
 
         Args:
             start (str): Start time of the clip.
             duration (str): Duration of the clip.
-            config (Config): The settings for this run.
-            options (RunOptions): The CLI-only values for this run.
 
         Returns:
-            list[str]: Substep messages describing the outcome, for the caller to display.
+            list[str]: Arguments for `prepare_ffmpeg`.
 
         Raises:
             VideoCleanError: If the file has no video streams.
@@ -1101,11 +1105,7 @@ class VideoFile:
         if not self.video_streams:
             raise VideoCleanError(path=self.path, reason="no video streams found")
 
-        ffmpeg_command: list[str] = ["-ss", start, "-t", duration, "-map", "0", "-c", "copy"]
-
-        return self._run_ffmpeg(
-            ffmpeg_command, title="Clip video", step="clip", config=config, options=options
-        )
+        return ["-ss", start, "-t", duration, "-map", "0", "-c", "copy"]
 
     def ffprobe_json(self) -> dict[str, Any]:
         """Run ffprobe on the video file and return the JSON response.
