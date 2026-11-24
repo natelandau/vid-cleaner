@@ -736,6 +736,14 @@ class VideoFile:
         # Data streams and chapters may corrupt WebM output
         plan.global_args.extend(["-dn", "-map_chapters", "-1"])
 
+        # WebM has no attachment streams, so fonts and other attachments cannot be kept
+        plan.keep_attachments = False
+        plan.notices.extend(
+            f"Dropping attachment stream 0:{stream.index}; WebM cannot carry attachments"
+            for stream in self.probe_box.streams
+            if stream.codec_type == CodecTypes.ATTACHMENT
+        )
+
         codec_names = {stream.index: stream.codec_name.lower() for stream in self.probe_box.streams}
         kept_streams: list[OutputStream] = []
         for stream in plan.streams:

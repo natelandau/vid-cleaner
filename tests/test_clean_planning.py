@@ -4,6 +4,7 @@ from dataclasses import fields
 from typing import Any
 
 import pytest
+from box import Box
 from iso639 import Lang
 
 from vid_cleaner.config import Config, RunOptions
@@ -353,6 +354,32 @@ def test_build_plan_vp9_drops_bitmap_subtitles(make_video, plan_settings):
     drop_subs = next(a for a in plan.actions if a.label == DROP_SUBTITLES_LABEL)
     assert drop_subs.applied is True
     assert drop_subs.reason is None
+
+
+@pytest.mark.parametrize(
+    ("settings", "expected_kept"),
+    [
+        pytest.param({}, True, id="kept in the source container"),
+        pytest.param({"vp9": True}, False, id="dropped for WebM"),
+    ],
+)
+def test_build_plan_keeps_attachments_unless_webm(
+    make_video, plan_settings, settings, expected_kept
+):
+    """Verify attachments such as subtitle fonts are kept, except in WebM output."""
+    # Given: reference.json with a font attachment
+    plan_settings.update(settings)
+    video = make_video("reference.json")
+    video.probe_box.streams.append(
+        Box({"index": 10, "codec_type": CodecTypes.ATTACHMENT, "codec_name": "ttf"})
+    )
+
+    # When: building the plan
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
+
+    # Then: attachments are copied unless the output is WebM, which says so in a notice
+    assert plan.keep_attachments is expected_kept
+    assert any("attachment stream 0:10" in notice for notice in plan.notices) is not expected_kept
 
 
 def test_build_plan_vp9_downmix_uses_vorbis(make_video, plan_settings):

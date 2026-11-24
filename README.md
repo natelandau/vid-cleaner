@@ -53,6 +53,8 @@ vidcleaner inspect --json movie.mkv
 
 `vidcleaner clean FILES` removes the audio and subtitle tracks you do not want, and can convert the video in the same pass. With no options, it keeps the audio tracks in the languages that `langs_to_keep` names in the [configuration file](#configuration), plus the original language of the video.
 
+`clean` keeps attachments, such as the fonts that ASS subtitles use. WebM cannot hold attachments, so `--vp9` removes them and shows a notice for each one.
+
 ```shell
 # Keep only English audio and convert to H.265
 vidcleaner clean --langs=en --h265 movie.mkv
