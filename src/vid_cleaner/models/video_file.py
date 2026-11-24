@@ -24,6 +24,7 @@ from vid_cleaner.constants import (
     H265_CODECS,
     HDTV_RESOLUTION,
     MIN_SURROUND_CHANNELS,
+    SCALE_TO_1080P_LABEL,
     SDTV_RESOLUTION,
     TEXT_SUBTITLE_CODECS,
     UHDTV_RESOLUTION,
@@ -783,7 +784,10 @@ class VideoFile:
                 action.reason = None
 
     def _plan_scale_to_1080p(self, plan: ConversionPlan, options: RunOptions) -> None:
-        """Plan downscaling the video stream to 1080p.
+        """Plan scaling the video stream to 1080p.
+
+        A source 1080p or smaller is left alone unless forced. A forced source narrower
+        than 1080p is upscaled, and the plan records its width so the CLI can ask first.
 
         Args:
             plan (ConversionPlan): The plan whose video stream is annotated in place.
@@ -792,16 +796,21 @@ class VideoFile:
         video_stream = self._first_video_stream()
         if not video_stream:
             plan.actions.append(
-                PlanAction(label="Convert to 1080p", applied=False, reason="no video stream")
+                PlanAction(label=SCALE_TO_1080P_LABEL, applied=False, reason="no video stream")
             )
             return
 
-        # Skip downscaling if video is already 1080p or smaller, unless forced
-        if not options.force and (getattr(video_stream, "width", 0) or 0) <= 1920:  # noqa: PLR2004
+        source_width = getattr(video_stream, "width", 0) or 0
+        if source_width <= FHD_RESOLUTION.width and not options.force:
             plan.actions.append(
-                PlanAction(label="Convert to 1080p", applied=False, reason="source already ≤1080p")
+                PlanAction(
+                    label=SCALE_TO_1080P_LABEL, applied=False, reason="source already ≤1080p"
+                )
             )
             return
+
+        if 0 < source_width < FHD_RESOLUTION.width:
+            plan.upscale_source_width = source_width
 
         # Scale every kept video stream, matching the old `-filter:v scale=...` (no index),
         # which applied to all video streams, not just the first.
@@ -811,7 +820,7 @@ class VideoFile:
             if video_output.codec == "copy":
                 # Scaling requires an encode; None lets ffmpeg pick the container default
                 video_output.codec = None
-        plan.actions.append(PlanAction(label="Convert to 1080p", applied=True))
+        plan.actions.append(PlanAction(label=SCALE_TO_1080P_LABEL, applied=True))
 
     def _build_plan(self, config: Config, options: RunOptions) -> ConversionPlan:
         """Compose every requested operation into a single-pass conversion plan.
