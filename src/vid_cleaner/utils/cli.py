@@ -1,6 +1,7 @@
 """Utilities for CLI."""
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -17,6 +18,7 @@ from vid_cleaner.constants import (
     VIDEO_SUFFIXES,
     VideoTrait,
 )
+from vid_cleaner.utils.console import stop_run
 
 if TYPE_CHECKING:
     from vid_cleaner.models.video_file import VideoFile
@@ -131,21 +133,49 @@ def resolve_out_path_override(
         Path | None: The user's explicit `--out` value, or None when not set.
 
     Raises:
-        cappa.Exit: If `--out` is combined with more than one input file or with `--from`.
+        RunStopped: If `--out` is combined with more than one input file or with `--from`.
     """
     override = out
     if override and from_directory is not None:
-        pp.error(OUT_WITH_FROM_ERROR)
-        raise cappa.Exit(code=1)
+        raise stop_run(OUT_WITH_FROM_ERROR)
     # Count only what will be processed, so `--out` with a glob that also matched a
     # video's `._` sidecar still names a single output
     if override and len([file for file in files if not is_macos_sidecar(file)]) > 1:
-        pp.error(OUT_WITH_MULTIPLE_FILES_ERROR)
-        raise cappa.Exit(code=1)
+        raise stop_run(OUT_WITH_MULTIPLE_FILES_ERROR)
     return override
 
 
-def copy_to_output(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list[str]]:
+@dataclass(frozen=True)
+class OutputWrite:
+    """Where a processed file was written, so callers can report it as text or as data.
+
+    Attributes:
+        path (Path): The written file, resolved.
+        backup_path (Path | None): Where the replaced original was moved, or None when
+            nothing was backed up.
+    """
+
+    path: Path
+    backup_path: Path | None
+
+
+def output_write_messages(write: OutputWrite) -> list[str]:
+    """Describe a finished write as substep messages for the per-file result tree.
+
+    Args:
+        write (OutputWrite): The write to describe.
+
+    Returns:
+        list[str]: The backup message, when a backup was made, followed by the save message.
+    """
+    messages: list[str] = []
+    if write.backup_path is not None:
+        messages.append(f"{SYMBOL_CHECK} {BACKED_UP_ORIGINAL_MESSAGE} {write.backup_path}")
+    messages.append(f"{SYMBOL_CHECK} {SAVED_TO_MESSAGE} {write.path}")
+    return messages
+
+
+def copy_to_output(src: Path, dst: Path, *, overwrite: bool) -> OutputWrite:
     """Copy a processed file to its destination via an atomic same-filesystem rename.
 
     Stage the copy beside ``dst`` and swap it into place with ``Path.replace`` so a
@@ -158,11 +188,10 @@ def copy_to_output(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list
         overwrite (bool): When True, replace the destination without keeping a backup.
 
     Returns:
-        tuple[Path, list[str]]: The written file and substep messages describing the backup (if any) and the save.
+        OutputWrite: The written file and the backup of the replaced original, if any.
     """
     # Resolve up front so the backup and save messages report the same canonical path.
     dst = dst.expanduser().resolve()
-    messages: list[str] = []
 
     # Stage beside dst (same filesystem) so the final swap is an atomic rename.
     # copy_file verifies the copied size, so a short or failed copy raises here,
@@ -187,7 +216,6 @@ def copy_to_output(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list
             stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
             backup = dst.with_name(f"{dst.name}.{stamp}-{uuid.uuid4().hex[:8]}.bak")
             dst.replace(backup)
-            messages.append(f"{SYMBOL_CHECK} {BACKED_UP_ORIGINAL_MESSAGE} {backup}")
 
         try:
             staged.replace(dst)  # atomic within the destination filesystem
@@ -203,8 +231,7 @@ def copy_to_output(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list
         # No-op on success (staged was renamed away); removes the partial temp on failure.
         staged.unlink(missing_ok=True)
 
-    messages.append(f"{SYMBOL_CHECK} {SAVED_TO_MESSAGE} {dst}")
-    return dst, messages
+    return OutputWrite(path=dst, backup_path=backup)
 
 
 def find_missing_binaries() -> list[str]:

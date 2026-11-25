@@ -8,15 +8,15 @@ from pathlib import Path
 import pytest
 from box import Box
 from iso639 import Lang
+from nclutils import pp
+from rich.console import Console
 
 from tests.helpers import FFPROBE_FIXTURES_DIR, load_ffprobe_json, set_file_size
 from vid_cleaner import constants
 from vid_cleaner.config import Config, RunOptions, load_config
-from vid_cleaner.constants import SYMBOL_CHECK
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.models.conversion_plan import ConversionPlan
-from vid_cleaner.utils import get_probe_as_box
-from vid_cleaner.utils.cli import SAVED_TO_MESSAGE
+from vid_cleaner.utils import OutputWrite, get_probe_as_box
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
@@ -36,6 +36,16 @@ def _isolate_config(tmp_path, monkeypatch):
     # CLI tests mock ffmpeg and never write a real output, so the default `quick` check would
     # fail them; verification tests turn it on with `--verify`, which beats this variable
     monkeypatch.setenv("VIDCLEANER_VERIFY", "off")
+
+
+@pytest.fixture(autouse=True)
+def _reset_output():
+    """Start every test with stdout output at normal verbosity.
+
+    `pp` keeps its console process-wide, so a test that runs without `configure_output`
+    would otherwise print through whatever console the previous test left behind.
+    """
+    pp.configure(verbosity=0, console=Console(theme=pp.THEME))
 
 
 @pytest.fixture
@@ -163,8 +173,8 @@ def stub_output_write(mocker):
         MagicMock: The patched copy.
     """
 
-    def _report_save(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list[str]]:
-        return dst, [f"{SYMBOL_CHECK} {SAVED_TO_MESSAGE} {dst}"]
+    def _report_save(src: Path, dst: Path, *, overwrite: bool) -> OutputWrite:
+        return OutputWrite(path=dst, backup_path=None)
 
     return mocker.patch("vid_cleaner.cli.ffmpeg_step.copy_to_output", side_effect=_report_save)
 

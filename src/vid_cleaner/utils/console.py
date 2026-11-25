@@ -2,15 +2,62 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 from nclutils import pp
+from rich.progress import Progress, track
 from rich.text import Text
 
 from vid_cleaner.constants import SYMBOL_CHECK, SYMBOL_CROSS, TREE_BRANCH, TREE_LAST
+from vid_cleaner.exceptions import RunStopped
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
+
     from vid_cleaner.models.conversion_plan import PlanAction
+
+T = TypeVar("T")
+
+
+def progress_display(*, transient: bool = True) -> Progress:
+    """Create a progress display bound to the shared console.
+
+    Use this instead of a bare `Progress` so the display follows `pp`'s console and
+    stays off stdout when `--json` routes messages to stderr.
+
+    Args:
+        transient (bool): Remove the display from the terminal once it finishes.
+
+    Returns:
+        Progress: A progress display to use as a context manager.
+    """
+    return Progress(console=pp.console(), transient=transient)
+
+
+def track_progress(
+    sequence: Iterable[T], *, description: str, transient: bool = True, disable: bool = False
+) -> Iterator[T]:
+    """Iterate a sequence while showing a progress bar on the shared console.
+
+    Use this instead of rich's `track` so the bar follows `pp`'s console and stays off
+    stdout when `--json` routes messages to stderr.
+
+    Args:
+        sequence (Iterable[T]): The items to iterate.
+        description (str): The label shown beside the bar.
+        transient (bool): Remove the bar from the terminal once it finishes.
+        disable (bool): Show no bar.
+
+    Yields:
+        T: Each item of `sequence`.
+    """
+    yield from track(
+        sequence,
+        description=description,
+        transient=transient,
+        console=pp.console(),
+        disable=disable,
+    )
 
 
 def _render_tree(lines: list[tuple[str, str]], *, closes_tree: bool) -> None:
@@ -74,3 +121,19 @@ def render_operations(actions: list[PlanAction], *, debug: bool, closes_tree: bo
                 lines.append((f"{SYMBOL_CROSS} {action.label}{suffix}", "dim"))
 
     _render_tree(lines, closes_tree=closes_tree)
+
+
+def stop_run(reason: str, *, details: list[str] | None = None) -> RunStopped:
+    """Print why the run must stop and build the exception that stops it.
+
+    Use this instead of printing and raising separately so the reason also reaches a JSON report.
+
+    Args:
+        reason: The explanation shown to the user and recorded in the report.
+        details: Extra lines printed beneath the reason.
+
+    Returns:
+        RunStopped: The exception for the caller to raise.
+    """
+    pp.error(reason, details=details, markup=False)
+    return RunStopped(reason)

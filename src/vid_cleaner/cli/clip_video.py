@@ -13,6 +13,7 @@ from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
 from vid_cleaner.utils import (
     TEMP_CLEANUP_WARNING,
     coerce_video_files,
+    output_write_messages,
     render_substeps,
     resolve_out_path_override,
 )
@@ -23,6 +24,7 @@ from vid_cleaner.cli.ffmpeg_step import (  # isort: skip
     run_ffmpeg_step,
     run_verify_step,
     verification_enabled,
+    verified_message,
 )
 from vid_cleaner.controllers.validation import expected_clip_output  # isort: skip
 
@@ -86,13 +88,15 @@ def main(
             )
 
             if not options.dryrun:
-                substeps.extend(run_verify_step(video, expected=expected, level=config.verify))
-                _, messages = copy_result_to_output(
+                verified_level = run_verify_step(video, expected=expected, level=config.verify)
+                if verified_level is not None:
+                    substeps.append(verified_message(verified_level))
+                write = copy_result_to_output(
                     video, out_path_override or video.path, overwrite=config.overwrite
                 )
                 # The clip is already written, so keep its messages and treat a cleanup
                 # failure as a warning rather than losing the save and raising past main().
-                substeps.extend(messages)
+                substeps.extend(output_write_messages(write))
                 try:
                     video.temp_file.clean_up()
                 except OSError as e:

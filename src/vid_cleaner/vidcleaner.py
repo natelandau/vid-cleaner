@@ -10,17 +10,20 @@ from typing import TYPE_CHECKING, Annotated
 import cappa
 from cappa.base import command, invoke
 from nclutils import pp
+from rich.console import Console
 from rich.traceback import install
 
 from vid_cleaner.config import SETTING_NAMES, Config, ConfigError, RunOptions, load_config
 from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel, SortOrder, VerifyLevel, VideoTrait
-from vid_cleaner.exceptions import VideoProbeError
+from vid_cleaner.exceptions import RunStopped, VideoProbeError
 from vid_cleaner.utils import (
     create_default_config,
     find_missing_binaries,
     parse_limit,
     parse_trait_filters,
+    stop_run,
 )
+from vid_cleaner.views.json_output import JsonReport, write_report
 
 if TYPE_CHECKING:
     from types import FrameType
@@ -51,6 +54,49 @@ def handle_stop_signals() -> None:
         signal.signal(stop_signal, _raise_keyboard_interrupt)
 
 
+def _json_output_requested(vidcleaner: VidCleaner) -> bool:
+    """Report whether the subcommand was given `--json`, so output routing and the report agree.
+
+    Args:
+        vidcleaner (VidCleaner): The parsed CLI arguments.
+
+    Returns:
+        bool: True when the subcommand has a `--json` flag and it is set.
+    """
+    return bool(getattr(vidcleaner.command, "json_output", False))
+
+
+def json_report_for(vidcleaner: VidCleaner) -> JsonReport | None:
+    """Start the JSON report for this run so a handler can fill it, or None for text output.
+
+    Args:
+        vidcleaner (VidCleaner): The parsed CLI arguments.
+
+    Returns:
+        JsonReport | None: An empty report when the subcommand was given `--json`.
+    """
+    if not _json_output_requested(vidcleaner):
+        return None
+    command_name = cappa.Command.get(type(vidcleaner.command)).real_name()
+    return JsonReport(command=command_name, dry_run=vidcleaner.dryrun)
+
+
+def _stop_with_report(vidcleaner: VidCleaner, stopped: RunStopped) -> RunStopped:
+    """Write the JSON report for a stop that happens before any handler runs.
+
+    Args:
+        vidcleaner (VidCleaner): The parsed CLI arguments.
+        stopped (RunStopped): The stop, whose reason the caller already printed.
+
+    Returns:
+        RunStopped: `stopped`, for the caller to raise.
+    """
+    if report := json_report_for(vidcleaner):
+        report.error = stopped.reason
+        write_report(report)
+    return stopped
+
+
 def verify_required_binaries(vidcleaner: VidCleaner) -> None:
     """Stop the run when the external programs a command needs are not installed.
 
@@ -62,18 +108,20 @@ def verify_required_binaries(vidcleaner: VidCleaner) -> None:
             subcommand about to run.
 
     Raises:
-        cappa.Exit: If any required program is absent from PATH.
+        RunStopped: If any required program is absent from PATH.
     """
     # `cache` reads and clears stored API responses, so it never shells out to either.
     if isinstance(vidcleaner.command, CacheCommand):
         return
 
     if missing := find_missing_binaries():
-        pp.error(
-            f"Not found on PATH: {', '.join(missing)}",
-            details=["vid-cleaner needs ffmpeg and ffprobe. Install ffmpeg to get both."],
+        raise _stop_with_report(
+            vidcleaner,
+            stop_run(
+                f"Not found on PATH: {', '.join(missing)}",
+                details=["vid-cleaner needs ffmpeg and ffprobe. Install ffmpeg to get both."],
+            ),
         )
-        raise cappa.Exit(code=1)
 
 
 _PRINT_LEVEL_VERBOSITY: dict[PrintLevel, int] = {PrintLevel.DEBUG: 1, PrintLevel.TRACE: 2}
@@ -84,12 +132,19 @@ def _output_verbosity(vidcleaner: VidCleaner) -> int:
 
 
 def configure_output(vidcleaner: VidCleaner) -> None:
-    """Set the output verbosity from the `-v` flags before any command prints.
+    """Set the output verbosity and route messages before any command prints.
+
+    Send messages to stderr under `--json` so stdout holds only the report. Set the
+    console on every run because `pp` keeps it process-wide.
 
     Args:
         vidcleaner (VidCleaner): The parsed CLI arguments.
     """
-    pp.configure(verbosity=_output_verbosity(vidcleaner))
+    to_stderr = _json_output_requested(vidcleaner)
+    pp.configure(
+        verbosity=_output_verbosity(vidcleaner),
+        console=Console(theme=pp.THEME, stderr=to_stderr),
+    )
 
 
 def build_config(vidcleaner: VidCleaner) -> Config:
@@ -105,7 +160,7 @@ def build_config(vidcleaner: VidCleaner) -> Config:
         Config: The validated settings.
 
     Raises:
-        cappa.Exit: If any setting is invalid.
+        RunStopped: If any setting is invalid.
     """
     command = vidcleaner.command
     cli_overrides = {
@@ -117,7 +172,7 @@ def build_config(vidcleaner: VidCleaner) -> Config:
     except ConfigError as e:
         for error in e.errors:
             pp.error(error)
-        raise cappa.Exit(code=1) from e
+        raise _stop_with_report(vidcleaner, RunStopped("\n".join(e.errors))) from e
 
     for warning in loaded.warnings:
         pp.warning(warning)
@@ -489,6 +544,14 @@ class CleanCommand:
             show_default=True,
         ),
     ] = False
+    json_output: Annotated[
+        bool,
+        cappa.Arg(
+            help="Print one JSON document to stdout and all other output to stderr",
+            long="--json",
+            show_default=True,
+        ),
+    ] = False
     discovery: cappa.Destructured[DiscoveryOptions] = field(default_factory=DiscoveryOptions)
 
 
@@ -512,7 +575,7 @@ class InspectCommand:
     json_output: Annotated[
         bool,
         cappa.Arg(
-            help="Output in JSON format",
+            help="Print one JSON document to stdout and all other output to stderr",
             long="--json",
             short=True,
             show_default=True,
@@ -653,6 +716,14 @@ class CheckCommand:
             show_default=True,
         ),
     ] = False
+    json_output: Annotated[
+        bool,
+        cappa.Arg(
+            help="Print one JSON document to stdout and all other output to stderr",
+            long="--json",
+            show_default=True,
+        ),
+    ] = False
     discovery: cappa.Destructured[SelectionOptions] = field(default_factory=SelectionOptions)
 
 
@@ -704,6 +775,14 @@ class SearchCommand:
         Path,
         cappa.Arg(help="Directory to search for video files", show_default=False),
     ] = Path()
+    json_output: Annotated[
+        bool,
+        cappa.Arg(
+            help="Print one JSON document to stdout and all other output to stderr",
+            long="--json",
+            show_default=True,
+        ),
+    ] = False
     discovery: cappa.Destructured[DiscoveryOptions] = field(default_factory=DiscoveryOptions)
 
 
@@ -715,14 +794,14 @@ def main() -> None:  # pragma: no cover
     try:
         invoke(
             obj=VidCleaner,
-            deps=[create_default_config, verify_required_binaries, configure_output],
+            deps=[configure_output, create_default_config, verify_required_binaries],
             completion=False,
         )
     except KeyboardInterrupt as e:
         pp.info("\nExiting...")
         raise cappa.Exit(code=1) from e
     except VideoProbeError as e:
-        # Only `inspect` and `clip` reach this: `search` skips unreadable files itself, and
+        # Only `clip` reaches this: `search` skips unreadable files itself, and
         # `clean` catches this per file in its batch loop rather than letting it propagate.
         pp.error(str(e))
         raise cappa.Exit(code=1) from e

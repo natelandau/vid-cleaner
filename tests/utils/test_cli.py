@@ -18,6 +18,7 @@ from vid_cleaner.utils.cli import (
     BACKED_UP_ORIGINAL_MESSAGE,
     ONLY_MACOS_SIDECARS_ERROR,
     SAVED_TO_MESSAGE,
+    output_write_messages,
 )
 
 
@@ -30,13 +31,14 @@ def test_copy_to_output_backs_up_existing(tmp_path: Path) -> None:
     dst.write_text("original content")
 
     # When: copying to the destination without overwrite
-    out_file, messages = copy_to_output(src, dst, overwrite=False)
+    write = copy_to_output(src, dst, overwrite=False)
+    messages = output_write_messages(write)
 
     # Then: the original is preserved as a backup and the new content is written
     backups = list(dst.resolve().parent.glob("movie.mkv.*.bak"))
     assert len(backups) == 1
     assert backups[0].read_text() == "original content"
-    assert out_file.read_text() == "new content"
+    assert write.path.read_text() == "new content"
 
     # And: both the backup and the save are reported
     assert any(BACKED_UP_ORIGINAL_MESSAGE in m for m in messages)
@@ -52,11 +54,12 @@ def test_copy_to_output_overwrite_skips_backup(tmp_path: Path) -> None:
     dst.write_text("original content")
 
     # When: copying with overwrite enabled
-    out_file, messages = copy_to_output(src, dst, overwrite=True)
+    write = copy_to_output(src, dst, overwrite=True)
+    messages = output_write_messages(write)
 
     # Then: no backup is created and only the save is reported
     assert list(dst.resolve().parent.glob("*.bak")) == []
-    assert out_file.read_text() == "new content"
+    assert write.path.read_text() == "new content"
     assert all("Backed up" not in m for m in messages)
     assert any(SAVED_TO_MESSAGE in m for m in messages)
 
@@ -112,10 +115,11 @@ def test_copy_to_output_creates_new_destination(tmp_path: Path, *, overwrite: bo
     dst = tmp_path / "movie.mkv"
 
     # When: copying to the missing destination
-    out_file, messages = copy_to_output(src, dst, overwrite=overwrite)
+    write = copy_to_output(src, dst, overwrite=overwrite)
+    messages = output_write_messages(write)
 
     # Then: the destination is created with no backup and the save is reported
-    assert out_file.read_text() == "new content"
+    assert write.path.read_text() == "new content"
     assert list(tmp_path.glob("*.bak")) == []
     assert any(SAVED_TO_MESSAGE in m for m in messages)
 

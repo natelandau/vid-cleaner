@@ -1,5 +1,6 @@
 """Helper utilities."""
 
+import copy
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -179,11 +180,14 @@ def get_probe_as_box(input_path: Path) -> Box:
     Raises:
         VideoProbeError: If the file cannot be probed or its streams cannot be normalized.
     """
+    raw_output = run_ffprobe(input_path)
     probe_box = Box(
-        run_ffprobe(input_path),
+        raw_output,
         default_box=True,
         default_box_create_on_get=False,
     )
+    # Normalization below mutates the streams, so keep the untouched ffprobe output for JSON reports.
+    probe_box.ffprobe_output = copy.deepcopy(raw_output)
 
     probe_box.path_to_file = input_path
     probe_box.name = probe_box.format.tags.title or probe_box.format.filename or input_path.name

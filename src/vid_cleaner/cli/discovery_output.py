@@ -14,12 +14,14 @@ from rich.filesize import decimal
 from rich.prompt import Confirm
 
 from vid_cleaner.controllers.discovery import discover_video_files
+from vid_cleaner.utils import stop_run
 from vid_cleaner.views import search_table
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from vid_cleaner.controllers.discovery import DiscoveryReport
+    from vid_cleaner.exceptions import RunStopped
     from vid_cleaner.vidcleaner import SelectionOptions
 
 NOT_AN_EXISTING_DIRECTORY_ERROR = "must be an existing directory"
@@ -55,12 +57,12 @@ def _resolve_discovery_root(path: Path, *, argument_name: str) -> Path:
     # `~name` for an unknown user raises RuntimeError, and before Python 3.14 `is_dir()`
     # raises PermissionError for a path inside a directory the user cannot search.
     except (RuntimeError, OSError) as e:
-        pp.error(f"{argument_name} {NOT_AN_EXISTING_DIRECTORY_ERROR}: {path} ({e})")
-        raise cappa.Exit(code=1) from e
+        msg = f"{argument_name} {NOT_AN_EXISTING_DIRECTORY_ERROR}: {path} ({e})"
+        raise stop_run(msg) from e
 
     if not is_directory:
-        pp.error(f"{argument_name} {NOT_AN_EXISTING_DIRECTORY_ERROR}: {path}")
-        raise cappa.Exit(code=1)
+        msg = f"{argument_name} {NOT_AN_EXISTING_DIRECTORY_ERROR}: {path}"
+        raise stop_run(msg)
     return resolved
 
 
@@ -137,20 +139,18 @@ def present_discovery(report: DiscoveryReport) -> None:
         )
         if report.skipped:
             message += f" ({len(report.skipped)} skipped as unreadable)"
-        pp.error(message)
-        raise cappa.Exit(code=1)
+        raise stop_run(message)
 
     pp.console().print(search_table(report))
 
 
-def _no_prompt_available() -> cappa.Exit:
+def _no_prompt_available() -> RunStopped:
     """Report that the run cannot be confirmed and build the exit to raise.
 
     Returns:
-        cappa.Exit: The failure to raise at the call site.
+        RunStopped: The failure to raise at the call site.
     """
-    pp.error("Refusing to run without a confirmation prompt. Pass `--yes` to proceed.")
-    return cappa.Exit(code=1)
+    return stop_run("Refusing to run without a confirmation prompt. Pass `--yes` to proceed.")
 
 
 def confirm_selection(report: DiscoveryReport, *, assume_yes: bool, overwrite: bool) -> None:

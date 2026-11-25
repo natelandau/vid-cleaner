@@ -1,10 +1,11 @@
 """Test the search command."""
 
+import json
 from pathlib import Path
 
 import pytest
 
-from tests.helpers import run_vidcleaner
+from tests.helpers import read_json_document, run_vidcleaner
 from vid_cleaner.cli.discovery_output import (
     NO_VIDEO_FILES_FOUND,
     NOT_AN_EXISTING_DIRECTORY_ERROR,
@@ -464,3 +465,67 @@ def test_search_expands_a_literal_tilde(capsys, video_library, monkeypatch):
     # Then: The file is found and listed
     assert exit_code == 0
     assert "movie" in capsys.readouterr().out
+
+
+def test_search_json_lists_matching_files(capsys, video_path, mock_video_probe):
+    """Verify search --json prints one document and keeps the table off stdout."""
+    # Given: An h264 1080p video
+    mock_video_probe("reference.json")
+
+    # When: Searching with --json
+    exit_code = run_vidcleaner(
+        ["search", "--json", str(video_path.parent), "--filters", "h264,1080p"]
+    )
+
+    # Then: The document describes the match and the table went to stderr
+    captured = capsys.readouterr()
+    doc = json.loads(captured.out)
+    assert exit_code == 0
+    assert doc["command"] == "search"
+    assert doc["files"][0]["name"] == "test_video.mp4"
+    assert "h264" in doc["files"][0]["traits"]
+    assert set(doc["files"][0]["matches"]) == {"h264", "1080p"}
+    assert doc["summary"] == {"total": 1, "shown": 1, "skipped": 0, "truncated": 0}
+    assert doc["query"]["filters"] == ["1080p", "h264"]
+    assert doc["skipped"] == []
+    assert "test_video.mp4" in captured.err
+
+
+def test_search_json_no_match_sets_error(capsys, video_path, mock_video_probe):
+    """Verify search --json reports the no-match error and exits 1."""
+    # Given: A 1080p video
+    mock_video_probe("reference.json")
+
+    # When: Searching for 4k files with --json
+    exit_code = run_vidcleaner(["search", "--json", str(video_path.parent), "--filters", "4k"])
+
+    # Then: The document carries the error and no files
+    doc = read_json_document(capsys)
+    assert exit_code == 1
+    assert doc["files"] == []
+    assert doc["error"].startswith(NO_VIDEO_FILES_FOUND)
+
+
+def test_search_json_empty_directory_has_no_error(capsys, tmp_path):
+    """Verify an empty directory exits 0 with a null error."""
+    # When: Searching an empty directory with --json
+    exit_code = run_vidcleaner(["search", "--json", str(tmp_path)])
+
+    # Then: The document is empty and error is null
+    doc = read_json_document(capsys)
+    assert exit_code == 0
+    assert doc["error"] is None
+    assert doc["files"] == []
+
+
+def test_search_json_keeps_progress_off_stdout(capsys, video_library):
+    """Verify the discovery progress display never reaches stdout under --json."""
+    # Given: A library large enough for discovery to show progress
+    directory = video_library([("apple.mkv", 100, 1_000_000), ("pear.mkv", 100, 2_000_000)])
+
+    # When: Searching it with --json
+    exit_code = run_vidcleaner(["search", "--json", str(directory)])
+
+    # Then: stdout begins with the document itself
+    assert exit_code == 0
+    assert capsys.readouterr().out.startswith("{")
