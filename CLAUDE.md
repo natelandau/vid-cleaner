@@ -47,6 +47,7 @@ Each `_plan_*` method on `VideoFile` adds `OutputStream` and `PlanAction` entrie
 ## Conventions
 
 - `VideoCleanError` and `VideoProbeError` mean skip this file and continue. `cappa.Exit` means stop the run, and batch loops must not catch it. A batch with any failure exits 1 after processing every remaining file.
+- SIGTERM and SIGHUP arrive as `KeyboardInterrupt` (`handle_stop_signals()`). Code that undoes a half-done file operation, such as restoring a moved-aside original, runs in `finally` or `except BaseException` with a re-raise, never `except OSError`, which misses a kill.
 - Models never print. Return message strings, or record them on the `ConversionPlan` (`actions`, `notices`, `debug_notes`). The CLI layer prints them.
 - Print through nclutils `pp`, not `Console.print`. `pp.success` and `pp.error` default to `markup=False`, which keeps bracketed filenames such as `Movie [x265].mkv` intact.
 - Keep the `# isort: skip` comments and function-local imports in `utils/`, `models/video_file.py`, and `controllers/`. Without them, subpackages fail to import on their own.
