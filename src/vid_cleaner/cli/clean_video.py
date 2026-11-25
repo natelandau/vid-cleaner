@@ -29,14 +29,18 @@ from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
 from vid_cleaner.utils import (
     TEMP_CLEANUP_WARNING,
     coerce_video_files,
-    copy_to_output,
     render_operations,
     render_substeps,
     resolve_out_path_override,
 )
 from vid_cleaner.vidcleaner import CleanCommand, build_config, build_run_options
 
-from vid_cleaner.cli.ffmpeg_step import run_ffmpeg_step, run_verify_step, verification_enabled  # isort: skip
+from vid_cleaner.cli.ffmpeg_step import (  # isort: skip
+    copy_result_to_output,
+    run_ffmpeg_step,
+    run_verify_step,
+    verification_enabled,
+)
 from vid_cleaner.controllers.validation import (  # isort: skip
     SourceLength,
     expected_clean_output,
@@ -71,11 +75,7 @@ def write_output(
     if video_file.temp_file.latest_temp_path() == video_file.path:
         return [f"No changes made: `{video_file.name}`"]
 
-    out_file, messages = copy_to_output(
-        video_file.temp_file.latest_temp_path(),
-        destination,
-        overwrite=overwrite,
-    )
+    out_file, messages = copy_result_to_output(video_file, destination, overwrite=overwrite)
 
     # The write above already landed and swapped the result into place, so a failure past
     # this point is housekeeping, not a failed write: warn instead of discarding the

@@ -71,7 +71,7 @@ def test_clean_out_accepts_a_video_named_with_its_macos_sidecar(
 
     # Then: the one video is written to the --out path
     assert exit_code == 0
-    assert stub_output_write.call_args.args[1] == out
+    assert stub_output_write.call_args.kwargs["dst"] == out
 
 
 def test_clean_rejects_from_with_positional_files(capsys, tmp_path):

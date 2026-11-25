@@ -269,6 +269,8 @@ vid-cleaner keeps its files in the locations that the [XDG Base Directory specif
 
 To print the contents of the cache, run `vidcleaner cache`. To empty the cache, run `vidcleaner cache --clear`.
 
+If `clean` or `clip` cannot copy a finished file to its destination, for example because the disk is full, the command keeps the file in the cache. The error message shows the path. Move the file to where you want it, then run `vidcleaner cache --clear`.
+
 ## Contributing
 
 To set up a development environment and run the checks, read [CONTRIBUTING.md](CONTRIBUTING.md).

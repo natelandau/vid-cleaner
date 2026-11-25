@@ -2,6 +2,7 @@
 
 from collections.abc import Generator
 from contextlib import contextmanager, nullcontext
+from pathlib import Path
 
 import cappa
 from nclutils import pp
@@ -11,7 +12,8 @@ from rich.text import Text
 
 from vid_cleaner.config import Config, RunOptions
 from vid_cleaner.constants import SYMBOL_CHECK, VerifyLevel
-from vid_cleaner.utils import TEMP_CLEANUP_WARNING, FfmpegCommand, run_ffmpeg
+from vid_cleaner.exceptions import VideoCleanError
+from vid_cleaner.utils import TEMP_CLEANUP_WARNING, FfmpegCommand, copy_to_output, run_ffmpeg
 
 from vid_cleaner.controllers.validation import ExpectedOutput, verify_output  # isort: skip
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
@@ -20,6 +22,8 @@ DRY_RUN_HEADER_SUFFIX = "(dry run)"
 OUTPUT_VERIFIED_MESSAGE = "Output verified"
 FFMPEG_INTERRUPTED_MESSAGE = "Interrupted while running ffmpeg. Exiting..."
 VERIFY_INTERRUPTED_MESSAGE = "Interrupted while verifying the output. Exiting..."
+OUTPUT_COPY_FAILED_ERROR = "could not copy the result to"
+RESULT_KEPT_MESSAGE = "The processed file is kept at"
 
 
 @contextmanager
@@ -131,3 +135,35 @@ def run_verify_step(
         verify_output(output_path, source_path=video_file.path, expected=expected, level=level)
 
     return [f"{SYMBOL_CHECK} {OUTPUT_VERIFIED_MESSAGE} ({level})"]
+
+
+def copy_result_to_output(
+    video_file: VideoFile, destination: Path, *, overwrite: bool
+) -> tuple[Path, list[str]]:
+    """Copy a file's finished result to its destination, keeping the result if the copy fails.
+
+    A failed copy (full disk, permissions, an unmounted share) would otherwise lose a
+    transcode that may have taken hours, because temporary files are removed when a
+    file fails and again when the program exits.
+
+    Args:
+        video_file (VideoFile): The processed file whose newest temp file is the result.
+        destination (Path): Where the result is written.
+        overwrite (bool): Replace the destination without keeping a backup.
+
+    Returns:
+        tuple[Path, list[str]]: The written file and the substep messages from the copy.
+
+    Raises:
+        VideoCleanError: If the copy fails. The reason names where the result was kept.
+    """
+    try:
+        return copy_to_output(
+            src=video_file.temp_file.latest_temp_path(), dst=destination, overwrite=overwrite
+        )
+    except OSError as e:
+        kept_path = video_file.temp_file.keep_for_recovery()
+        raise VideoCleanError(
+            path=video_file.path,
+            reason=f"{OUTPUT_COPY_FAILED_ERROR} {destination}: {e}. {RESULT_KEPT_MESSAGE} {kept_path}",
+        ) from e

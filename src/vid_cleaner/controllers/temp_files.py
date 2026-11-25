@@ -40,6 +40,7 @@ class TempFile:
         tmp_dir (Path | None): The unique temporary directory, set by the first `new_tmp_path` call
         created_tmp_files (list[Path]): List tracking all temporary files created
         tmp_file_number (int): Counter for naming temporary files
+        kept_for_recovery (bool): Whether `clean_up` leaves the files in place for the user
     """
 
     def __init__(self, path: Path) -> None:
@@ -55,6 +56,7 @@ class TempFile:
         self.created_tmp_files: list[Path] = []
         self.tmp_file_number = 1
         self._cleanup_registered = False
+        self.kept_for_recovery = False
 
     def latest_temp_path(self) -> Path:
         """Get the path to the most recently created temporary file.
@@ -165,12 +167,29 @@ class TempFile:
                     pp.trace(f"Remove tmp file: {file}")
                     file.unlink()
 
+    def keep_for_recovery(self) -> Path:
+        """Stop every later cleanup, including the exit hook, from removing the temporary files.
+
+        Call when the finished result could not be copied to its destination, so a long
+        transcode survives for the user to recover by hand instead of being thrown away.
+
+        Returns:
+            Path: The newest temporary file, which holds the finished result.
+        """
+        self.kept_for_recovery = True
+        return self.latest_temp_path()
+
     def clean_up(self) -> None:
         """Remove all temporary files and the temporary directory.
 
         Performs complete cleanup by removing all temporary files created during
-        processing and the temporary directory itself.
+        processing and the temporary directory itself. Does nothing once
+        `keep_for_recovery` has been called.
         """
+        if self.kept_for_recovery:
+            pp.trace(f"Keep tmp files for recovery: {self.tmp_dir}")
+            return
+
         if self.tmp_dir is not None and self.tmp_dir.exists():
             pp.debug("Clean up temporary files")
 

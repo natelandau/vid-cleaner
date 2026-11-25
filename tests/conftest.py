@@ -156,18 +156,17 @@ def mock_original_language(mocker):
 def stub_output_write(mocker):
     """Skip copying a processed file to its destination and report the save as done.
 
-    Patches the copy in both `clean` and `clip`. Use `fake_transcode` instead when the test
+    Patches the copy shared by `clean` and `clip`. Use `fake_transcode` instead when the test
     needs the real write.
 
     Returns:
-        MagicMock: The patched copy used by `clean`.
+        MagicMock: The patched copy.
     """
 
     def _report_save(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list[str]]:
         return dst, [f"{SYMBOL_CHECK} {SAVED_TO_MESSAGE} {dst}"]
 
-    mocker.patch("vid_cleaner.cli.clip_video.copy_to_output", side_effect=_report_save)
-    return mocker.patch("vid_cleaner.cli.clean_video.copy_to_output", side_effect=_report_save)
+    return mocker.patch("vid_cleaner.cli.ffmpeg_step.copy_to_output", side_effect=_report_save)
 
 
 @pytest.fixture

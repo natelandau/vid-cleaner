@@ -8,7 +8,11 @@ from cappa.base import invoke
 
 from tests.helpers import leftover_cache_files, run_vidcleaner
 from vid_cleaner.cli.clean_video import ORIGINAL_REMOVAL_WARNING
-from vid_cleaner.cli.ffmpeg_step import DRY_RUN_HEADER_SUFFIX, VERIFY_INTERRUPTED_MESSAGE
+from vid_cleaner.cli.ffmpeg_step import (
+    DRY_RUN_HEADER_SUFFIX,
+    RESULT_KEPT_MESSAGE,
+    VERIFY_INTERRUPTED_MESSAGE,
+)
 from vid_cleaner.constants import SYMBOL_CHECK
 from vid_cleaner.controllers.validation import OUTPUT_STREAM_COUNT_REASON
 from vid_cleaner.utils.cli import SAVED_TO_MESSAGE, TEMP_CLEANUP_WARNING
@@ -34,7 +38,7 @@ def test_clean_multiple_files_write_each_to_its_own_path(
 
     # Then: each file is written to its own path and neither original is deleted
     assert exit_code == 0
-    destinations = [call.args[1] for call in stub_output_write.mock_calls]
+    destinations = [call.kwargs["dst"] for call in stub_output_write.mock_calls]
     assert destinations == [first.resolve(), second.resolve()]
     assert first.exists()
     assert second.exists()
@@ -185,7 +189,7 @@ def test_clean_from_depth_writes_each_file_back_to_its_own_directory(
 
     # Then: Each file is written back over itself, with no backup kept
     assert exit_code == 0
-    assert sorted(call.args[1] for call in write.mock_calls) == sorted(
+    assert sorted(call.kwargs["dst"] for call in write.mock_calls) == sorted(
         [
             directory / "top.mkv",
             directory / "movie_a" / "a.mkv",
@@ -234,6 +238,29 @@ def test_clean_vp9_overwrite_removes_the_original_container(
     assert exit_code == 0
     assert (tmp_path / "movie.webm").read_bytes() == b"transcoded"
     assert not video.exists()
+
+
+def test_clean_keeps_the_result_when_the_copy_fails(
+    mocker, capsys, tmp_path, video_path, fake_transcode, mock_video_probe, mock_original_language
+):
+    """Verify a failed copy to the destination keeps the transcode and tells the user where."""
+    # Given: A destination that runs out of space during the copy
+    video_path.write_bytes(b"source")
+    mock_video_probe("reference.json")
+    mocker.patch(
+        "vid_cleaner.utils.cli.copy_file", side_effect=OSError(28, "No space left on device")
+    )
+
+    # When: Cleaning the file
+    exit_code = run_vidcleaner(["clean", "--h265", str(video_path)])
+
+    # Then: The file fails, the original is untouched, and the transcode stays in the cache
+    output = capsys.readouterr()
+    kept = leftover_cache_files(tmp_path / "cache")
+    assert exit_code == 1
+    assert video_path.read_bytes() == b"source"
+    assert [path.read_bytes() for path in kept] == [b"transcoded"]
+    assert RESULT_KEPT_MESSAGE in output.out + output.err
 
 
 def test_clean_dryrun_writes_nothing_to_the_cache(

@@ -513,7 +513,7 @@ def test_clean_renders_completed_steps_on_error(
     args = ["clean", "-vv", "--h265", str(video_path)]
     mock_video_probe("reference.json")
     mocker.patch(
-        "vid_cleaner.cli.clean_video.copy_to_output",
+        "vid_cleaner.cli.ffmpeg_step.copy_to_output",
         side_effect=RuntimeError("boom"),
     )
 

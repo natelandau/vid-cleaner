@@ -105,6 +105,25 @@ def test_temp_file_clean_up(video_path: Path, tmp_path: Path) -> None:
     assert not output_path_3.parent.exists()
 
 
+def test_temp_file_kept_for_recovery_survives_cleanup(video_path: Path, tmp_path: Path) -> None:
+    """Verify a result kept for recovery outlives both a per-file cleanup and the exit hook."""
+    # Given: A finished temp file that is kept for recovery
+    temp_file = TempFile(video_path)
+    result = temp_file.new_tmp_path(cache_dir=tmp_path)
+    result.write_bytes(b"transcoded")
+    temp_file.created_temp_file(result)
+
+    kept = temp_file.keep_for_recovery()
+
+    # When: Cleaning up as a failed file and as the exiting interpreter would
+    temp_file.clean_up()
+    cleanup_on_exit(temp_file)
+
+    # Then: The result is still on disk at the path reported to the user
+    assert kept == result
+    assert result.read_bytes() == b"transcoded"
+
+
 def test_video_file_without_temps_registers_no_exit_hook(
     mocker,
     video_path,

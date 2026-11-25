@@ -5,7 +5,7 @@ import pytest
 from tests.helpers import ffmpeg_command, leftover_cache_files, run_vidcleaner
 from vid_cleaner.cli import clip_video
 from vid_cleaner.cli.clip_video import TIME_FORMAT_ERROR
-from vid_cleaner.cli.ffmpeg_step import DRY_RUN_HEADER_SUFFIX
+from vid_cleaner.cli.ffmpeg_step import DRY_RUN_HEADER_SUFFIX, RESULT_KEPT_MESSAGE
 from vid_cleaner.constants import NO_VIDEO_STREAMS_REASON, SYMBOL_CHECK
 from vid_cleaner.controllers import TempFile
 from vid_cleaner.controllers.validation import OUTPUT_DURATION_REASON
@@ -239,6 +239,27 @@ def test_clip_failure_clears_its_temp_files_and_continues(
     assert cleanup.call_count == 2
     assert first.read_bytes() == b"source"
     assert second.read_bytes() == b"transcoded"
+
+
+def test_clip_keeps_the_result_when_the_copy_fails(
+    mocker, capsys, tmp_path, video_path, fake_transcode, mock_video_probe
+) -> None:
+    """Verify a failed copy to the destination keeps the clip in the cache for recovery."""
+    # Given: A destination the copy cannot write to
+    video_path.write_bytes(b"source")
+    mock_video_probe("reference.json")
+    mocker.patch("vid_cleaner.utils.cli.copy_file", side_effect=PermissionError("denied"))
+
+    # When: Clipping the file
+    exit_code = run_vidcleaner(["clip", "--verify=off", "--duration=00:00:10", str(video_path)])
+
+    # Then: The file fails, the source is untouched, and the clip stays in the cache
+    output = capsys.readouterr()
+    kept = leftover_cache_files(tmp_path / "cache")
+    assert exit_code == 1
+    assert video_path.read_bytes() == b"source"
+    assert [path.read_bytes() for path in kept] == [b"transcoded"]
+    assert RESULT_KEPT_MESSAGE in output.out + output.err
 
 
 def test_clip_verify_failure_keeps_original(

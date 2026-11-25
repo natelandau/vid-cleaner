@@ -371,7 +371,7 @@ def test_clean_from_declining_the_prompt_changes_nothing(
     original = video.read_bytes()
     interactive_console(is_terminal=True)
     mocker.patch("vid_cleaner.cli.discovery_output.Confirm.ask", return_value=False)
-    write = mocker.patch("vid_cleaner.cli.clean_video.copy_to_output")
+    write = mocker.patch("vid_cleaner.cli.ffmpeg_step.copy_to_output")
     args = ["clean", "--from", str(directory), "--filters", "h264"]
 
     # When: Running clean and declining
