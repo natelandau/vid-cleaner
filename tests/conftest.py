@@ -122,7 +122,8 @@ def make_video(mocker, video_path, mock_video_probe):
     """
 
     def _inner(fixture_name: str, language: str = "en") -> VideoFile:
-        mock_video_probe(fixture_name)
+        # Matching the probed path keeps `VideoFile` from re-probing on every access
+        mock_video_probe(fixture_name).path_to_file = video_path.resolve()
         mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang(language))
         return VideoFile(video_path)
 
@@ -179,7 +180,8 @@ def video_library(tmp_path, mocker, mock_ffprobe_box):
         for name, size, bitrate in files:
             path = directory / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(b"\0" * size)
+            path.touch()
+            os.truncate(path, size)
             file_box = copy.deepcopy(reference)
             file_box.bit_rate = str(bitrate) if bitrate else None
             # Real probe boxes carry the path they were built from, and `VideoFile`

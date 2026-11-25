@@ -307,7 +307,7 @@ def test_clean_from_applies_conversion_flags_to_each_selected_file(
 ):
     """Verify a conversion flag such as --h265 reaches files that discovery selected."""
     # Given: One discoverable h264 file and a stubbed writer
-    directory = video_library([("apple.mkv", 100_000_000, 1_000_000)])
+    directory = video_library([("apple.mkv", 100, 1_000_000)])
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
