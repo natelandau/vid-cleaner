@@ -3,28 +3,50 @@
 import cappa
 from nclutils import pp
 
+from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.utils import coerce_video_files
-from vid_cleaner.vidcleaner import InspectCommand
+from vid_cleaner.vidcleaner import InspectCommand, VidCleaner, json_report_for
 from vid_cleaner.views import stream_table
+from vid_cleaner.views.json_output import file_object, report_on_exit
 
 
-def main(inspect_cmd: InspectCommand) -> None:
-    """Inspect video files.
+def main(inspect_cmd: InspectCommand, vidcleaner: VidCleaner) -> None:
+    """Print stream details for each video file so a user can see what a file holds.
 
-    Inspect video files and print detailed information about them.
+    Continue past a file ffprobe cannot read, then exit 1 so scripts notice. With `--json`,
+    print one document for the whole run.
 
     Args:
-        cmd (VidCleaner): The main command instance containing global options
-        inspect_cmd (InspectCommand): The inspect subcommand instance with inspect-specific options
+        inspect_cmd (InspectCommand): The inspect subcommand with its file list and flags.
+        vidcleaner (VidCleaner): The parsed CLI arguments, used to start the JSON report.
 
     Raises:
-        cappa.Exit: If the video files are not found or if the inspect command is not valid
+        cappa.Exit: With code 1 when any file could not be read, otherwise 0.
     """
-    for video in coerce_video_files(inspect_cmd.files):
-        if inspect_cmd.json_output:
-            pp.console().print(video.ffprobe_json())
-            continue
+    report = json_report_for(vidcleaner)
+    skipped: list[dict[str, str]] = []
+    summary = {"total": 0, "skipped": 0}
 
-        pp.console().print(stream_table(video.probe_box))
+    with report_on_exit(report):
+        if report:
+            report.summary = summary
+            report.extra["skipped"] = skipped
 
-    raise cappa.Exit(code=0)
+        videos = coerce_video_files(inspect_cmd.files)
+        summary["total"] = len(videos)
+        for video in videos:
+            try:
+                if report:
+                    report.files.append(file_object(video))
+                else:
+                    pp.console().print(stream_table(video.probe_box))
+            except VideoProbeError as e:
+                pp.error(str(e))
+                skipped.append({"path": str(video.path), "reason": e.reason})
+            # A file can vanish or lose its permissions after the path check
+            except OSError as e:
+                pp.error(f"{video.path}: {e}")
+                skipped.append({"path": str(video.path), "reason": str(e)})
+            summary["skipped"] = len(skipped)
+
+    raise cappa.Exit(code=1 if skipped else 0)

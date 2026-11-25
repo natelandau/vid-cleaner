@@ -44,7 +44,7 @@ Every command that reads video files skips the `._` metadata files that macOS wr
 
 ### Inspecting a video file
 
-`vidcleaner inspect FILES` prints a table of the video, audio, and subtitle streams in each file, with the codec, language, and channel layout of each stream. Use `--json` to print the raw ffprobe output instead.
+`vidcleaner inspect FILES` prints a table of the video, audio, and subtitle streams in each file, with the codec, language, and channel layout of each stream. `inspect` continues past a file it cannot read and exits 1 at the end. Use `--json` to print one JSON document for all files instead. The data for one file is at `.files[N]`, with ffprobe's `streams` and `format`.
 
 ```shell
 vidcleaner inspect movie.mkv
@@ -193,7 +193,7 @@ A file is valid when all of these conditions are true:
 
 Cover art does not count as a video stream. An audio-only file with an embedded poster is invalid.
 
-The command prints valid files to stdout and invalid files to stderr. To hide the invalid files, run `vidcleaner check FILES 2>/dev/null`.
+The command prints valid files to stdout and invalid files to stderr. To hide the invalid files, run `vidcleaner check FILES 2>/dev/null`. With `--json`, all per-file lines go to stderr and stdout holds only the JSON document.
 
 By default, the command reads only the metadata of each file, which takes milliseconds. To decode every frame instead, use `--deep`. A deep check finds damage in the body of a file that has a correct header. It takes minutes for each file.
 
@@ -203,6 +203,40 @@ vidcleaner check --from /media --filters=4k --deep
 ```
 
 `check` accepts the same query options as `search`, except `--limit`. A limit can leave files unchecked while the command exits `0`. A trait filter never hides an invalid file, because the filter applies only to files that ffprobe can read.
+
+### JSON output for scripts
+
+`inspect`, `search`, `check`, and `clean` accept `--json`. Each run prints one JSON document to stdout. All other output, such as progress bars and tables, goes to stderr. The exit codes are the same as without `--json`.
+
+Every document has the same top-level keys:
+
+-   `schema_version`: the integer `1`. It increases when a field is removed or changes meaning.
+-   `command`: the command that ran.
+-   `dry_run`: `true` when the run used `-n`.
+-   `interrupted`: `true` when Ctrl-C or a signal stopped the run. `files` holds the files that finished.
+-   `error`: why the run stopped before it processed a file or crashed, or `null`. A file that fails is reported in its own entry.
+-   `summary`: counts for the run.
+-   `files`: one entry for each file.
+
+Each command fills `files` in its own way:
+
+-   `inspect` and `search`: each entry has the file's `path`, `name`, `size`, and ffprobe's `streams` and `format`. `search` entries also have `traits`, `matches`, and `bitrate`. Files that cannot be read are in a separate `skipped` list, each with a `path` and a `reason`. `search` also returns the `query` that selected the files.
+-   `check`: each entry has the file's `path`, `ok`, and the `reason` it is invalid.
+-   `clean`: see below.
+
+For `clean`, each entry has a `status`:
+
+-   `cleaned`: the file was written. `result` describes the new file.
+-   `unchanged`: the file needs no changes, so ffmpeg does not run. A dry run reports this status too.
+-   `failed`: the file was skipped. `reason` says why.
+-   `planned`: a dry run. `planned_streams` lists the streams the run would write.
+
+A script cannot answer the confirmation prompt. With `clean --from`, add `--yes`.
+
+```shell
+# List the files that failed to clean
+vidcleaner clean --json --from /media --yes | jq '.files[] | select(.status == "failed") | .path'
+```
 
 ### Configuration
 

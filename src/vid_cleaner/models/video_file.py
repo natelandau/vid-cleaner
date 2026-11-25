@@ -53,7 +53,6 @@ from vid_cleaner.utils import (
     find_media_ids,
     get_probe_as_box,
     radarr_imdb_id,
-    run_ffprobe,
     sonarr_imdb_id,
     tmdb_original_language,
 )
@@ -1041,10 +1040,10 @@ class VideoFile:
 
         return ["-ss", start, "-t", duration, "-map", "0", "-c", "copy"]
 
-    def ffprobe_json(self) -> dict[str, Any]:
-        """Run ffprobe on the video file and return the JSON response.
+    def ffprobe_output(self) -> dict[str, Any]:
+        """Return ffprobe's raw output for the file, unchanged, so reports can show exactly what ffprobe said.
 
         Returns:
-            dict: A dictionary containing the ffprobe output with information about the video file's streams, format, and metadata.
+            dict[str, Any]: ffprobe's `streams` and `format` data before normalization.
         """
-        return run_ffprobe(self.path)
+        return self.probe_box.ffprobe_output.to_dict()

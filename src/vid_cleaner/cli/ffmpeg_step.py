@@ -7,13 +7,19 @@ from pathlib import Path
 import cappa
 from nclutils import pp
 from rich.markdown import Markdown
-from rich.progress import Progress
 from rich.text import Text
 
 from vid_cleaner.config import Config, RunOptions
 from vid_cleaner.constants import SYMBOL_CHECK, VerifyLevel
 from vid_cleaner.exceptions import VideoCleanError
-from vid_cleaner.utils import TEMP_CLEANUP_WARNING, FfmpegCommand, copy_to_output, run_ffmpeg
+from vid_cleaner.utils import (
+    TEMP_CLEANUP_WARNING,
+    FfmpegCommand,
+    OutputWrite,
+    copy_to_output,
+    progress_display,
+    run_ffmpeg,
+)
 
 from vid_cleaner.controllers.validation import ExpectedOutput, verify_output  # isort: skip
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
@@ -88,7 +94,7 @@ def run_ffmpeg_step(
 
     with (
         _exit_on_interrupt(video_file, message=FFMPEG_INTERRUPTED_MESSAGE),
-        Progress(transient=True) as progress,
+        progress_display() as progress,
     ):
         task = progress.add_task(f"{title}…", total=100)
         run_ffmpeg(
@@ -101,9 +107,21 @@ def run_ffmpeg_step(
     return [f"{SYMBOL_CHECK} {title}"]
 
 
+def verified_message(level: VerifyLevel) -> str:
+    """Describe a passed output check as a substep message for the per-file result tree.
+
+    Args:
+        level (VerifyLevel): The level of the check that passed.
+
+    Returns:
+        str: The success substep.
+    """
+    return f"{SYMBOL_CHECK} {OUTPUT_VERIFIED_MESSAGE} ({level})"
+
+
 def run_verify_step(
     video_file: VideoFile, *, expected: ExpectedOutput | None, level: VerifyLevel
-) -> list[str]:
+) -> VerifyLevel | None:
     """Check the newest temp file against what the run promised, before it replaces the original.
 
     Args:
@@ -113,8 +131,8 @@ def run_verify_step(
         level (VerifyLevel): How thorough the check is.
 
     Returns:
-        list[str]: The success substep, or an empty list when there is no expectation or no
-            temp file to check.
+        VerifyLevel | None: The level of the check that ran and passed, or None when there
+            is no expectation or no temp file to check.
 
     Raises:
         VideoCleanError: If the output fails a check.
@@ -122,24 +140,24 @@ def run_verify_step(
     """
     output_path = video_file.temp_file.latest_temp_path()
     if expected is None or output_path == video_file.path:
-        return []
+        return None
 
     with (
         _exit_on_interrupt(video_file, message=VERIFY_INTERRUPTED_MESSAGE),
         # Only the decode takes long enough to need a spinner. Its progress is not
         # measurable, so the task stays indeterminate.
-        Progress(transient=True) if level == VerifyLevel.FULL else nullcontext() as progress,
+        progress_display() if level == VerifyLevel.FULL else nullcontext() as progress,
     ):
         if progress is not None:
             progress.add_task("Verifying output…", total=None)
         verify_output(output_path, source_path=video_file.path, expected=expected, level=level)
 
-    return [f"{SYMBOL_CHECK} {OUTPUT_VERIFIED_MESSAGE} ({level})"]
+    return level
 
 
 def copy_result_to_output(
     video_file: VideoFile, destination: Path, *, overwrite: bool
-) -> tuple[Path, list[str]]:
+) -> OutputWrite:
     """Copy a file's finished result to its destination, keeping the result if the copy fails.
 
     A failed copy (full disk, permissions, an unmounted share) would otherwise lose a
@@ -152,7 +170,7 @@ def copy_result_to_output(
         overwrite (bool): Replace the destination without keeping a backup.
 
     Returns:
-        tuple[Path, list[str]]: The written file and the substep messages from the copy.
+        OutputWrite: The written file and the backup of the replaced original, if any.
 
     Raises:
         VideoCleanError: If the copy fails. The reason names where the result was kept.

@@ -2,7 +2,7 @@
 
 from vid_cleaner.constants import TREE_BRANCH, TREE_LAST
 from vid_cleaner.models import PlanAction
-from vid_cleaner.utils import render_operations
+from vid_cleaner.utils import render_operations, stop_run
 
 
 def _plain(capsys) -> str:
@@ -71,3 +71,14 @@ def test_open_tree_branches_every_line(capsys):
     out = _plain(capsys)
     assert TREE_BRANCH in out
     assert TREE_LAST not in out
+
+
+def test_stop_run_prints_reason_and_returns_exception(capsys):
+    """Verify stop_run shows the reason and returns an exit carrying it."""
+    stopped = stop_run("Disk is full [x]", details=["Free 1 GB"])
+
+    assert stopped.reason == "Disk is full [x]"
+    assert stopped.code == 1
+    error_output = capsys.readouterr().err
+    assert "Disk is full [x]" in error_output
+    assert "Free 1 GB" in error_output

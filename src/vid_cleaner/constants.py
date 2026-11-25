@@ -87,6 +87,15 @@ class VideoTrait(StrEnum):
         return ", ".join(values)
 
 
+class CleanStatus(StrEnum):
+    """How one file's clean ended."""
+
+    CLEANED = "cleaned"
+    UNCHANGED = "unchanged"
+    FAILED = "failed"
+    PLANNED = "planned"
+
+
 class VerifyLevel(StrEnum):
     """How thoroughly to check ffmpeg output before it replaces the original."""
 

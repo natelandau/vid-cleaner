@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from nclutils.sh import ShellCommandNotFoundError
 
+from tests.helpers import load_ffprobe_json
 from vid_cleaner.constants import CodecTypes
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.utils import get_probe_as_box
@@ -123,3 +124,12 @@ def test_decode_check_reports_a_missing_ffmpeg(mocker, tmp_path) -> None:
     # Then: The reason is reported rather than raised
     assert result is not None
     assert "ffmpeg" in result
+
+
+def test_probe_box_keeps_raw_ffprobe_output(mock_ffprobe_box) -> None:
+    """Verify the box keeps ffprobe's output as recorded, not the normalized stream values."""
+    # Given/When: A probe box built from a recorded response
+    box = mock_ffprobe_box("reference.json")
+
+    # Then: The raw output is unchanged by normalization
+    assert box.ffprobe_output.to_dict() == load_ffprobe_json("reference.json")

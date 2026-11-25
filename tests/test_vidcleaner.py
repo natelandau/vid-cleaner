@@ -1,5 +1,6 @@
 """Test the vidcleaner command line interface."""
 
+import json
 import os
 import signal
 from pathlib import Path
@@ -7,7 +8,12 @@ from pathlib import Path
 import pytest
 
 from tests.helpers import run_vidcleaner
-from vid_cleaner.vidcleaner import STOP_SIGNALS, handle_stop_signals, verify_required_binaries
+from vid_cleaner.vidcleaner import (
+    STOP_SIGNALS,
+    configure_output,
+    handle_stop_signals,
+    verify_required_binaries,
+)
 
 
 @pytest.mark.parametrize("subcommand", ["inspect", "clip", "clean", "cache"])
@@ -51,6 +57,25 @@ def test_missing_binaries_stops_the_run(capsys, mocker, missing, expected) -> No
     assert expected in captured.err
 
 
+def test_missing_binaries_with_json_writes_an_error_report(capsys, mocker) -> None:
+    """Verify --json reports the missing programs in the document and keeps stdout parseable."""
+    # Given: Both programs are absent
+    mocker.patch("vid_cleaner.utils.cli.which", return_value=None)
+
+    # When: Running a JSON command
+    exit_code = run_vidcleaner(
+        ["inspect", "--json", "movie.mkv"], deps=[configure_output, verify_required_binaries]
+    )
+
+    # Then: stdout is one report naming them, and the human message went to stderr
+    captured = capsys.readouterr()
+    doc = json.loads(captured.out)
+    assert exit_code == 1
+    assert "ffmpeg, ffprobe" in doc["error"]
+    assert doc["files"] == []
+    assert "ffmpeg, ffprobe" in captured.err
+
+
 def test_present_binaries_allow_the_run(mocker, tmp_path) -> None:
     """Verify the preflight is silent when both programs are on PATH."""
     # Given: Both programs are present
@@ -82,7 +107,7 @@ def test_cache_runs_without_ffmpeg(
 
     # Then: The preflight does not block it
     assert exit_code == 0
-    assert "ffmpeg" not in captured.err
+    assert "Not found on PATH" not in captured.err + captured.out
 
 
 @pytest.mark.parametrize(

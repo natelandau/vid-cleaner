@@ -2,7 +2,9 @@
 
 from pathlib import Path
 
-__all__ = ["VideoCleanError", "VideoProbeError"]
+import cappa
+
+__all__ = ["RunStopped", "VideoCleanError", "VideoProbeError"]
 
 
 class VideoCleanError(Exception):
@@ -60,3 +62,20 @@ class VideoProbeError(Exception):
                 return cls(path=path, reason=stripped.removeprefix(f"{path}: "))
 
         return cls(path=path, reason="unknown ffprobe error")
+
+
+class RunStopped(cappa.Exit):
+    """Stop the whole run and record why, so a JSON report can carry the reason.
+
+    The reason is already printed by the caller, so no message is passed to cappa.
+    """
+
+    def __init__(self, reason: str, *, code: int = 1) -> None:
+        """Initialize RunStopped.
+
+        Args:
+            reason (str): Why the run stopped.
+            code (int): Process exit code.
+        """
+        self.reason = reason
+        super().__init__(code=code)

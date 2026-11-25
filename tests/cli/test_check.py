@@ -3,8 +3,9 @@
 from pathlib import Path
 
 import pytest
+from cappa.base import invoke
 
-from tests.helpers import run_vidcleaner
+from tests.helpers import read_json_document, run_vidcleaner
 from vid_cleaner.cli.check_video import display_path
 from vid_cleaner.cli.discovery_output import (
     FROM_WITH_FILES_ERROR,
@@ -13,7 +14,9 @@ from vid_cleaner.cli.discovery_output import (
     NOT_AN_EXISTING_DIRECTORY_ERROR,
     REQUIRES_FROM_ERROR,
 )
+from vid_cleaner.controllers.validation import CheckResult
 from vid_cleaner.exceptions import VideoProbeError
+from vid_cleaner.vidcleaner import VidCleaner, configure_output
 
 
 @pytest.fixture(autouse=True)
@@ -366,3 +369,97 @@ def test_display_path_survives_a_deleted_working_directory(tmp_path, monkeypatch
     # When: Rendering a file found by absolute path
     # Then: The path is shown as found
     assert display_path(movie) == str(movie)
+
+
+@pytest.mark.parametrize(
+    ("readable", "exit_code", "summary", "ok", "has_reason"),
+    [
+        (True, 0, {"total": 1, "valid": 1, "invalid": 0}, True, False),
+        (False, 1, {"total": 1, "valid": 0, "invalid": 1}, False, True),
+    ],
+    ids=["valid", "unreadable"],
+)
+def test_check_json(
+    capsys,
+    video_path,
+    mock_video_probe,
+    mock_unreadable_probe,
+    readable,
+    exit_code,
+    summary,
+    ok,
+    has_reason,
+):
+    """Verify check --json prints one document with a verdict per file."""
+    # Given: A file that probes or fails to probe
+    if readable:
+        mock_video_probe("reference.json")
+    else:
+        mock_unreadable_probe(video_path.name)
+
+    # When: Checking it with --json, named relative to the working directory
+    actual_exit_code = run_vidcleaner(["check", "--json", video_path.name])
+
+    # Then: stdout is one report matching the verdict, and the exit code is unchanged
+    doc = read_json_document(capsys)
+    assert actual_exit_code == exit_code
+    assert doc["command"] == "check"
+    assert doc["error"] is None
+    assert doc["summary"] == summary
+    assert doc["files"][0]["path"] == str(video_path.resolve())
+    assert doc["files"][0]["ok"] is ok
+    assert (doc["files"][0]["reason"] is not None) is has_reason
+
+
+def test_check_json_reports_missing_from_directory(capsys, tmp_path):
+    """Verify a missing --from directory is the report's error."""
+    # Given: A directory that does not exist
+    missing = tmp_path / "missing"
+
+    # When: Checking it with --json
+    exit_code = run_vidcleaner(["check", "--json", "--from", str(missing)])
+
+    # Then: The run fails with the reason and no files
+    doc = read_json_document(capsys)
+    assert exit_code == 1
+    assert doc["files"] == []
+    assert NOT_AN_EXISTING_DIRECTORY_ERROR in doc["error"]
+
+
+def test_check_json_empty_directory_has_no_error(capsys, tmp_path):
+    """Verify a directory with no video files is a successful, empty report."""
+    # Given: An empty directory
+    # When: Checking it with --json
+    exit_code = run_vidcleaner(["check", "--json", "--from", str(tmp_path)])
+
+    # Then: The run succeeds with no error and no files
+    doc = read_json_document(capsys)
+    assert exit_code == 0
+    assert doc["error"] is None
+    assert doc["files"] == []
+
+
+def test_check_json_interrupt_keeps_finished_verdicts(capsys, mocker, tmp_path):
+    """Verify an interrupted check reports the verdicts it finished."""
+    # Given: Two files, where checking the second is interrupted
+    first, second = tmp_path / "first.mkv", tmp_path / "second.mkv"
+    first.touch()
+    second.touch()
+    mocker.patch(
+        "vid_cleaner.cli.check_video.check_video_file",
+        side_effect=[CheckResult(path=first, ok=True), KeyboardInterrupt()],
+    )
+
+    # When: Checking both with --json
+    with pytest.raises(KeyboardInterrupt):
+        invoke(
+            obj=VidCleaner,
+            argv=["check", "--json", str(first), str(second)],
+            deps=[configure_output],
+        )
+
+    # Then: The document marks the interrupt and holds the finished verdict
+    doc = read_json_document(capsys)
+    assert doc["interrupted"] is True
+    assert [entry["path"] for entry in doc["files"]] == [str(first)]
+    assert doc["summary"] == {"total": 1, "valid": 1, "invalid": 0}

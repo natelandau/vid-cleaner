@@ -1,10 +1,10 @@
 """Check subcommand."""
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import cappa
 from nclutils import pp
-from rich.progress import track
 
 from vid_cleaner.cli.discovery_output import (
     FROM_WITH_FILES_ERROR,
@@ -16,8 +16,9 @@ from vid_cleaner.cli.discovery_output import (
 from vid_cleaner.constants import SortOrder
 from vid_cleaner.controllers.discovery import DiscoveryReport
 from vid_cleaner.controllers.validation import CheckResult, check_probed_video, check_video_file
-from vid_cleaner.utils import drop_macos_sidecars
-from vid_cleaner.vidcleaner import CheckCommand
+from vid_cleaner.utils import drop_macos_sidecars, stop_run, track_progress
+from vid_cleaner.vidcleaner import CheckCommand, VidCleaner, json_report_for
+from vid_cleaner.views.json_output import check_report_entry, report_on_exit
 
 
 def display_path(path: Path) -> str:
@@ -49,15 +50,15 @@ def display_path(path: Path) -> str:
         return str(resolved)
 
 
-def check_discovered_files(report: DiscoveryReport, *, deep: bool) -> list[CheckResult]:
-    """Check every video file a `--from` discovery found.
+def check_discovered_files(report: DiscoveryReport, *, deep: bool) -> Iterator[CheckResult]:
+    """Check every video file a `--from` discovery found, yielding each verdict as it is reached.
 
     Args:
         report (DiscoveryReport): The files discovery found under the `--from` directory.
         deep (bool): Decode every frame instead of trusting the header.
 
-    Returns:
-        list[CheckResult]: A verdict per file found, unreadable files included.
+    Yields:
+        CheckResult: A verdict per file found, unreadable files included.
 
     Raises:
         cappa.Exit: With code 0 when the directory holds no video files.
@@ -69,60 +70,54 @@ def check_discovered_files(report: DiscoveryReport, *, deep: bool) -> list[Check
     # Discovery reports the files it could not read separately from the ones it kept, and
     # an unreadable file has no traits, so `--filters` can never have excluded one. Report
     # them all: hiding a failure behind a filter would defeat the command.
-    failures = [
-        CheckResult(path=error.path, ok=False, reason=error.reason) for error in report.skipped
-    ]
+    for error in report.skipped:
+        yield CheckResult(path=error.path, ok=False, reason=error.reason)
 
     # Discovery already probed every file it kept and `VideoFile` caches its probe, so
     # finishing the verdict here costs no second ffprobe.
-    passes = [
-        check_probed_video(result.video_file, deep=deep)
-        for result in track(
-            report.results,
-            description=f"Decoding {len(report.results)} files...",
-            transient=True,
-            disable=not deep,
-        )
-    ]
-
-    return failures + passes
+    for result in track_progress(
+        report.results,
+        description=f"Decoding {len(report.results)} files...",
+        transient=True,
+        disable=not deep,
+    ):
+        yield check_probed_video(result.video_file, deep=deep)
 
 
-def check_explicit_files(check_cmd: CheckCommand) -> list[CheckResult]:
-    """Check each path the user named, in the order they named it.
+def check_explicit_files(check_cmd: CheckCommand) -> Iterator[CheckResult]:
+    """Check each path the user named, in the order they named it, yielding each verdict.
 
     Args:
         check_cmd (CheckCommand): The parsed check command.
 
-    Returns:
-        list[CheckResult]: A verdict per path given, except macOS `._` metadata files.
+    Yields:
+        CheckResult: A verdict per path given, except macOS `._` metadata files.
 
     Raises:
         cappa.Exit: If every path given is a macOS `._` metadata file.
     """
     files = drop_macos_sidecars(check_cmd.files)
-    return [
-        check_video_file(path, deep=check_cmd.deep)
-        for path in track(
-            files,
-            description=f"Decoding {len(files)} files...",
-            transient=True,
-            disable=not check_cmd.deep,
-        )
-    ]
+    for path in track_progress(
+        files,
+        description=f"Decoding {len(files)} files...",
+        transient=True,
+        disable=not check_cmd.deep,
+    ):
+        yield check_video_file(path, deep=check_cmd.deep)
 
 
-def select_results(check_cmd: CheckCommand) -> list[CheckResult]:
+def select_results(check_cmd: CheckCommand) -> Iterator[CheckResult]:
     """Resolve and check the files named either explicitly or by a `--from` query.
 
     Keep the two modes strictly separate so a query and a path list can never disagree
-    about what was checked.
+    about what was checked. Verdicts arrive one at a time, so an interrupted run still
+    has the ones it finished.
 
     Args:
         check_cmd (CheckCommand): The parsed check command.
 
     Returns:
-        list[CheckResult]: A verdict per file checked.
+        Iterator[CheckResult]: A verdict per file checked.
 
     Raises:
         cappa.Exit: If the two modes are mixed, if discovery flags appear without
@@ -139,12 +134,11 @@ def select_results(check_cmd: CheckCommand) -> list[CheckResult]:
     )
 
     if check_cmd.from_ is not None and check_cmd.files:
-        pp.error(FROM_WITH_FILES_ERROR)
-        raise cappa.Exit(code=1)
+        raise stop_run(FROM_WITH_FILES_ERROR)
 
     if check_cmd.from_ is None and uses_discovery_flags:
-        pp.error(f"{REQUIRES_FROM_ERROR}: `--filters`, `--sort`, `--reverse`, `--depth`")
-        raise cappa.Exit(code=1)
+        msg = f"{REQUIRES_FROM_ERROR}: `--filters`, `--sort`, `--reverse`, `--depth`"
+        raise stop_run(msg)
 
     if check_cmd.from_ is not None:
         report = discover_from_directory(
@@ -153,37 +147,53 @@ def select_results(check_cmd: CheckCommand) -> list[CheckResult]:
         return check_discovered_files(report, deep=check_cmd.deep)
 
     if not check_cmd.files:
-        pp.error(NO_FILES_OR_FROM_ERROR)
-        raise cappa.Exit(code=1)
+        raise stop_run(NO_FILES_OR_FROM_ERROR)
 
     return check_explicit_files(check_cmd)
 
 
-def main(check_cmd: CheckCommand) -> None:
+def main(check_cmd: CheckCommand, vidcleaner: VidCleaner) -> None:
     """Report whether each named video file is valid, and exit non-zero if any is not.
+
+    With `--json`, also print one document for the whole run to stdout.
 
     Args:
         check_cmd (CheckCommand): Check-specific command options
+        vidcleaner (VidCleaner): The parsed CLI arguments, used to start the JSON report.
 
     Raises:
         cappa.Exit: With code 0 when every file checked is valid, code 1 when any is not.
     """
-    results = select_results(check_cmd)
-
-    # `pp.success` and `pp.error` render their own markers and route failures to stderr,
-    # so `check ... 2>/dev/null` narrows the output to the valid files. Both default to
-    # `markup=False`, which is what keeps the square brackets in a release filename or an
-    # ffmpeg diagnostic from being read as Rich markup tags and dropped.
+    report = json_report_for(vidcleaner)
     invalid = 0
-    for result in results:
-        name = display_path(result.path)
-        if result.ok:
-            pp.success(name)
-            continue
+    summary = {"total": 0, "valid": 0, "invalid": 0}
 
-        invalid += 1
-        pp.error(f"{name}  {result.reason}")
+    with report_on_exit(report):
+        if report:
+            report.summary = summary
+        results: list[CheckResult] = []
+        for result in select_results(check_cmd):
+            results.append(result)
+            if report:
+                report.files.append(check_report_entry(result))
+                summary["total"] += 1
+                summary["valid" if result.ok else "invalid"] += 1
 
-    pp.info(f"\nChecked {len(results)} file(s): {len(results) - invalid} valid, {invalid} invalid")
+        # `pp.success` and `pp.error` render their own markers and route failures to stderr,
+        # so `check ... 2>/dev/null` narrows the output to the valid files. Both default to
+        # `markup=False`, which is what keeps the square brackets in a release filename or an
+        # ffmpeg diagnostic from being read as Rich markup tags and dropped.
+        for result in results:
+            name = display_path(result.path)
+            if result.ok:
+                pp.success(name)
+                continue
+
+            invalid += 1
+            pp.error(f"{name}  {result.reason}")
+
+        pp.info(
+            f"\nChecked {len(results)} file(s): {len(results) - invalid} valid, {invalid} invalid"
+        )
 
     raise cappa.Exit(code=1 if invalid else 0)

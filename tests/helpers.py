@@ -32,6 +32,21 @@ def load_ffprobe_json(filename: str) -> dict[str, Any]:
     return json.loads("\n".join(line for line in lines if not line.lstrip().startswith("//")))
 
 
+def read_json_document(capsys: pytest.CaptureFixture[str]) -> dict[str, Any]:
+    """Parse the JSON report a run wrote to stdout.
+
+    Consume the captured output, so a test that also needs stderr reads both from one
+    `capsys.readouterr()` call instead.
+
+    Args:
+        capsys: The pytest capture fixture holding the run's output.
+
+    Returns:
+        dict[str, Any]: The parsed report document.
+    """
+    return json.loads(capsys.readouterr().out)
+
+
 def set_file_size(path: Path, size: int) -> None:
     """Give a file a size on disk without writing its bytes, for code that reads file sizes.
 

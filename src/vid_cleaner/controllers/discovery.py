@@ -10,12 +10,11 @@ from typing import Any
 
 from nclutils import pp
 from rich.live import Live
-from rich.progress import track
 
 from vid_cleaner.constants import VIDEO_SUFFIXES, SortOrder, VideoTrait
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.models import SearchResult, VideoFile
-from vid_cleaner.utils import is_macos_sidecar
+from vid_cleaner.utils import is_macos_sidecar, track_progress
 
 # Each key pairs a getter with the direction that reads naturally for it: names ascend,
 # magnitudes descend. `reverse` flips whichever is active.
@@ -25,6 +24,19 @@ SORT_KEYS: dict[SortOrder, tuple[SortKey, bool]] = {
     SortOrder.SIZE: (lambda result: result.size, True),
     SortOrder.BITRATE: (lambda result: result.bitrate, True),
 }
+
+
+def sorts_descending(sort: SortOrder, *, reverse: bool) -> bool:
+    """Report the direction a sort runs in, so a query can be described before discovery runs.
+
+    Args:
+        sort (SortOrder): The key to rank results by.
+        reverse (bool): Flip the key's natural direction.
+
+    Returns:
+        bool: True when the largest or last value comes first.
+    """
+    return SORT_KEYS[sort][1] != reverse
 
 
 @dataclass
@@ -223,7 +235,7 @@ def discover_video_files(
     video_files = _collect_video_files(root, depth=depth, unreadable=unreadable)
 
     results: list[SearchResult] = []
-    for video_file in track(
+    for video_file in track_progress(
         video_files,
         description=(
             f"Filtering {len(video_files)} files for {human_readable_filters}..."
@@ -269,8 +281,8 @@ def discover_video_files(
     # is stable, so this ordering survives as the tiebreaker after the real sort below.
     results.sort(key=SORT_KEYS[SortOrder.ALPHA][0])
 
-    key_fn, descends_by_default = SORT_KEYS[sort]
-    descending = descends_by_default != reverse
+    key_fn, _ = SORT_KEYS[sort]
+    descending = sorts_descending(sort, reverse=reverse)
     results.sort(key=key_fn, reverse=descending)
 
     truncated = 0

@@ -1,8 +1,12 @@
 """Test the vidcleaner inspect subcommand."""
 
+import json
 import re
 
-from tests.helpers import load_ffprobe_json, run_vidcleaner
+import pytest
+
+from tests.helpers import load_ffprobe_json, read_json_document, run_vidcleaner
+from vid_cleaner.cli import inspect_video
 
 
 def test_inspect_table(capsys, video_path, mock_video_probe):
@@ -41,21 +45,91 @@ def test_inspect_title_shows_file_size(capsys, video_path, mock_video_probe):
     assert "(2.0 kB)" in output
 
 
-def test_inspect_json(capsys, video_path, mocker):
-    """Verify inspect command displays video information in JSON format."""
-    # Given: Mock video file and ffprobe data
-    args = ["inspect", "--json", str(video_path)]
-    mocker.patch(
-        "vid_cleaner.models.video_file.run_ffprobe",
-        return_value=load_ffprobe_json("reference.json"),
-    )
+def test_inspect_json_writes_one_document_for_two_files(capsys, tmp_path, mock_video_probe):
+    """Verify inspect --json prints one document holding every file's raw ffprobe data."""
+    # Given: Two video files that probe as the reference recording
+    first, second = tmp_path / "first.mkv", tmp_path / "second.mkv"
+    first.touch()
+    second.touch()
+    mock_video_probe("reference.json")
 
-    # When: Running inspect command with JSON flag
-    exit_code = run_vidcleaner(args)
+    # When: Inspecting both with --json
+    exit_code = run_vidcleaner(["inspect", "--json", str(first), str(second)])
 
-    # Then: Output contains expected JSON data
-    output = capsys.readouterr().out
+    # Then: stdout parses as one report with both files
+    doc = read_json_document(capsys)
     assert exit_code == 0
-    assert "'bit_rate': '26192239'," in output
-    assert "'channel_layout': '7.1'," in output
-    assert "'codec_name': 'hdmv_pgs_subtitle'," in output
+    assert doc["command"] == "inspect"
+    assert len(doc["files"]) == 2
+    assert doc["files"][0]["streams"] == load_ffprobe_json("reference.json")["streams"]
+    assert doc["summary"] == {"total": 2, "skipped": 0}
+
+
+@pytest.mark.parametrize("json_flags", [["--json"], []], ids=["json", "text"])
+def test_inspect_continues_past_an_unreadable_file(
+    capsys, tmp_path, mock_unreadable_probe, json_flags
+):
+    """Verify inspect reports an unreadable file, inspects the rest, and exits 1."""
+    # Given: One unreadable file followed by a readable one
+    bad, good = tmp_path / "bad.mkv", tmp_path / "good.mkv"
+    bad.touch()
+    good.touch()
+    mock_unreadable_probe("bad.mkv")
+
+    # When: Inspecting both
+    exit_code = run_vidcleaner(["inspect", *json_flags, str(bad), str(good)])
+
+    # Then: The readable file is shown and the run exits 1
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    if json_flags:
+        doc = json.loads(captured.out)
+        assert [f["name"] for f in doc["files"]] == ["good.mkv"]
+        assert doc["skipped"] == [
+            {"path": str(bad), "reason": "Invalid data found when processing input"}
+        ]
+    else:
+        assert re.search(r"0 │ video +│ h264", captured.out)
+        assert "bad.mkv" in captured.err
+
+
+def test_json_run_does_not_leak_stderr_console_into_next_run(capsys, video_path, mock_video_probe):
+    """Verify a JSON run leaves later text runs printing to stdout."""
+    # Given: A JSON run has finished
+    mock_video_probe("reference.json")
+    run_vidcleaner(["inspect", "--json", str(video_path)])
+    capsys.readouterr()
+
+    # When: A text run follows
+    run_vidcleaner(["inspect", str(video_path)])
+
+    # Then: Its table is on stdout
+    assert re.search(r"0 │ video +│ h264", capsys.readouterr().out)
+
+
+def test_inspect_json_skips_a_file_it_cannot_stat(mocker, capsys, tmp_path, mock_video_probe):
+    """Verify inspect --json records a file whose size cannot be read and inspects the rest."""
+    # Given: Two readable files, one of which loses its permissions after the path check
+    bad, good = tmp_path / "bad.mkv", tmp_path / "good.mkv"
+    bad.touch()
+    good.touch()
+    mock_video_probe("reference.json")
+    describe = inspect_video.file_object
+
+    def file_object(video):
+        if video.path.name == bad.name:
+            raise PermissionError(13, "Permission denied", str(video.path))
+        return describe(video)
+
+    mocker.patch("vid_cleaner.cli.inspect_video.file_object", side_effect=file_object)
+
+    # When: Inspecting both with --json
+    exit_code = run_vidcleaner(["inspect", "--json", str(bad), str(good)])
+
+    # Then: The readable file is reported, the other is skipped with its reason, and the run exits 1
+    doc = read_json_document(capsys)
+    assert exit_code == 1
+    assert [f["name"] for f in doc["files"]] == ["good.mkv"]
+    assert doc["summary"] == {"total": 2, "skipped": 1}
+    assert doc["skipped"][0]["path"] == str(bad)
+    assert "Permission denied" in doc["skipped"][0]["reason"]
