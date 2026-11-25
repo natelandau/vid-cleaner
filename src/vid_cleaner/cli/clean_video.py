@@ -27,7 +27,6 @@ from vid_cleaner.constants import (
     SYMBOL_CROSS,
     UPSCALE_DECLINED_REASON,
     CleanStatus,
-    SortOrder,
     VerifyLevel,
 )
 from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
@@ -35,6 +34,7 @@ from vid_cleaner.utils import (
     TEMP_CLEANUP_WARNING,
     FfmpegCommand,
     OutputWrite,
+    ProbeCache,
     coerce_video_files,
     output_write_messages,
     render_operations,
@@ -446,22 +446,13 @@ def select_video_files(
             files, or the selection is not confirmed.
     """
     discovery = clean_cmd.discovery
-    # Compare against defaults rather than asking cappa what the user typed; an explicit
-    # `--sort=alpha` would have been a no-op anyway, so treating it as unset is harmless.
-    uses_discovery_flags = bool(
-        discovery.filters
-        or discovery.limit is not None
-        or discovery.depth
-        or discovery.reverse
-        or discovery.sort != SortOrder.ALPHA
-        or clean_cmd.yes
-    )
+    discovery_flags = discovery.flags_in_use() + (["`--yes`"] if clean_cmd.yes else [])
 
     if clean_cmd.from_ is not None and clean_cmd.files:
         raise stop_run(FROM_WITH_FILES_ERROR)
 
-    if clean_cmd.from_ is None and uses_discovery_flags:
-        msg = f"{REQUIRES_FROM_ERROR}: `--filters`, `--sort`, `--reverse`, `--depth`, `--limit`, `--yes`"
+    if clean_cmd.from_ is None and discovery_flags:
+        msg = f"{REQUIRES_FROM_ERROR}: {', '.join(discovery_flags)}"
         raise stop_run(msg)
 
     if clean_cmd.from_ is None:
@@ -469,12 +460,14 @@ def select_video_files(
             raise stop_run(NO_FILES_OR_FROM_ERROR)
         return coerce_video_files(clean_cmd.files)
 
-    report = discover_from_directory(
-        directory=clean_cmd.from_,
-        options=discovery,
-        argument_name="`--from`",
-        limit=discovery.limit,
-    )
+    with ProbeCache(config.cache_dir) as probe_cache:
+        report = discover_from_directory(
+            directory=clean_cmd.from_,
+            options=discovery,
+            argument_name="`--from`",
+            probe_cache=probe_cache,
+            limit=discovery.limit,
+        )
 
     present_discovery(report)
 

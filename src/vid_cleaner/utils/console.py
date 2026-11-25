@@ -35,7 +35,12 @@ def progress_display(*, transient: bool = True) -> Progress:
 
 
 def track_progress(
-    sequence: Iterable[T], *, description: str, transient: bool = True, disable: bool = False
+    sequence: Iterable[T],
+    *,
+    description: str,
+    transient: bool = True,
+    disable: bool = False,
+    total: int | None = None,
 ) -> Iterator[T]:
     """Iterate a sequence while showing a progress bar on the shared console.
 
@@ -47,6 +52,8 @@ def track_progress(
         description (str): The label shown beside the bar.
         transient (bool): Remove the bar from the terminal once it finishes.
         disable (bool): Show no bar.
+        total (int | None): The number of items, for a sequence with no length such as
+            an iterator. Defaults to `len(sequence)`.
 
     Yields:
         T: Each item of `sequence`.
@@ -57,6 +64,7 @@ def track_progress(
         transient=transient,
         console=pp.console(),
         disable=disable,
+        total=total,
     )
 
 

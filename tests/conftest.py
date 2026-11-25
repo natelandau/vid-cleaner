@@ -141,7 +141,7 @@ def mock_unreadable_probe(mocker, mock_ffprobe_box):
     def _inner(*unreadable_names: str) -> Box:
         readable_box = mock_ffprobe_box("reference.json")
 
-        def _probe(path: Path) -> Box:
+        def _probe(path: Path, **_kwargs: object) -> Box:
             if path.name in unreadable_names:
                 raise VideoProbeError(path=path, reason="Invalid data found when processing input")
             return readable_box
@@ -249,7 +249,7 @@ def video_library(tmp_path, mocker, mock_ffprobe_box):
 
         mocker.patch(
             "vid_cleaner.models.video_file.get_probe_as_box",
-            side_effect=lambda path: boxes[path.relative_to(directory).as_posix()],
+            side_effect=lambda path, **_kwargs: boxes[path.relative_to(directory).as_posix()],
         )
         return directory
 

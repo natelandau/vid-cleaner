@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
     from vid_cleaner.controllers.discovery import DiscoveryReport
     from vid_cleaner.exceptions import RunStopped
+    from vid_cleaner.utils import ProbeCache
     from vid_cleaner.vidcleaner import SelectionOptions
 
 NOT_AN_EXISTING_DIRECTORY_ERROR = "must be an existing directory"
@@ -71,6 +72,7 @@ def discover_from_directory(
     options: SelectionOptions,
     *,
     argument_name: str,
+    probe_cache: ProbeCache,
     limit: int | None = None,
 ) -> DiscoveryReport:
     """Run discovery on a directory the user named, the same way for every command.
@@ -82,6 +84,7 @@ def discover_from_directory(
         directory (Path): The directory as the user typed it.
         options (SelectionOptions): The command's depth, sort, and direction flags.
         argument_name (str): How an error message names the argument, e.g. "`--from`".
+        probe_cache (ProbeCache): Cache of earlier ffprobe results.
         limit (int | None): Keep only the first N results after sorting.
 
     Returns:
@@ -97,6 +100,8 @@ def discover_from_directory(
         sort=options.sort,
         reverse=options.reverse,
         limit=limit,
+        jobs=options.jobs,
+        probe_cache=probe_cache,
     )
 
 

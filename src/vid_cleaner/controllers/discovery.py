@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Iterator
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -11,10 +12,10 @@ from typing import Any
 from nclutils import pp
 from rich.live import Live
 
-from vid_cleaner.constants import VIDEO_SUFFIXES, SortOrder, VideoTrait
+from vid_cleaner.constants import DEFAULT_PROBE_JOBS, VIDEO_SUFFIXES, SortOrder, VideoTrait
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.models import SearchResult, VideoFile
-from vid_cleaner.utils import is_macos_sidecar, track_progress
+from vid_cleaner.utils import ProbeCache, is_macos_sidecar, track_progress
 
 # Each key pairs a getter with the direction that reads naturally for it: names ascend,
 # magnitudes descend. `reverse` flips whichever is active.
@@ -202,14 +203,115 @@ def _collect_video_files(
     return list(video_files_by_path.values())
 
 
-def discover_video_files(
+def _read_search_result(
+    video_file: VideoFile, *, filters: set[VideoTrait], probe_cache: ProbeCache
+) -> SearchResult | None:
+    """Probe one file and describe it, or report that it does not match the filters.
+
+    Runs on a worker thread, so it touches nothing shared but the thread-safe cache.
+
+    Args:
+        video_file (VideoFile): The file to probe.
+        filters (set[VideoTrait]): Traits the file must have all of.
+        probe_cache (ProbeCache): Cache of earlier ffprobe results.
+
+    Returns:
+        SearchResult | None: The file's row, or None when it lacks a required trait.
+
+    Raises:
+        VideoProbeError: If the file cannot be probed, ffprobe cannot be launched, or the
+            file vanished before its size was read.
+    """
+    # Many `--jobs` can exhaust the open-file limit and make ffprobe fail to launch;
+    # skipping that file beats aborting a scan that has already probed the rest.
+    try:
+        video_file.load_probe(probe_cache)
+    except OSError as e:
+        raise VideoProbeError(path=video_file.path, reason=f"ffprobe could not run: {e}") from e
+    video_traits = video_file.get_traits()
+    if not filters.issubset(video_traits):
+        return None
+
+    # A file that vanishes between the probe and this stat() (e.g. deleted by another
+    # process mid-scan) must not abort a run that may have already spent minutes probing
+    # the rest of the library.
+    try:
+        size = video_file.path.stat().st_size
+    except OSError as e:
+        raise VideoProbeError(path=video_file.path, reason=str(e)) from e
+
+    return SearchResult(
+        video_file=video_file,
+        traits=video_traits,
+        matches=[trait for trait in video_traits if trait in filters],
+        size=size,
+        bitrate=coerce_bitrate(video_file.probe_box.bit_rate),
+    )
+
+
+def _probe_in_parallel(
+    video_files: list[VideoFile],
+    *,
+    filters: set[VideoTrait],
+    probe_cache: ProbeCache,
+    jobs: int,
+    description: str,
+) -> tuple[list[SearchResult], list[VideoProbeError]]:
+    """Probe files on a pool of threads, since ffprobe spends most of its time waiting on reads.
+
+    Args:
+        video_files (list[VideoFile]): The files to probe.
+        filters (set[VideoTrait]): Traits a file must have all of.
+        probe_cache (ProbeCache): Cache of earlier ffprobe results.
+        jobs (int): The most files to probe at once.
+        description (str): The label beside the progress bar.
+
+    Returns:
+        tuple[list[SearchResult], list[VideoProbeError]]: The matching files, in
+            completion order, and the unreadable files, sorted by path.
+    """
+    results: list[SearchResult] = []
+    unreadable: list[VideoProbeError] = []
+    executor = ThreadPoolExecutor(max_workers=jobs)
+    try:
+        futures: list[Future[SearchResult | None]] = [
+            executor.submit(
+                _read_search_result, video_file, filters=filters, probe_cache=probe_cache
+            )
+            for video_file in video_files
+        ]
+        for future in track_progress(
+            as_completed(futures), description=description, transient=True, total=len(futures)
+        ):
+            # A video extension is no guarantee of video content; corrupt or truncated
+            # files must not abort the whole run.
+            try:
+                result = future.result()
+            except VideoProbeError as e:
+                unreadable.append(e)
+                continue
+            if result is not None:
+                results.append(result)
+    finally:
+        # On Ctrl-C, drop the queued files rather than waiting for the whole library to
+        # finish probing. The few ffprobes already running end on their own.
+        executor.shutdown(wait=False, cancel_futures=True)
+
+    # Completion order varies run to run; the report should not
+    unreadable.sort(key=lambda error: str(error.path))
+    return results, unreadable
+
+
+def discover_video_files(  # noqa: PLR0913
     root: Path,
     *,
+    probe_cache: ProbeCache,
     depth: int = 0,
     filters: set[VideoTrait] | None = None,
     sort: SortOrder = SortOrder.ALPHA,
     reverse: bool = False,
     limit: int | None = None,
+    jobs: int = DEFAULT_PROBE_JOBS,
 ) -> DiscoveryReport:
     """Find, probe, filter, and rank the video files under a directory.
 
@@ -218,12 +320,15 @@ def discover_video_files(
 
     Args:
         root (Path): Directory to search.
+        probe_cache (ProbeCache): Cache of earlier ffprobe results. `ProbeCache(None)`
+            probes every file.
         depth (int): Subdirectory levels to descend. 0 searches only `root`.
         filters (set[VideoTrait] | None): Traits a file must have all of. None or an empty
             set keeps every readable file.
         sort (SortOrder): Key to rank results by.
         reverse (bool): Flip the key's natural direction.
         limit (int | None): Keep only the first N results after sorting.
+        jobs (int): The most files to probe at once.
 
     Returns:
         DiscoveryReport: The ranked selection plus the counts needed to describe it.
@@ -234,51 +339,22 @@ def discover_video_files(
     unreadable: list[VideoProbeError] = []
     video_files = _collect_video_files(root, depth=depth, unreadable=unreadable)
 
-    results: list[SearchResult] = []
-    for video_file in track_progress(
+    results, unprobeable = _probe_in_parallel(
         video_files,
+        filters=active_filters,
+        probe_cache=probe_cache,
+        jobs=jobs,
         description=(
             f"Filtering {len(video_files)} files for {human_readable_filters}..."
             if active_filters
             else f"Reading {len(video_files)} files..."
         ),
-        transient=True,
-    ):
-        # A video extension is no guarantee of video content; corrupt or truncated files
-        # must not abort the whole run.
-        try:
-            video_traits = video_file.get_traits()
-        except VideoProbeError as e:
-            unreadable.append(e)
-            continue
-
-        if not active_filters.issubset(video_traits):
-            continue
-
-        matches = [trait for trait in video_traits if trait in active_filters]
-
-        # A file that vanishes between the probe above and this stat() (e.g. deleted by
-        # another process mid-scan) must not abort a run that may have already spent
-        # minutes probing the rest of the library.
-        try:
-            size = video_file.path.stat().st_size
-        except OSError as e:
-            unreadable.append(VideoProbeError(path=video_file.path, reason=str(e)))
-            continue
-
-        results.append(
-            SearchResult(
-                video_file=video_file,
-                traits=video_traits,
-                matches=matches,
-                size=size,
-                bitrate=coerce_bitrate(video_file.probe_box.bit_rate),
-            )
-        )
+    )
+    unreadable.extend(unprobeable)
 
     # Presort by path so ties on the active key (e.g. every bitrate-less file) resolve
-    # deterministically instead of reflecting the directory listing's arbitrary order. `sort`
-    # is stable, so this ordering survives as the tiebreaker after the real sort below.
+    # deterministically instead of reflecting the order probes finished in. `sort` is
+    # stable, so this ordering survives as the tiebreaker after the real sort below.
     results.sort(key=SORT_KEYS[SortOrder.ALPHA][0])
 
     key_fn, _ = SORT_KEYS[sort]

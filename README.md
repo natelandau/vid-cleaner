@@ -102,6 +102,7 @@ vidcleaner clip --start=00:10:00 --duration=00:01:30 movie.mkv
 -   `--depth` sets how many levels of subdirectories to search. The default, 0, searches only the directory itself.
 -   `--sort` orders the results by `alpha`, `size`, or `bitrate`, and `--reverse` flips the order.
 -   `--limit` keeps only the first N results after the sort.
+-   `--jobs` sets how many files ffprobe reads at the same time. The default is 8. On a network share, a higher value can make the search faster.
 
 
 ```shell
@@ -110,6 +111,8 @@ vidcleaner search /media --filters=4k --sort=size --depth=2 --limit=5
 ```
 
 If you name several filters, a file must have every trait to match. More filters give fewer results.
+
+vid-cleaner keeps the ffprobe result for each file in the cache. If the size and the modification time of a file do not change, the next search uses the result in the cache and does not read the file again. A second search of a large library is fast because of this. vid-cleaner removes the result for a file that no command used in 90 days.
 
 ```shell
 # Only 4k files that also have a 5.1 track and no stereo track to go with it
@@ -134,8 +137,8 @@ These rules apply to `--from`:
 
 -   `--from` must name a directory that exists.
 -   You cannot use `--from` together with file paths or with `--out`.
--   `--yes` and the query options (`--filters`, `--sort`, `--reverse`, `--depth`, `--limit`) work only with `--from`.
--   `--limit` must be 1 or more.
+-   `--yes` and the query options (`--filters`, `--sort`, `--reverse`, `--depth`, `--limit`, `--jobs`) work only with `--from`.
+-   `--limit` and `--jobs` must be 1 or more.
 
 ### Where the output goes
 
@@ -250,7 +253,7 @@ vid-cleaner gets each setting from the first of these sources that sets it:
 
 An environment variable for an on-or-off setting takes `true`, `false`, `1`, or `0`. An environment variable for `langs_to_keep` takes a comma-separated list, such as `VIDCLEANER_LANGS_TO_KEEP=en,fr`, or a TOML array, such as `VIDCLEANER_LANGS_TO_KEEP='["en", "fr"]'`. vid-cleaner ignores an empty environment variable.
 
-If a setting has a value that is not valid, `clean`, `clip`, and `cache` stop and list each setting that is not valid, with its source. The other commands do not read the settings, so they continue to work. If the file has a key that vid-cleaner does not know, vid-cleaner shows a warning and ignores the key.
+If a setting has a value that is not valid, `clean`, `clip`, and `cache` stop and list each setting that is not valid, with its source. The other commands read no setting except `cache_dir`, so they continue to work. If `cache_dir` is not valid, `search` and `check` read every file with ffprobe and do not use the cache. If the file has a key that vid-cleaner does not know, vid-cleaner shows a warning and ignores the key.
 
 vid-cleaner uses the original language of a video to select the audio and subtitle tracks to keep. To find that language, it looks for an IMDb or TMDB ID in three places, and stops at the first one that it finds:
 
@@ -303,7 +306,7 @@ vid-cleaner keeps its files in the locations that the [XDG Base Directory specif
 -   Configuration file: `~/.config/vid-cleaner/config.toml`, or `$XDG_CONFIG_HOME/vid-cleaner/config.toml` if `XDG_CONFIG_HOME` is set
 -   Cache: `~/.cache/vid-cleaner`, or `$XDG_CACHE_HOME/vid-cleaner` if `XDG_CACHE_HOME` is set. To use a different directory, set `cache_dir` in the configuration file or `VIDCLEANER_CACHE_DIR`.
 
-To print the contents of the cache, run `vidcleaner cache`. To empty the cache, run `vidcleaner cache --clear`.
+The cache holds temporary files from `clean` and `clip`, and the ffprobe results that `search`, `check --from`, and `clean --from` use again. To print the contents of the cache, run `vidcleaner cache`. To empty the cache, run `vidcleaner cache --clear`.
 
 Before `clean` encodes a file, it makes sure that the cache disk and the destination disk each have free space of at least 1.5 times the size of the original file. The extra space allows for a result that is larger than the original, for example after an upscale. If the cache and the destination are on the same disk, that disk needs 3 times the size of the original file. If there is not sufficient space, `clean` skips the file and continues with the next file.
 

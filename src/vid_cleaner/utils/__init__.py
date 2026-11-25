@@ -19,6 +19,7 @@ from .ffmpeg_utils import (
     run_ffprobe,
 )
 from .media_ids import MediaId, find_media_ids
+from .probe_cache import ProbeCache
 
 from .cli import (  # isort: skip
     TEMP_CLEANUP_WARNING,
@@ -30,7 +31,7 @@ from .cli import (  # isort: skip
     find_missing_binaries,
     is_macos_sidecar,
     output_write_messages,
-    parse_limit,
+    parse_count,
     parse_trait_filters,
     resolve_out_path_override,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "FfmpegCommand",
     "MediaId",
     "OutputWrite",
+    "ProbeCache",
     "build_ffmpeg_command",
     "channels_to_layout",
     "coerce_video_files",
@@ -51,7 +53,7 @@ __all__ = [
     "get_probe_as_box",
     "is_macos_sidecar",
     "output_write_messages",
-    "parse_limit",
+    "parse_count",
     "parse_trait_filters",
     "progress_display",
     "query_radarr",

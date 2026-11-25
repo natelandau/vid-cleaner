@@ -248,7 +248,7 @@ def test_check_rejects_from_combined_with_files(capsys, tmp_path, video_path):
 
 @pytest.mark.parametrize(
     "discovery_arg",
-    [["--filters", "h264"], ["--depth", "1"], ["--reverse"], ["--sort", "size"]],
+    [["--filters", "h264"], ["--depth", "1"], ["--reverse"], ["--sort", "size"], ["--jobs", "2"]],
 )
 def test_check_rejects_discovery_flags_without_from(capsys, video_path, discovery_arg):
     """Verify discovery flags without `--from` are an error rather than a silent no-op."""

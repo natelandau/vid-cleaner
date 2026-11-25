@@ -13,6 +13,7 @@ from nclutils.sh import ShellCommandError, run_command
 
 from vid_cleaner.constants import FFMPEG_APPEND, FFMPEG_PREPEND, AudioLayout, CodecTypes
 from vid_cleaner.exceptions import VideoProbeError
+from vid_cleaner.utils.probe_cache import ProbeCache
 
 
 @dataclass(frozen=True)
@@ -166,13 +167,40 @@ def decode_check(path: Path) -> str | None:
     return None if result.ok else f"ffmpeg exited with code {result.returncode}"
 
 
-def get_probe_as_box(input_path: Path) -> Box:
+def _probe_through_cache(path: Path, probe_cache: ProbeCache) -> dict[str, Any]:
+    """Return a file's ffprobe output from the cache, probing and storing it on a miss.
+
+    Args:
+        path (Path): Path to the video file to probe.
+        probe_cache (ProbeCache): The cache to read and fill.
+
+    Returns:
+        dict[str, Any]: The raw ffprobe output.
+    """
+    # A file ffprobe cannot stat cannot be keyed; let ffprobe report why it is unreadable
+    try:
+        stat = path.stat()
+    except OSError:
+        return run_ffprobe(path)
+
+    if (cached := probe_cache.get(path, size=stat.st_size, mtime_ns=stat.st_mtime_ns)) is not None:
+        return cached
+
+    raw_output = run_ffprobe(path)
+    # Keyed on the stat taken before probing, so a file that changes mid-probe misses next time
+    probe_cache.put(path, size=stat.st_size, mtime_ns=stat.st_mtime_ns, probe=raw_output)
+    return raw_output
+
+
+def get_probe_as_box(input_path: Path, *, probe_cache: ProbeCache | None = None) -> Box:
     """Parse ffprobe output into a Box object with normalized stream and format data.
 
     Convert the raw ffprobe JSON output into a Box object with standardized fields. Extract and normalize metadata like title, format details, duration, and stream properties. Convert codec types and audio channels to enums.
 
     Args:
         input_path (Path): Path to the video file to probe
+        probe_cache (ProbeCache | None): Cache of earlier ffprobe results to read and fill.
+            Pass one only for a source file, never a temporary file a run is writing.
 
     Returns:
         Box: Box object containing normalized probe data with fields for format metadata and stream properties
@@ -180,7 +208,11 @@ def get_probe_as_box(input_path: Path) -> Box:
     Raises:
         VideoProbeError: If the file cannot be probed or its streams cannot be normalized.
     """
-    raw_output = run_ffprobe(input_path)
+    raw_output = (
+        run_ffprobe(input_path)
+        if probe_cache is None
+        else _probe_through_cache(input_path, probe_cache)
+    )
     probe_box = Box(
         raw_output,
         default_box=True,

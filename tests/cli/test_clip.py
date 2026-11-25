@@ -195,7 +195,7 @@ def test_clip_continues_past_a_bad_file(
     boxes = {video_path: audio_box, good: video_box}
     mocker.patch(
         "vid_cleaner.models.video_file.get_probe_as_box",
-        side_effect=lambda path: boxes[path],
+        side_effect=lambda path, **_kwargs: boxes[path],
     )
 
     # When: Running clip over both

@@ -28,7 +28,8 @@ uv run duty test -k downmix   # extra args pass through to pytest; filtered runs
 - Flag-only values (`dryrun`, `verbosity`, `h265`, `vp9`, `video_1080`, `force`, `out`) go in `RunOptions`, not `Config`.
 - Handlers that read settings take `Annotated[Config, Dep(build_config)]` and `Annotated[RunOptions, Dep(build_run_options)]`. Pass both down as arguments. Nothing reads settings from a module global.
 - A setting with a CLI flag: command attribute named exactly as the `Config` field, default `None`, paired `--x`/`--no-x` as two `cappa.Arg` entries (cappa's `--x/--no-x` shorthand rejects a short flag). `build_config` reads every attribute named in `SETTING_NAMES`.
-- `TempFile` picks its directory on the first `new_tmp_path(cache_dir=...)` call. Pass `config.cache_dir`; never construct `VideoFile` or discovery with a cache path. On a dry run, call `preview_tmp_path`, not `new_tmp_path`; it creates nothing on disk.
+- `TempFile` picks its directory on the first `new_tmp_path(cache_dir=...)` call. Pass `config.cache_dir`; never construct `VideoFile` with a cache path. On a dry run, call `preview_tmp_path`, not `new_tmp_path`; it creates nothing on disk.
+- ffprobe results are cached through `ProbeCache` (open it in a `with` block). Discovery passes it to `VideoFile.load_probe()`; never pass it for a temp file. `search` and `check` get it from `build_probe_cache()`, which resolves only `cache_dir` so a broken config cannot stop them.
 - Never print an API key. Print `Config.redacted()`, and describe HTTP errors with `describe_http_error()`.
 
 ## Command layer

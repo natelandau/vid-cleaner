@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.helpers import read_json_document, run_vidcleaner
+from tests.helpers import load_ffprobe_json, read_json_document, run_vidcleaner
 from vid_cleaner.cli.discovery_output import (
     NO_VIDEO_FILES_FOUND,
     NOT_AN_EXISTING_DIRECTORY_ERROR,
@@ -135,7 +135,7 @@ def test_search_skips_files_that_vanish_before_stat(capsys, mocker, video_path, 
     # Discovery finishes before any file is probed, so deleting the file here leaves it
     # present for the scan that found it and genuinely gone by the time its size is read.
     # `missing_ok` because each probed file is re-probed on every stream-property access.
-    def probe(path: Path) -> object:
+    def probe(path: Path, **_kwargs: object) -> object:
         if path.name == vanished.name:
             vanished.unlink(missing_ok=True)
         return good_box
@@ -529,3 +529,28 @@ def test_search_json_keeps_progress_off_stdout(capsys, video_library):
     # Then: stdout begins with the document itself
     assert exit_code == 0
     assert capsys.readouterr().out.startswith("{")
+
+
+def test_search_reuses_probes_of_unchanged_files(tmp_path, mocker):
+    """Verify a second search reads only the files that changed since the first."""
+    # Given: A library of two files, searched once
+    library = tmp_path / "library"
+    library.mkdir()
+    unchanged = library / "unchanged.mkv"
+    changed = library / "changed.mkv"
+    unchanged.touch()
+    changed.touch()
+    ffprobe = mocker.patch(
+        "vid_cleaner.utils.ffmpeg_utils.run_ffprobe",
+        side_effect=lambda _path: load_ffprobe_json("reference.json"),
+    )
+    assert run_vidcleaner(["search", str(library)]) == 0
+    ffprobe.reset_mock()
+
+    # When: One file changes and the library is searched again
+    changed.write_bytes(b"new content")
+    exit_code = run_vidcleaner(["search", str(library)])
+
+    # Then: Only the changed file is probed again
+    assert exit_code == 0
+    assert [call.args[0] for call in ffprobe.call_args_list] == [changed]

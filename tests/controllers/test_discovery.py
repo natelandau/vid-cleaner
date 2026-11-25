@@ -1,6 +1,7 @@
 """Test the discovery controller."""
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -12,6 +13,10 @@ from vid_cleaner.controllers.discovery import (
     discover_video_files,
 )
 from vid_cleaner.exceptions import VideoProbeError
+from vid_cleaner.utils import ProbeCache
+
+# A cache with no directory, so every test probes its files
+NO_CACHE = ProbeCache(None)
 
 
 @pytest.mark.parametrize(
@@ -36,7 +41,7 @@ def test_discover_returns_empty_report_for_empty_directory(tmp_path):
     directory.mkdir()
 
     # When: Discovering video files
-    report = discover_video_files(directory)
+    report = discover_video_files(directory, probe_cache=NO_CACHE)
 
     # Then: The report is empty rather than an exception or an exit
     assert isinstance(report, DiscoveryReport)
@@ -51,7 +56,7 @@ def test_discover_reports_total_and_filters(video_library):
     directory = video_library([("apple.mkv", 100, 1_000_000), ("banana.mkv", 200, 2_000_000)])
 
     # When: Filtering for a trait both files have
-    report = discover_video_files(directory, filters={VideoTrait.H264})
+    report = discover_video_files(directory, probe_cache=NO_CACHE, filters={VideoTrait.H264})
 
     # Then: Both files are counted and both match
     assert report.total == 2
@@ -65,7 +70,9 @@ def test_discover_multiple_filters_require_every_trait(video_library):
     directory = video_library([("apple.mkv", 100, 1_000_000), ("banana.mkv", 200, 2_000_000)])
 
     # When: Filtering for a trait they have alongside one they lack
-    report = discover_video_files(directory, filters={VideoTrait.H264, VideoTrait.REORDER})
+    report = discover_video_files(
+        directory, probe_cache=NO_CACHE, filters={VideoTrait.H264, VideoTrait.REORDER}
+    )
 
     # Then: Neither file survives, since matching only one filter is not enough
     assert report.total == 2
@@ -78,7 +85,9 @@ def test_discover_all_filters_present_matches(video_library):
     directory = video_library([("apple.mkv", 100, 1_000_000), ("banana.mkv", 200, 2_000_000)])
 
     # When: Filtering for two traits both files have
-    report = discover_video_files(directory, filters={VideoTrait.H264, VideoTrait.FHD})
+    report = discover_video_files(
+        directory, probe_cache=NO_CACHE, filters={VideoTrait.H264, VideoTrait.FHD}
+    )
 
     # Then: Both survive and each reports both filters as matches
     assert len(report.results) == 2
@@ -91,7 +100,7 @@ def test_discover_without_filters_keeps_everything(video_library):
     directory = video_library([("apple.mkv", 100, 1_000_000), ("banana.mkv", 200, 2_000_000)])
 
     # When: Discovering with no filters
-    report = discover_video_files(directory)
+    report = discover_video_files(directory, probe_cache=NO_CACHE)
 
     # Then: Every file survives and the report says filtering was inactive
     assert len(report.results) == 2
@@ -121,7 +130,7 @@ def test_discover_sort_orders(video_library, sort, reverse, expected_order, expe
     )
 
     # When: Discovering with the given sort arguments
-    report = discover_video_files(directory, sort=sort, reverse=reverse)
+    report = discover_video_files(directory, probe_cache=NO_CACHE, sort=sort, reverse=reverse)
 
     # Then: The results run in the expected order and report their real direction
     assert [r.video_file.path.name for r in report.results] == expected_order
@@ -140,7 +149,7 @@ def test_discover_limit_truncates_after_sorting(video_library):
     )
 
     # When: Taking the two largest
-    report = discover_video_files(directory, sort=SortOrder.SIZE, limit=2)
+    report = discover_video_files(directory, probe_cache=NO_CACHE, sort=SortOrder.SIZE, limit=2)
 
     # Then: The two largest survive and the cut file is counted
     assert [r.video_file.path.name for r in report.results] == ["banana.mkv", "cherry.mkv"]
@@ -154,33 +163,39 @@ def test_discover_limit_above_match_count_truncates_nothing(video_library):
     directory = video_library([("apple.mkv", 100, 1_000_000), ("banana.mkv", 200, 1_000_000)])
 
     # When: Limiting to more files than exist
-    report = discover_video_files(directory, limit=10)
+    report = discover_video_files(directory, probe_cache=NO_CACHE, limit=10)
 
     # Then: Nothing is cut
     assert len(report.results) == 2
     assert report.truncated == 0
 
 
-def test_discover_collects_unreadable_files(
-    video_library,
-    mocker,
-):
+@pytest.mark.parametrize(
+    "probe_error",
+    [
+        pytest.param(
+            VideoProbeError(path=Path("bad.mkv"), reason="Invalid data found"), id="rejected"
+        ),
+        pytest.param(OSError(24, "Too many open files"), id="ffprobe cannot launch"),
+    ],
+)
+def test_discover_collects_unreadable_files(video_library, mocker, probe_error):
     """Verify a file that cannot be probed is collected rather than aborting discovery."""
-    # Given: One readable file and one that ffprobe rejects
+    # Given: One readable file and one whose probe fails
     directory = video_library([("good.mkv", 100, 1_000_000)])
     bad = directory / "bad.mkv"
     bad.touch()
     good_box = mocker.MagicMock()
 
-    def probe(path):
+    def probe(path, **_kwargs):
         if path.name == "bad.mkv":
-            raise VideoProbeError(path=path, reason="Invalid data found when processing input")
+            raise probe_error
         return good_box
 
     mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", side_effect=probe)
 
     # When: Discovering with no filters, so the readable file survives
-    report = discover_video_files(directory)
+    report = discover_video_files(directory, probe_cache=NO_CACHE)
 
     # Then: The bad file is counted as skipped and the good one still appears
     assert report.total == 2
@@ -196,7 +211,7 @@ def test_discover_ignores_appledouble_sidecars(video_library):
     (directory / "nested" / "._deep.mkv").write_bytes(b"\x00\x05\x16\x07")
 
     # When: Discovering one level deep
-    report = discover_video_files(directory, depth=1)
+    report = discover_video_files(directory, probe_cache=NO_CACHE, depth=1)
 
     # Then: Only the real videos are found, and the sidecars are neither counted nor skipped
     assert {r.video_file.path.name for r in report.results} == {"movie.mkv", "deep.mkv"}
@@ -219,7 +234,7 @@ def test_discover_ignores_entries_that_are_not_regular_files(video_library, make
     make_entry(directory / "odd.mkv")
 
     # When: Discovering video files
-    report = discover_video_files(directory)
+    report = discover_video_files(directory, probe_cache=NO_CACHE)
 
     # Then: Only the real video is counted, and nothing is reported as skipped
     assert [r.video_file.path.name for r in report.results] == ["movie.mkv"]
@@ -237,7 +252,7 @@ def test_discover_reports_a_directory_it_cannot_list(video_library):
 
     # When: Discovering one level deep
     try:
-        report = discover_video_files(directory, depth=1)
+        report = discover_video_files(directory, probe_cache=NO_CACHE, depth=1)
     finally:
         locked.chmod(0o755)
 
@@ -270,7 +285,7 @@ def test_discover_matches_extensions_case_insensitively(video_library):
     directory = video_library([("MOVIE.MKV", 100, 1_000_000)])
 
     # When: Discovering video files
-    report = discover_video_files(directory)
+    report = discover_video_files(directory, probe_cache=NO_CACHE)
 
     # Then: The file is found
     assert [r.video_file.path.name for r in report.results] == ["MOVIE.MKV"]
@@ -292,7 +307,7 @@ def test_discover_lists_a_file_reached_through_a_symlink_once(
     (directory / link_name).symlink_to(directory / target, target_is_directory=is_directory)
 
     # When: Discovering one level deep, which visits both paths
-    report = discover_video_files(directory, depth=1)
+    report = discover_video_files(directory, probe_cache=NO_CACHE, depth=1)
 
     # Then: The file appears once
     assert [r.video_file.path.name for r in report.results] == ["deep.mkv"]
@@ -305,7 +320,7 @@ def test_discover_depth_zero_ignores_subdirectories(video_library):
     directory = video_library([("top.mkv", 100, 1_000_000), ("nested/deep.mkv", 100, 1_000_000)])
 
     # When: Discovering at the default depth
-    report = discover_video_files(directory)
+    report = discover_video_files(directory, probe_cache=NO_CACHE)
 
     # Then: Only the top-level file is found
     assert [r.video_file.path.name for r in report.results] == ["top.mkv"]
@@ -317,7 +332,7 @@ def test_discover_depth_one_descends(video_library):
     directory = video_library([("top.mkv", 100, 1_000_000), ("nested/deep.mkv", 100, 1_000_000)])
 
     # When: Discovering one level deep
-    report = discover_video_files(directory, depth=1)
+    report = discover_video_files(directory, probe_cache=NO_CACHE, depth=1)
 
     # Then: Both files are found
     assert {r.video_file.path.name for r in report.results} == {"top.mkv", "deep.mkv"}
@@ -337,7 +352,7 @@ def test_discover_ties_break_alphabetically(video_library, mocker):
     )
 
     # When: Sorting by a key that cannot break the tie
-    report = discover_video_files(directory, sort=SortOrder.SIZE)
+    report = discover_video_files(directory, probe_cache=NO_CACHE, sort=SortOrder.SIZE)
 
     # Then: Ties resolve alphabetically by path
     assert [r.video_file.path.name for r in report.results] == [

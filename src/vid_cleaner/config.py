@@ -266,9 +266,14 @@ def _read_environment(environ: Mapping[str, str]) -> dict[str, _SourcedValue]:
     return layer
 
 
-def _convert_all(values: Mapping[str, _SourcedValue], errors: list[str]) -> dict[str, Any]:
+def _convert_all(
+    values: Mapping[str, _SourcedValue],
+    errors: list[str],
+    keys: Sequence[str] = SETTING_NAMES,
+) -> dict[str, Any]:
     converted: dict[str, Any] = {}
-    for key, converter in _CONVERTERS.items():
+    for key in keys:
+        converter = _CONVERTERS[key]
         sourced = values.get(key)
         if sourced is None:
             if key in _CODE_DEFAULTS:
@@ -289,6 +294,47 @@ def _convert_all(values: Mapping[str, _SourcedValue], errors: list[str]) -> dict
         if converted.get(url_key) and api_key in converted and not converted[api_key]:
             errors.append(f"`{api_key}` must be set when `{url_key}` is set")
     return converted
+
+
+def _default_config_paths() -> tuple[Path, ...]:
+    return (constants.DEFAULT_CONFIG_PATH, constants.USER_CONFIG_PATH, constants.DEV_CONFIG_PATH)
+
+
+def load_cache_dir(
+    *,
+    config_paths: Sequence[Path] | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> Path:
+    """Resolve only the `cache_dir` setting, for commands that must run despite other bad settings.
+
+    `search` and `check` never stop over a broken config, but they need the cache directory
+    to reuse earlier ffprobe results. An invalid value elsewhere in the files is ignored;
+    an unreadable config file is an error because it could hold the `cache_dir` in force.
+
+    Args:
+        config_paths: Config files in precedence order. Missing files are skipped. Defaults to
+            the package default, user, and development config files.
+        environ: Environment variables to read. Defaults to `os.environ`.
+
+    Returns:
+        Path: The cache directory.
+
+    Raises:
+        ConfigError: If a config file cannot be read or `cache_dir` is invalid.
+    """
+    config_paths = _default_config_paths() if config_paths is None else config_paths
+    environ = os.environ if environ is None else environ
+
+    errors: list[str] = []
+    file_layer = _read_config_files(paths=config_paths, errors=errors, warnings=[])
+    if errors:
+        raise ConfigError(errors)
+
+    values = ChainMap(_read_environment(environ), file_layer)
+    converted = _convert_all(values=values, errors=errors, keys=("cache_dir",))
+    if errors:
+        raise ConfigError(errors)
+    return converted["cache_dir"]
 
 
 def load_config(
@@ -323,11 +369,7 @@ def load_config(
         )
         raise ValueError(msg)
     if config_paths is None:
-        config_paths = (
-            constants.DEFAULT_CONFIG_PATH,
-            constants.USER_CONFIG_PATH,
-            constants.DEV_CONFIG_PATH,
-        )
+        config_paths = _default_config_paths()
     environ = os.environ if environ is None else environ
 
     errors: list[str] = []

@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 
 from vid_cleaner import constants
-from vid_cleaner.config import ConfigError, load_config
-from vid_cleaner.constants import VerifyLevel
+from vid_cleaner.config import ConfigError, load_cache_dir, load_config
+from vid_cleaner.constants import CACHE_DIR, VerifyLevel
 
 
 def write_toml(path: Path, text: str) -> Path:
@@ -231,3 +231,44 @@ def test_readable_api_key_file_warns(tmp_path, mode, toml, warns) -> None:
     matching = [warning for warning in warnings if "chmod 600" in warning]
     assert bool(matching) is warns
     assert not any("k3y-value" in warning for warning in warnings)
+
+
+@pytest.mark.parametrize(
+    ("user_toml", "environ", "expected"),
+    [
+        pytest.param("", {}, CACHE_DIR, id="default"),
+        pytest.param('cache_dir = "/from/file"', {}, Path("/from/file"), id="file"),
+        pytest.param(
+            'cache_dir = "/from/file"',
+            {"VIDCLEANER_CACHE_DIR": "/from/env"},
+            Path("/from/env"),
+            id="env over file",
+        ),
+        pytest.param(
+            'cache_dir = "/from/file"\nradarr_url = "nope"',
+            {},
+            Path("/from/file"),
+            id="other invalid settings ignored",
+        ),
+    ],
+)
+def test_load_cache_dir_resolves_only_cache_dir(tmp_path, user_toml, environ, expected) -> None:
+    """Verify the cache directory resolves like `load_config` even when other settings are bad."""
+    cache_dir = load_cache_dir(config_paths=_config_paths(tmp_path, user_toml), environ=environ)
+
+    assert cache_dir == expected
+
+
+@pytest.mark.parametrize(
+    ("user_toml", "fragment"),
+    [
+        pytest.param('cache_dir = "relative"', "`cache_dir`", id="invalid value"),
+        pytest.param("cache_dir = [", "invalid TOML", id="unreadable file"),
+    ],
+)
+def test_load_cache_dir_errors(tmp_path, user_toml, fragment) -> None:
+    """Verify a cache directory that cannot be trusted is an error, not a guess."""
+    with pytest.raises(ConfigError) as exc_info:
+        load_cache_dir(config_paths=_config_paths(tmp_path, user_toml), environ={})
+
+    assert any(fragment in error for error in exc_info.value.errors)
