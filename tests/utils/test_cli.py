@@ -1,12 +1,20 @@
 """Test the command-line helper functions."""
 
+import stat
 from pathlib import Path
 
 import cappa
 import pytest
 
+from vid_cleaner import constants
 from vid_cleaner.constants import VideoTrait
-from vid_cleaner.utils import coerce_video_files, copy_to_output, parse_trait_filters
+from vid_cleaner.utils import (
+    coerce_video_files,
+    copy_to_output,
+    create_default_config,
+    parse_trait_filters,
+)
+from vid_cleaner.utils.cli import BACKED_UP_ORIGINAL_MESSAGE, SAVED_TO_MESSAGE
 
 
 def test_copy_to_output_backs_up_existing(tmp_path: Path) -> None:
@@ -27,8 +35,8 @@ def test_copy_to_output_backs_up_existing(tmp_path: Path) -> None:
     assert out_file.read_text() == "new content"
 
     # And: both the backup and the save are reported
-    assert any("Backed up original to" in m for m in messages)
-    assert any("Saved to" in m and "movie.mkv" in m for m in messages)
+    assert any(BACKED_UP_ORIGINAL_MESSAGE in m for m in messages)
+    assert any(SAVED_TO_MESSAGE in m and "movie.mkv" in m for m in messages)
 
 
 def test_copy_to_output_overwrite_skips_backup(tmp_path: Path) -> None:
@@ -46,7 +54,7 @@ def test_copy_to_output_overwrite_skips_backup(tmp_path: Path) -> None:
     assert list(dst.resolve().parent.glob("*.bak")) == []
     assert out_file.read_text() == "new content"
     assert all("Backed up" not in m for m in messages)
-    assert any("Saved to" in m for m in messages)
+    assert any(SAVED_TO_MESSAGE in m for m in messages)
 
 
 def test_copy_to_output_preserves_original_when_staging_fails(tmp_path: Path, mocker) -> None:
@@ -105,7 +113,7 @@ def test_copy_to_output_creates_new_destination(tmp_path: Path, *, overwrite: bo
     # Then: the destination is created with no backup and the save is reported
     assert out_file.read_text() == "new content"
     assert list(tmp_path.glob("*.bak")) == []
-    assert any("Saved to" in m for m in messages)
+    assert any(SAVED_TO_MESSAGE in m for m in messages)
 
 
 def test_copy_to_output_restores_original_when_swap_fails(tmp_path: Path, mocker) -> None:
@@ -188,3 +196,23 @@ def test_coerce_video_files_rejects_unusable_paths(tmp_path, name, create) -> No
 def test_parse_trait_filters_ignores_case_and_spacing() -> None:
     """Verify `--filters` accepts names as users type them, such as ` H264, 1080P `."""
     assert parse_trait_filters(" H264, 1080P ") == {VideoTrait.H264, VideoTrait.FHD}
+
+
+def test_default_config_created_private() -> None:
+    """Verify the user config file, which can hold API keys, is readable only by its owner."""
+    create_default_config()
+
+    assert stat.S_IMODE(constants.USER_CONFIG_PATH.stat().st_mode) == 0o600
+
+
+def test_default_config_never_replaces_an_existing_file(capsys) -> None:
+    """Verify an existing user config, with its settings and API keys, is left as written."""
+    # Given: A user config the user has edited
+    constants.USER_CONFIG_PATH.write_text('tmdb_api_key = "mine"\n')
+
+    # When: Creating the default config, as every launch does
+    create_default_config()
+
+    # Then: The file is unchanged and no creation is announced
+    assert constants.USER_CONFIG_PATH.read_text() == 'tmdb_api_key = "mine"\n'
+    assert "created" not in capsys.readouterr().out

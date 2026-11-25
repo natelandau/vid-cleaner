@@ -21,6 +21,7 @@ from .ffmpeg_utils import (
 from .media_ids import MediaId, find_media_ids
 
 from .cli import (  # isort: skip
+    TEMP_CLEANUP_WARNING,
     coerce_video_files,
     copy_to_output,
     create_default_config,
@@ -31,6 +32,7 @@ from .cli import (  # isort: skip
 )
 
 __all__ = [
+    "TEMP_CLEANUP_WARNING",
     "FfmpegCommand",
     "MediaId",
     "build_ffmpeg_command",

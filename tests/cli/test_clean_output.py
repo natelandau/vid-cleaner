@@ -5,6 +5,10 @@ from pathlib import Path
 import pytest
 
 from tests.helpers import run_vidcleaner
+from vid_cleaner.cli.clean_video import ORIGINAL_REMOVAL_WARNING
+from vid_cleaner.cli.ffmpeg_step import DRY_RUN_HEADER_SUFFIX
+from vid_cleaner.constants import SYMBOL_CHECK
+from vid_cleaner.utils.cli import SAVED_TO_MESSAGE, TEMP_CLEANUP_WARNING
 
 from vid_cleaner.controllers import TempFile  # isort: skip
 
@@ -60,7 +64,7 @@ def test_clean_write_output_cleanup_failure_still_reports_the_save(
     # Then: the run still exits successfully, the save is still reported, and the
     # cleanup failure is surfaced as a warning rather than a batch failure
     assert exit_code == 0
-    assert "✔ Saved to" in output
+    assert f"{SYMBOL_CHECK} {SAVED_TO_MESSAGE}" in output
     assert "temp dir busy" in output
     assert "failed" not in output
 
@@ -119,8 +123,8 @@ def test_clean_reports_a_failed_original_removal_accurately(
 
     # Then: The warning names the original file, not the temporary files
     assert exit_code == 0
-    assert "could not remove the original" in output
-    assert "could not clean up temporary files" not in output
+    assert ORIGINAL_REMOVAL_WARNING in output
+    assert TEMP_CLEANUP_WARNING not in output
 
 
 def test_clean_out_with_overwrite_leaves_the_input_alone(
@@ -247,6 +251,6 @@ def test_clean_dryrun_writes_nothing_to_the_cache(
 
     # Then: The command is previewed, ffmpeg never runs, and nothing was created
     assert exit_code == 0
-    assert "Processing (dry run)" in capsys.readouterr().out
+    assert DRY_RUN_HEADER_SUFFIX in capsys.readouterr().out
     mock_ffmpeg.assert_not_called()
     assert not any(locked.iterdir())

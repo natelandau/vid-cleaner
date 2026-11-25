@@ -10,6 +10,9 @@ from nclutils import pp
 from rich.prompt import Confirm
 
 from vid_cleaner.cli.discovery_output import (
+    FROM_WITH_FILES_ERROR,
+    NO_FILES_OR_FROM_ERROR,
+    REQUIRES_FROM_ERROR,
     confirm_selection,
     discover_from_directory,
     present_discovery,
@@ -24,6 +27,7 @@ from vid_cleaner.constants import (
 )
 from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
 from vid_cleaner.utils import (
+    TEMP_CLEANUP_WARNING,
     coerce_video_files,
     copy_to_output,
     render_operations,
@@ -35,6 +39,10 @@ from vid_cleaner.vidcleaner import CleanCommand, build_config, build_run_options
 from vid_cleaner.cli.ffmpeg_step import run_ffmpeg_step  # isort: skip
 from vid_cleaner.models.conversion_plan import ConversionPlan, PlanAction  # isort: skip
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
+
+H265_AND_VP9_ERROR = "Cannot convert to both H265 and VP9"
+ORIGINAL_REMOVAL_WARNING = "Warning: could not remove the original"
+FILES_FAILED_ERROR = "file(s) failed"
 
 
 def write_output(
@@ -73,7 +81,7 @@ def write_output(
     try:
         video_file.temp_file.clean_up()
     except OSError as e:
-        messages.append(f"{SYMBOL_CROSS} Warning: could not clean up temporary files: {e}")
+        messages.append(f"{SYMBOL_CROSS} {TEMP_CLEANUP_WARNING}: {e}")
 
     # This removal exists for a container change that renamed the result (e.g. `.mkv` to
     # `.webm`), where `--overwrite` means "do not leave two copies of the same film".
@@ -84,9 +92,7 @@ def write_output(
         try:
             video_file.path.unlink()
         except OSError as e:
-            messages.append(
-                f"{SYMBOL_CROSS} Warning: could not remove the original {video_file.path}: {e}"
-            )
+            messages.append(f"{SYMBOL_CROSS} {ORIGINAL_REMOVAL_WARNING} {video_file.path}: {e}")
 
     return messages
 
@@ -209,18 +215,18 @@ def select_video_files(
     )
 
     if clean_cmd.from_ is not None and clean_cmd.files:
-        pp.error("`--from` cannot be combined with explicit file paths")
+        pp.error(FROM_WITH_FILES_ERROR)
         raise cappa.Exit(code=1)
 
     if clean_cmd.from_ is None and uses_discovery_flags:
         pp.error(
-            "These options require `--from`: `--filters`, `--sort`, `--reverse`, `--depth`, `--limit`, `--yes`"
+            f"{REQUIRES_FROM_ERROR}: `--filters`, `--sort`, `--reverse`, `--depth`, `--limit`, `--yes`"
         )
         raise cappa.Exit(code=1)
 
     if clean_cmd.from_ is None:
         if not clean_cmd.files:
-            pp.error("Provide file path(s) or `--from` to discover them")
+            pp.error(NO_FILES_OR_FROM_ERROR)
             raise cappa.Exit(code=1)
         return coerce_video_files(clean_cmd.files)
 
@@ -262,7 +268,7 @@ def main(
             if one or more files failed to process.
     """
     if options.h265 and options.vp9:
-        pp.error("Cannot convert to both H265 and VP9")
+        pp.error(H265_AND_VP9_ERROR)
         raise cappa.Exit(code=1)
 
     # Check the `--out`/`--from` conflict before discovery runs, so an empty `--from`
@@ -317,7 +323,7 @@ def main(
             render_substeps(substeps)
 
     if failures:
-        pp.error(f"{len(failures)} file(s) failed", details=failures, markup=False)
+        pp.error(f"{len(failures)} {FILES_FAILED_ERROR}", details=failures, markup=False)
         raise cappa.Exit(code=1)
 
     raise cappa.Exit(code=0)

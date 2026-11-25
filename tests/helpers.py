@@ -28,7 +28,19 @@ def load_ffprobe_json(filename: str) -> dict[str, Any]:
         dict[str, Any]: The parsed ffprobe output.
     """
     lines = (FFPROBE_FIXTURES_DIR / filename).read_text().splitlines()
-    return json.loads("\n".join(line for line in lines if "//" not in line))
+    # Match whole comment lines only, so a value such as a URL tag keeps its `//`
+    return json.loads("\n".join(line for line in lines if not line.lstrip().startswith("//")))
+
+
+def set_file_size(path: Path, size: int) -> None:
+    """Give a file a size on disk without writing its bytes, for code that reads file sizes.
+
+    Args:
+        path: The file to create or resize.
+        size: The size in bytes.
+    """
+    with path.open("r+b" if path.exists() else "wb") as file:
+        file.truncate(size)
 
 
 def run_vidcleaner(

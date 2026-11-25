@@ -11,6 +11,8 @@ from nclutils.fs import directory_tree
 from vid_cleaner.config import Config
 from vid_cleaner.vidcleaner import CacheCommand, build_config
 
+CACHE_CLEARED_MESSAGE = "Cache cleared"
+
 
 def main(cache_cmd: CacheCommand, config: Annotated[Config, Dep(build_config)]) -> None:
     """Manage the cache directory for vidcleaner.
@@ -32,7 +34,7 @@ def main(cache_cmd: CacheCommand, config: Annotated[Config, Dep(build_config)]) 
     if cache_cmd.clear:
         shutil.rmtree(cache_dir)
         cache_dir.mkdir(parents=True, exist_ok=True)
-        pp.success(f"Cache cleared: `{cache_dir}`")
+        pp.success(f"{CACHE_CLEARED_MESSAGE}: `{cache_dir}`")
         raise cappa.Exit(code=0)
 
     if any(cache_dir.iterdir()):

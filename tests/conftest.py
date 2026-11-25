@@ -9,12 +9,14 @@ import pytest
 from box import Box
 from iso639 import Lang
 
-from tests.helpers import FFPROBE_FIXTURES_DIR, load_ffprobe_json
+from tests.helpers import FFPROBE_FIXTURES_DIR, load_ffprobe_json, set_file_size
 from vid_cleaner import constants
 from vid_cleaner.config import Config, RunOptions, load_config
+from vid_cleaner.constants import SYMBOL_CHECK
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.models.conversion_plan import ConversionPlan
 from vid_cleaner.utils import get_probe_as_box
+from vid_cleaner.utils.cli import SAVED_TO_MESSAGE
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
@@ -159,7 +161,7 @@ def stub_output_write(mocker):
     """
 
     def _report_save(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list[str]]:
-        return dst, [f"✔ Saved to {dst}"]
+        return dst, [f"{SYMBOL_CHECK} {SAVED_TO_MESSAGE} {dst}"]
 
     mocker.patch("vid_cleaner.cli.clip_video.copy_to_output", side_effect=_report_save)
     return mocker.patch("vid_cleaner.cli.clean_video.copy_to_output", side_effect=_report_save)
@@ -185,22 +187,14 @@ def make_video(video_path, mock_video_probe, mock_original_language):
 
 @pytest.fixture
 def mock_ffmpeg(mocker):
-    """Fixture to mock the FfmpegProgress class to effectively mock the ffmpeg command and its progress output.
+    """Replace ffmpeg with a stub that reports progress and writes nothing.
 
-    Usage:
-        def test_something(mock_ffmpeg):
-            # Mock the FfmpegProgress class
-            mock_ffmpeg_progress = mock_ffmpeg()
-
-            # Test the functionality
-            do_something()
-            mock_ffmpeg.assert_called_once() # Confirm that the ffmpeg command was called once
-            args, _ = mock_ffmpeg.call_args # Grab the ffmpeg command arguments
-            command = " ".join(args[0]) # Join the arguments into a single string
-            assert command == "ffmpeg -i input.mp4 output.mp4" # Check the command
+    Read the one command a run issued with `ffmpeg_command(mock_ffmpeg)` from
+    `tests/helpers.py`. Use `fake_transcode` instead when the test needs a real output file.
 
     Returns:
-        Mock: A mock object for the FfmpegProgress class.
+        MagicMock: The patched `FfmpegProgress` class. Each call's first argument is the
+            ffmpeg command as a list of strings.
     """
     mock_ffmpeg_progress = mocker.patch(
         "vid_cleaner.utils.ffmpeg_utils.FfmpegProgress",
@@ -233,8 +227,7 @@ def video_library(tmp_path, mocker, mock_ffprobe_box):
         for name, size, bitrate in files:
             path = directory / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.touch()
-            os.truncate(path, size)
+            set_file_size(path, size)
             file_box = copy.deepcopy(reference)
             file_box.bit_rate = str(bitrate) if bitrate else None
             # Real probe boxes carry the path they were built from, and `VideoFile`

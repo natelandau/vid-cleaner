@@ -4,6 +4,7 @@ import pytest
 from iso639 import Lang
 
 from tests.helpers import ffmpeg_command, run_vidcleaner
+from vid_cleaner.cli.clean_video import FILES_FAILED_ERROR
 from vid_cleaner.constants import (
     ALREADY_MODERN_CODEC_REASON,
     CONVERT_TO_H265_LABEL,
@@ -14,9 +15,11 @@ from vid_cleaner.constants import (
     REORDER_STREAMS_LABEL,
     STEREO_EXISTS_REASON,
     STREAMS_IN_ORDER_REASON,
+    SYMBOL_CHECK,
     TREE_LAST,
     UPSCALE_DECLINED_REASON,
 )
+from vid_cleaner.utils.cli import SAVED_TO_MESSAGE
 
 from vid_cleaner.controllers import TempFile  # isort: skip
 
@@ -102,7 +105,7 @@ def test_stream_processing(
     assert f"✖ {REORDER_STREAMS_LABEL}  ({STREAMS_IN_ORDER_REASON})" in output
     for fragment in process_output:
         assert fragment in output
-    assert "✔ Saved to" in output
+    assert f"{SYMBOL_CHECK} {SAVED_TO_MESSAGE}" in output
 
 
 def test_clean_video_foreign_language_keeps_und_subtitle(
@@ -134,7 +137,7 @@ def test_clean_video_foreign_language_keeps_und_subtitle(
     assert "-map 0:7" in command
     assert "-map 0:8" not in command
     assert f"✖ {REORDER_STREAMS_LABEL}  ({STREAMS_IN_ORDER_REASON})" in output
-    assert "✔ Saved to" in output
+    assert f"{SYMBOL_CHECK} {SAVED_TO_MESSAGE}" in output
 
 
 @pytest.mark.parametrize(
@@ -193,7 +196,7 @@ def test_clean_video_foreign_language(
     assert f"✖ {REORDER_STREAMS_LABEL}  ({STREAMS_IN_ORDER_REASON})" in output
     for fragment in process_output:
         assert fragment in output
-    assert "✔ Saved to" in output
+    assert f"{SYMBOL_CHECK} {SAVED_TO_MESSAGE}" in output
 
 
 @pytest.mark.parametrize(
@@ -252,7 +255,7 @@ def test_clean_video_downmix(
     assert exit_code == 0
     assert f"✖ {REORDER_STREAMS_LABEL}  ({STREAMS_IN_ORDER_REASON})" in output
     assert process_output in output
-    assert "✔ Saved to" in output
+    assert f"{SYMBOL_CHECK} {SAVED_TO_MESSAGE}" in output
 
 
 def test_clean_video_downmix_stereo_commentary_kept(
@@ -397,7 +400,7 @@ def test_clean_reorganize_streams(
     assert exit_code == 0
     assert "-map 0:2 -map 0:1 -map 0:3" in command
     assert f"✔ {REORDER_STREAMS_LABEL}" in output
-    assert "✔ Saved to" in output
+    assert f"{SYMBOL_CHECK} {SAVED_TO_MESSAGE}" in output
 
 
 @pytest.mark.parametrize(
@@ -526,7 +529,7 @@ def test_clean_renders_completed_steps_on_error(
     assert exit_code == 1
     assert "✔ Convert to H.265" in output
     assert f"✖ {REORDER_STREAMS_LABEL}  ({STREAMS_IN_ORDER_REASON})" in output
-    assert "1 file(s) failed" in output + error
+    assert f"1 {FILES_FAILED_ERROR}" in output + error
 
 
 def test_clean_video_downmix_skip_when_stereo_exists(

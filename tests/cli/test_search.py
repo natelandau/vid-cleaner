@@ -5,7 +5,11 @@ from pathlib import Path
 import pytest
 
 from tests.helpers import run_vidcleaner
-from vid_cleaner.cli.discovery_output import NOT_AN_EXISTING_DIRECTORY_ERROR
+from vid_cleaner.cli.discovery_output import (
+    NO_VIDEO_FILES_FOUND,
+    NOT_AN_EXISTING_DIRECTORY_ERROR,
+    UNREADABLE_FILES_TITLE,
+)
 
 
 def test_search_no_video_files(tmp_path, capsys):
@@ -19,7 +23,7 @@ def test_search_no_video_files(tmp_path, capsys):
 
     # Then: The command reports there is nothing to list
     assert exit_code == 0
-    assert "No video files found" in capsys.readouterr().err
+    assert NO_VIDEO_FILES_FOUND in capsys.readouterr().err
 
 
 def test_search_with_results(capsys, video_path, mock_video_probe):
@@ -48,7 +52,7 @@ def test_search_with_no_results(capsys, video_path, mock_video_probe):
     # Then: Nothing is listed and the error names the filter
     output, error = capsys.readouterr()
     assert exit_code == 1
-    assert "No video files found matching 'reorder'" in error
+    assert f"{NO_VIDEO_FILES_FOUND} matching 'reorder'" in error
     assert "Bitrate" not in output
 
 
@@ -65,7 +69,7 @@ def test_search_filters_combine_with_and(capsys, video_path, mock_video_probe):
 
     # Then: Matching one filter is not enough and the error names both
     assert exit_code == 1
-    assert "No video files found matching 'h264' and 'reorder'" in error
+    assert f"{NO_VIDEO_FILES_FOUND} matching 'h264' and 'reorder'" in error
 
 
 def test_search_no_results_reports_skipped_count(capsys, video_path, mock_unreadable_probe):
@@ -84,7 +88,7 @@ def test_search_no_results_reports_skipped_count(capsys, video_path, mock_unread
 
     # Then: The error reports both the mismatch and the skipped file
     assert exit_code == 1
-    assert "No video files found matching 'reorder'" in error
+    assert f"{NO_VIDEO_FILES_FOUND} matching 'reorder'" in error
     assert "1" in error
     assert "skipped" in error
 
@@ -116,7 +120,7 @@ def test_search_skips_unreadable_files(
     assert "test_video.mp4" in output
     assert "h264" in output
     assert "1 skipped" in output
-    assert ("Unreadable files" in output + error) is lists_skipped_files
+    assert (UNREADABLE_FILES_TITLE in output + error) is lists_skipped_files
 
 
 def test_search_skips_files_that_vanish_before_stat(capsys, mocker, video_path, mock_ffprobe_box):

@@ -6,7 +6,11 @@ from pathlib import Path
 import cappa
 import pytest
 
-from vid_cleaner.cli.discovery_output import confirm_selection, present_discovery
+from vid_cleaner.cli.discovery_output import (
+    NO_VIDEO_FILES_FOUND,
+    confirm_selection,
+    present_discovery,
+)
 from vid_cleaner.constants import SortOrder, VideoTrait
 from vid_cleaner.controllers.discovery import DiscoveryReport
 from vid_cleaner.exceptions import VideoProbeError
@@ -45,7 +49,7 @@ def test_present_exits_zero_when_nothing_found(
 
     # Then: The command warns and exits successfully
     assert exc_info.value.code == 0
-    assert "No video files found" in capsys.readouterr().err
+    assert NO_VIDEO_FILES_FOUND in capsys.readouterr().err
 
 
 def test_present_exits_one_when_nothing_matched(
@@ -61,7 +65,7 @@ def test_present_exits_one_when_nothing_matched(
 
     # Then: The command errors and names the unmatched filter
     assert exc_info.value.code == 1
-    assert "No video files found matching 'reorder'" in capsys.readouterr().err
+    assert f"{NO_VIDEO_FILES_FOUND} matching 'reorder'" in capsys.readouterr().err
 
 
 def test_present_errors_when_the_searched_directory_could_not_be_listed(capsys, tmp_path):
@@ -78,7 +82,7 @@ def test_present_errors_when_the_searched_directory_could_not_be_listed(capsys, 
 
     # Then: The command errors instead of reporting an empty directory
     assert exc_info.value.code == 1
-    assert "No video files found in" not in capsys.readouterr().out
+    assert f"{NO_VIDEO_FILES_FOUND} in" not in capsys.readouterr().out
 
 
 def test_present_empty_match_reports_skipped_count(capsys, tmp_path):

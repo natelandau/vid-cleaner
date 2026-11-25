@@ -21,6 +21,13 @@ from vid_cleaner.constants import (
 if TYPE_CHECKING:
     from vid_cleaner.models.video_file import VideoFile
 
+OUT_WITH_FROM_ERROR = "`--out` cannot be used with `--from`"
+OUT_WITH_MULTIPLE_FILES_ERROR = "`--out` cannot be used with multiple input files"
+BACKED_UP_ORIGINAL_MESSAGE = "Backed up original to"
+SAVED_TO_MESSAGE = "Saved to"
+LIMIT_BELOW_ONE_ERROR = "must be 1 or greater"
+TEMP_CLEANUP_WARNING = "Warning: could not clean up temporary files"
+
 
 def coerce_video_files(files: list[Path]) -> list["VideoFile"]:
     """Parse and validate a list of video file paths.
@@ -74,10 +81,10 @@ def resolve_out_path_override(
     """
     override = out
     if override and from_directory is not None:
-        pp.error("`--out` cannot be used with `--from`")
+        pp.error(OUT_WITH_FROM_ERROR)
         raise cappa.Exit(code=1)
     if override and len(files) > 1:
-        pp.error("`--out` cannot be used with multiple input files")
+        pp.error(OUT_WITH_MULTIPLE_FILES_ERROR)
         raise cappa.Exit(code=1)
     return override
 
@@ -124,7 +131,7 @@ def copy_to_output(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list
             stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
             backup = dst.with_name(f"{dst.name}.{stamp}-{uuid.uuid4().hex[:8]}.bak")
             dst.replace(backup)
-            messages.append(f"{SYMBOL_CHECK} Backed up original to {backup}")
+            messages.append(f"{SYMBOL_CHECK} {BACKED_UP_ORIGINAL_MESSAGE} {backup}")
 
         try:
             staged.replace(dst)  # atomic within the destination filesystem
@@ -139,7 +146,7 @@ def copy_to_output(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list
         # No-op on success (staged was renamed away); removes the partial temp on failure.
         staged.unlink(missing_ok=True)
 
-    messages.append(f"{SYMBOL_CHECK} Saved to {dst}")
+    messages.append(f"{SYMBOL_CHECK} {SAVED_TO_MESSAGE} {dst}")
     return dst, messages
 
 
@@ -193,7 +200,7 @@ def parse_limit(raw: str) -> int:
     """
     value = int(raw)
     if value < 1:
-        msg = f"must be 1 or greater, got {value}"
+        msg = f"{LIMIT_BELOW_ONE_ERROR}, got {value}"
         raise ValueError(msg)
     return value
 

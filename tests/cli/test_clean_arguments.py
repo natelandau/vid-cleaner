@@ -5,7 +5,18 @@ import pytest
 from cappa.base import invoke
 
 from tests.helpers import run_vidcleaner
-from vid_cleaner.cli.discovery_output import NOT_AN_EXISTING_DIRECTORY_ERROR
+from vid_cleaner.cli.clean_video import H265_AND_VP9_ERROR
+from vid_cleaner.cli.discovery_output import (
+    FROM_WITH_FILES_ERROR,
+    NO_FILES_OR_FROM_ERROR,
+    NOT_AN_EXISTING_DIRECTORY_ERROR,
+    REQUIRES_FROM_ERROR,
+)
+from vid_cleaner.utils.cli import (
+    LIMIT_BELOW_ONE_ERROR,
+    OUT_WITH_FROM_ERROR,
+    OUT_WITH_MULTIPLE_FILES_ERROR,
+)
 from vid_cleaner.vidcleaner import VidCleaner, configure_output
 
 
@@ -21,7 +32,7 @@ def test_fail_on_flag_conflict(capsys, video_path) -> None:
     output = capsys.readouterr().err
 
     assert exit_code == 1
-    assert "Cannot convert to both H265 and VP9" in output
+    assert H265_AND_VP9_ERROR in output
 
 
 def test_clean_out_with_multiple_files_errors(tmp_path, capsys) -> None:
@@ -39,7 +50,7 @@ def test_clean_out_with_multiple_files_errors(tmp_path, capsys) -> None:
     # Then: the command exits with an error explaining the conflict
     output = capsys.readouterr().err
     assert exit_code == 1
-    assert "`--out` cannot be used with multiple input files" in output
+    assert OUT_WITH_MULTIPLE_FILES_ERROR in output
 
 
 def test_clean_rejects_from_with_positional_files(capsys, tmp_path):
@@ -54,7 +65,7 @@ def test_clean_rejects_from_with_positional_files(capsys, tmp_path):
 
     # Then: The command errors explaining the conflict
     assert exit_code == 1
-    assert "`--from` cannot be combined with explicit file paths" in capsys.readouterr().err
+    assert FROM_WITH_FILES_ERROR in capsys.readouterr().err
 
 
 def test_clean_rejects_from_with_out(capsys, tmp_path):
@@ -67,7 +78,7 @@ def test_clean_rejects_from_with_out(capsys, tmp_path):
 
     # Then: The command errors
     assert exit_code == 1
-    assert "`--out` cannot be used with `--from`" in capsys.readouterr().err
+    assert OUT_WITH_FROM_ERROR in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -93,7 +104,7 @@ def test_clean_rejects_discovery_flags_without_from(capsys, tmp_path, discovery_
 
     # Then: The command errors naming --from
     assert exit_code == 1
-    assert "require `--from`" in capsys.readouterr().err
+    assert REQUIRES_FROM_ERROR in capsys.readouterr().err
 
 
 def test_clean_rejects_no_files_and_no_from(capsys):
@@ -106,7 +117,7 @@ def test_clean_rejects_no_files_and_no_from(capsys):
 
     # Then: The command errors
     assert exit_code == 1
-    assert "Provide file path(s) or `--from`" in capsys.readouterr().err
+    assert NO_FILES_OR_FROM_ERROR in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -129,7 +140,9 @@ def test_clean_short_flag_matches_long_flag(captured_clean, video_path, short, l
     """Verify each short flag sets the same setting or run option as its long form."""
 
     def setting_after(flags: list[str]) -> object:
-        run_vidcleaner(["clean", "-n", *flags, str(video_path)])
+        # A run that fails before planning must not leave the previous run's values behind
+        captured_clean.clear()
+        assert run_vidcleaner(["clean", "-n", *flags, str(video_path)]) == 0
         config, options = captured_clean["config"], captured_clean["options"]
         return getattr(config, attribute, getattr(options, attribute, None))
 
@@ -164,7 +177,7 @@ def test_clean_rejects_limit_below_one(tmp_path, limit):
 
     # Then: The command fails with a message naming the acceptable range
     assert exc_info.value.code != 0
-    assert "must be 1 or greater" in str(exc_info.value.message)
+    assert LIMIT_BELOW_ONE_ERROR in str(exc_info.value.message)
 
 
 @pytest.mark.parametrize(

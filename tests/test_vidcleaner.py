@@ -1,13 +1,10 @@
 """Test the vidcleaner command line interface."""
 
-import stat
 from pathlib import Path
 
 import pytest
 
 from tests.helpers import run_vidcleaner
-from vid_cleaner import constants
-from vid_cleaner.utils import create_default_config
 from vid_cleaner.vidcleaner import verify_required_binaries
 
 
@@ -52,13 +49,13 @@ def test_missing_binaries_stops_the_run(capsys, mocker, missing, expected) -> No
     assert expected in captured.err
 
 
-def test_present_binaries_allow_the_run(mocker) -> None:
+def test_present_binaries_allow_the_run(mocker, tmp_path) -> None:
     """Verify the preflight is silent when both programs are on PATH."""
     # Given: Both programs are present
     mocker.patch("vid_cleaner.utils.cli.which", return_value=Path("/usr/bin/ffmpeg"))
 
     # When: Running the preflight for a command that needs them
-    args = ["check", "movie.mkv"]
+    args = ["check", str(tmp_path / "movie.mkv")]
     exit_code = run_vidcleaner(args, deps=[verify_required_binaries])
 
     # Then: The run reaches the command itself rather than stopping at the preflight
@@ -208,26 +205,6 @@ def test_config_warnings_are_shown_and_the_run_continues(
     assert code == 0
     assert "keep_comentary" in output + error
     assert "config" in captured_clean
-
-
-def test_default_config_created_private() -> None:
-    """Verify the user config file, which can hold API keys, is readable only by its owner."""
-    create_default_config()
-
-    assert stat.S_IMODE(constants.USER_CONFIG_PATH.stat().st_mode) == 0o600
-
-
-def test_default_config_never_replaces_an_existing_file(capsys) -> None:
-    """Verify an existing user config, with its settings and API keys, is left as written."""
-    # Given: A user config the user has edited
-    constants.USER_CONFIG_PATH.write_text('tmdb_api_key = "mine"\n')
-
-    # When: Creating the default config, as every launch does
-    create_default_config()
-
-    # Then: The file is unchanged and no creation is announced
-    assert constants.USER_CONFIG_PATH.read_text() == 'tmdb_api_key = "mine"\n'
-    assert "created" not in capsys.readouterr().out
 
 
 def test_trace_output_hides_api_keys(capsys, user_config, captured_clean, video_path) -> None:

@@ -6,7 +6,13 @@ import pytest
 
 from tests.helpers import run_vidcleaner
 from vid_cleaner.cli.check_video import display_path
-from vid_cleaner.cli.discovery_output import NOT_AN_EXISTING_DIRECTORY_ERROR
+from vid_cleaner.cli.discovery_output import (
+    FROM_WITH_FILES_ERROR,
+    NO_FILES_OR_FROM_ERROR,
+    NO_VIDEO_FILES_FOUND,
+    NOT_AN_EXISTING_DIRECTORY_ERROR,
+    REQUIRES_FROM_ERROR,
+)
 from vid_cleaner.exceptions import VideoProbeError
 
 
@@ -185,7 +191,7 @@ def test_check_from_empty_directory_exits_zero(capsys, tmp_path):
 
     # Then: The run reports nothing to do and succeeds
     assert exit_code == 0
-    assert "No video files found" in captured.out + captured.err
+    assert NO_VIDEO_FILES_FOUND in captured.out + captured.err
 
 
 def test_check_from_nonexistent_directory_errors(capsys, tmp_path):
@@ -216,7 +222,7 @@ def test_check_rejects_from_combined_with_files(capsys, tmp_path, video_path):
 
     # Then: The conflict is reported
     assert exit_code == 1
-    assert "cannot be combined with explicit file paths" in captured.err
+    assert FROM_WITH_FILES_ERROR in captured.err
 
 
 @pytest.mark.parametrize(
@@ -235,7 +241,7 @@ def test_check_rejects_discovery_flags_without_from(capsys, video_path, discover
 
     # Then: The requirement is reported
     assert exit_code == 1
-    assert "require `--from`" in captured.err
+    assert REQUIRES_FROM_ERROR in captured.err
 
 
 def test_check_with_no_arguments_errors(capsys):
@@ -250,7 +256,7 @@ def test_check_with_no_arguments_errors(capsys):
 
     # Then: The user is told what to provide
     assert exit_code == 1
-    assert "Provide file path(s) or `--from`" in captured.err
+    assert NO_FILES_OR_FROM_ERROR in captured.err
 
 
 def test_check_does_not_accept_limit():

@@ -4,6 +4,8 @@ import cappa
 import pytest
 
 from tests.helpers import ffmpeg_command, run_vidcleaner
+from vid_cleaner.cli.clean_video import FILES_FAILED_ERROR
+from vid_cleaner.cli.discovery_output import NO_VIDEO_FILES_FOUND
 from vid_cleaner.exceptions import VideoCleanError
 from vid_cleaner.models import video_file as video_file_module
 from vid_cleaner.models.conversion_plan import ConversionPlan
@@ -123,7 +125,7 @@ def test_clean_continues_after_a_file_fails(capsys, tmp_path, mocker, make_error
     assert exit_code == 1
     assert "second.mkv" in output
     assert "first.mkv" in output + error
-    assert "1 file(s) failed" in output + error
+    assert f"1 {FILES_FAILED_ERROR}" in output + error
 
 
 def test_clean_exits_zero_when_every_file_succeeds(capsys, tmp_path, mocker, mock_ffmpeg):
@@ -180,7 +182,7 @@ def test_clean_from_empty_directory_still_exits_zero(capsys, tmp_path):
 
     # Then: The command reports the empty directory and exits successfully
     assert exit_code == 0
-    assert "No video files found" in capsys.readouterr().err
+    assert NO_VIDEO_FILES_FOUND in capsys.readouterr().err
 
 
 def _normalize(text: str) -> str:

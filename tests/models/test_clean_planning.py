@@ -1,6 +1,5 @@
 """Test VideoFile single-pass conversion planning."""
 
-import os
 from dataclasses import fields
 from pathlib import Path
 from typing import Any
@@ -8,6 +7,7 @@ from typing import Any
 import pytest
 from box import Box
 
+from tests.helpers import set_file_size
 from vid_cleaner.config import Config, RunOptions
 from vid_cleaner.constants import (
     ALL_AUDIO_KEPT_REASON,
@@ -99,7 +99,7 @@ def test_plan_h265_sets_video_codec_and_bitrates(make_video, plan_settings):
     # Given: a 1 MB input file and reference.json probe data
     plan_settings.update({"h265": True})
     video = make_video("reference.json")
-    os.truncate(video.temp_file.path, 1_000_000)
+    set_file_size(video.temp_file.path, 1_000_000)
 
     # When: building the plan
     plan = video.plan_clean(*plan_settings.args())
@@ -155,7 +155,7 @@ def test_codec_conversion_with_force_reencodes_a_modern_video(
     plan_settings.update({flag: True, "force": True})
     video = make_video("reference.json")
     video.probe_box.streams[0].codec_name = "hevc"
-    os.truncate(video.temp_file.path, 1_000_000)
+    set_file_size(video.temp_file.path, 1_000_000)
 
     # When: building the plan
     plan = video.plan_clean(*plan_settings.args())
@@ -171,7 +171,7 @@ def test_h265_uses_the_stream_duration_when_the_container_has_none(make_video, p
     # Given: reference.json with no container duration but a timed video stream
     plan_settings.update({"h265": True})
     video = make_video("reference.json")
-    os.truncate(video.temp_file.path, 1_000_000)
+    set_file_size(video.temp_file.path, 1_000_000)
     video.probe_box.duration = None
     video.probe_box.streams[0].duration = "60.0"
 
@@ -240,7 +240,7 @@ def test_plan_h265_encodes_every_video_stream(make_video, plan_settings):
     # Given: a file with two real (non-thumbnail) video streams and --h265
     plan_settings.update({"h265": True})
     video = make_video("multi_video.json")
-    os.truncate(video.temp_file.path, 1_000_000)
+    set_file_size(video.temp_file.path, 1_000_000)
 
     # When: building the plan
     plan = video.plan_clean(*plan_settings.args())
@@ -273,7 +273,7 @@ def test_plan_1080p_and_h265_single_encode(make_video, plan_settings):
     # Given: a UHD source with both conversion flags
     plan_settings.update({"video_1080": True, "h265": True})
     video = make_video("uhd.json")
-    os.truncate(video.temp_file.path, 1_000_000)
+    set_file_size(video.temp_file.path, 1_000_000)
 
     # When: building the plan
     plan = video.plan_clean(*plan_settings.args())
@@ -289,7 +289,7 @@ def test_plan_h265_bitrate_math(make_video, plan_settings):
     # Given: a 600 MB, 4K/600s source with only --h265 (no scale, kept video+audio)
     plan_settings.update({"h265": True})
     video = make_video("uhd.json")
-    os.truncate(video.temp_file.path, 600_000_000)
+    set_file_size(video.temp_file.path, 600_000_000)
 
     # When: building the plan
     plan = video.plan_clean(*plan_settings.args())
@@ -314,7 +314,7 @@ def test_plan_h265_bitrate_math_scaled_for_1080p(make_video, plan_settings):
     # Given: the same 600 MB, 4K/600s source, now also downscaling to 1080p
     plan_settings.update({"h265": True, "video_1080": True})
     video = make_video("uhd.json")
-    os.truncate(video.temp_file.path, 600_000_000)
+    set_file_size(video.temp_file.path, 600_000_000)
 
     # When: building the plan
     plan = video.plan_clean(*plan_settings.args())
@@ -457,7 +457,7 @@ def test_estimate_cleaned_size_subtracts_dropped_streams(make_video, bitrate_fie
     """Verify the size estimate subtracts dropped streams' bitrate-derived bytes."""
     # Given: a 10 MB file where a dropped 640 kbps stream spans 60 seconds
     video = make_video("reference.json")
-    os.truncate(video.temp_file.path, 10_000_000)
+    set_file_size(video.temp_file.path, 10_000_000)
     for stream in video.probe_box.streams:
         stream.bit_rate = None
         stream.bps = None

@@ -3,6 +3,7 @@
 import pytest
 
 from tests.helpers import run_vidcleaner
+from vid_cleaner.cli.cache import CACHE_CLEARED_MESSAGE
 
 
 @pytest.fixture
@@ -58,7 +59,7 @@ def test_cache_clean(
     # Then: Success message is displayed
     output = capsys.readouterr().out
     assert exit_code == 0
-    assert "Cache cleared" in output
+    assert CACHE_CLEARED_MESSAGE in output
 
     # And: Cache directory is empty
     assert not any(tmp_cache_dir.iterdir())

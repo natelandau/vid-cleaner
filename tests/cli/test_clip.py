@@ -4,15 +4,18 @@ import pytest
 
 from tests.helpers import ffmpeg_command, run_vidcleaner
 from vid_cleaner.cli import clip_video
-from vid_cleaner.constants import NO_VIDEO_STREAMS_REASON
+from vid_cleaner.cli.clip_video import TIME_FORMAT_ERROR
+from vid_cleaner.cli.ffmpeg_step import DRY_RUN_HEADER_SUFFIX
+from vid_cleaner.constants import NO_VIDEO_STREAMS_REASON, SYMBOL_CHECK
 from vid_cleaner.controllers import TempFile
+from vid_cleaner.utils.cli import SAVED_TO_MESSAGE
 
 
 @pytest.mark.parametrize(
     ("args", "expected"),
     [
-        (["--start", "0:0"], "`--start` must be in format HH:MM:SS"),
-        (["--duration", "0:0"], "`--duration` must be in format HH:MM:SS"),
+        (["--start", "0:0"], f"`--start` {TIME_FORMAT_ERROR}"),
+        (["--duration", "0:0"], f"`--duration` {TIME_FORMAT_ERROR}"),
     ],
 )
 def test_clip_option_errors(capsys, video_path, args, expected):
@@ -82,8 +85,8 @@ def test_clipping_video_dryrun(
     # Then: ffmpeg does not run and nothing is saved
     mock_ffmpeg.assert_not_called()
     assert exit_code == 0
-    assert "dry run" in output
-    assert "Saved to" not in output
+    assert DRY_RUN_HEADER_SUFFIX in output
+    assert SAVED_TO_MESSAGE not in output
 
 
 def test_clip_out_writes_the_clip_there_and_leaves_the_source(
@@ -148,7 +151,7 @@ def test_clip_cleanup_failure_still_reports_the_save(
 
     # Then: The save survives, the cleanup failure is a warning, and the run still succeeds
     assert exit_code == 0
-    assert "✔ Saved to" in output
+    assert f"{SYMBOL_CHECK} {SAVED_TO_MESSAGE}" in output
     assert "temp dir busy" in output
 
 
@@ -203,7 +206,7 @@ def test_clip_continues_past_a_bad_file(
     mock_ffmpeg.assert_called_once()
     assert exit_code == 1
     assert NO_VIDEO_STREAMS_REASON in captured.out + captured.err
-    assert "✔ Saved to" in captured.out
+    assert f"{SYMBOL_CHECK} {SAVED_TO_MESSAGE}" in captured.out
 
 
 def test_clip_failure_clears_its_temp_files_and_continues(

@@ -6,7 +6,13 @@ import cappa
 from nclutils import pp
 from rich.progress import track
 
-from vid_cleaner.cli.discovery_output import discover_from_directory
+from vid_cleaner.cli.discovery_output import (
+    FROM_WITH_FILES_ERROR,
+    NO_FILES_OR_FROM_ERROR,
+    NO_VIDEO_FILES_FOUND,
+    REQUIRES_FROM_ERROR,
+    discover_from_directory,
+)
 from vid_cleaner.constants import SortOrder
 from vid_cleaner.controllers.discovery import DiscoveryReport
 from vid_cleaner.controllers.validation import CheckResult, check_probed_video, check_video_file
@@ -56,7 +62,7 @@ def check_discovered_files(report: DiscoveryReport, *, deep: bool) -> list[Check
         cappa.Exit: With code 0 when the directory holds no video files.
     """
     if report.total == 0 and not report.skipped:
-        pp.warning(f"No video files found in {report.root}")
+        pp.warning(f"{NO_VIDEO_FILES_FOUND} in {report.root}")
         raise cappa.Exit(code=0)
 
     # Discovery reports the files it could not read separately from the ones it kept, and
@@ -128,11 +134,11 @@ def select_results(check_cmd: CheckCommand) -> list[CheckResult]:
     )
 
     if check_cmd.from_ is not None and check_cmd.files:
-        pp.error("`--from` cannot be combined with explicit file paths")
+        pp.error(FROM_WITH_FILES_ERROR)
         raise cappa.Exit(code=1)
 
     if check_cmd.from_ is None and uses_discovery_flags:
-        pp.error("These options require `--from`: `--filters`, `--sort`, `--reverse`, `--depth`")
+        pp.error(f"{REQUIRES_FROM_ERROR}: `--filters`, `--sort`, `--reverse`, `--depth`")
         raise cappa.Exit(code=1)
 
     if check_cmd.from_ is not None:
@@ -142,7 +148,7 @@ def select_results(check_cmd: CheckCommand) -> list[CheckResult]:
         return check_discovered_files(report, deep=check_cmd.deep)
 
     if not check_cmd.files:
-        pp.error("Provide file path(s) or `--from` to discover them")
+        pp.error(NO_FILES_OR_FROM_ERROR)
         raise cappa.Exit(code=1)
 
     return check_explicit_files(check_cmd)
