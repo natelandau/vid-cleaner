@@ -271,6 +271,8 @@ vid-cleaner keeps its files in the locations that the [XDG Base Directory specif
 
 To print the contents of the cache, run `vidcleaner cache`. To empty the cache, run `vidcleaner cache --clear`.
 
+Before `clean` encodes a file, it makes sure that the cache disk and the destination disk each have free space of at least 1.5 times the size of the original file. The extra space allows for a result that is larger than the original, for example after an upscale. If the cache and the destination are on the same disk, that disk needs 3 times the size of the original file. If there is not sufficient space, `clean` skips the file and continues with the next file.
+
 If `clean` or `clip` cannot copy a finished file to its destination, for example because the disk is full, the command keeps the file in the cache. The error message shows the path. Move the file to where you want it, then run `vidcleaner cache --clear`.
 
 ## Contributing
