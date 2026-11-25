@@ -507,7 +507,9 @@ def test_clean_noop_skips_ffmpeg(make_video, mock_ffmpeg, plan_settings):
 
     # When: cleaning
     config, options = plan_settings.args()
-    result = clean_video_file(video, config=config, options=options)
+    result = clean_video_file(
+        video_file=video, destination_dir=video.path.parent, config=config, options=options
+    )
 
     # Then: ffmpeg never runs and no action was applied
     mock_ffmpeg.assert_not_called()

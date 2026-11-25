@@ -1,5 +1,6 @@
 """Test where the clean subcommand writes its results and what happens to the originals."""
 
+import math
 from pathlib import Path
 
 import cappa
@@ -7,7 +8,11 @@ import pytest
 from cappa.base import invoke
 
 from tests.helpers import leftover_cache_files, run_vidcleaner
-from vid_cleaner.cli.clean_video import ORIGINAL_REMOVAL_WARNING
+from vid_cleaner.cli.clean_video import (
+    NOT_ENOUGH_SPACE_ERROR,
+    ORIGINAL_REMOVAL_WARNING,
+    OUTPUT_SIZE_MARGIN,
+)
 from vid_cleaner.cli.ffmpeg_step import (
     DRY_RUN_HEADER_SUFFIX,
     RESULT_KEPT_MESSAGE,
@@ -261,6 +266,43 @@ def test_clean_keeps_the_result_when_the_copy_fails(
     assert video_path.read_bytes() == b"source"
     assert [path.read_bytes() for path in kept] == [b"transcoded"]
     assert RESULT_KEPT_MESSAGE in output.out + output.err
+
+
+@pytest.mark.parametrize(
+    ("shortfall_bytes", "expected_exit"),
+    [(0, 0), (1, 1)],
+    ids=["room-for-both-copies", "one-byte-short"],
+)
+def test_clean_stops_before_encoding_without_free_space(
+    mocker,
+    capsys,
+    video_path,
+    mock_ffmpeg,
+    mock_video_probe,
+    mock_original_language,
+    stub_output_write,
+    shortfall_bytes,
+    expected_exit,
+):
+    """Verify a disk holding both the cache and the destination needs room for two copies."""
+    # Given: A 10-byte source whose cache and destination share one filesystem
+    video_path.write_bytes(b"0123456789")
+    room_for_both_copies = 2 * math.ceil(10 * OUTPUT_SIZE_MARGIN)
+    mock_video_probe("reference.json")
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.shutil.disk_usage",
+        return_value=mocker.MagicMock(free=room_for_both_copies - shortfall_bytes),
+    )
+
+    # When: Cleaning the file
+    exit_code = run_vidcleaner(["clean", "--h265", str(video_path)])
+
+    # Then: The encode runs only when the disk fits the cache copy and the staged copy
+    output = capsys.readouterr()
+    assert exit_code == expected_exit
+    assert mock_ffmpeg.called is (expected_exit == 0)
+    assert (NOT_ENOUGH_SPACE_ERROR in output.out + output.err) is (expected_exit == 1)
+    assert video_path.read_bytes() == b"0123456789"
 
 
 def test_clean_dryrun_writes_nothing_to_the_cache(

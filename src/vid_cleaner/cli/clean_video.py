@@ -1,5 +1,7 @@
 """Clean subcommand."""
 
+import math
+import shutil
 from dataclasses import replace
 from pathlib import Path
 from typing import Annotated
@@ -7,6 +9,7 @@ from typing import Annotated
 import cappa
 from cappa import Dep
 from nclutils import pp
+from rich.filesize import decimal
 from rich.prompt import Confirm
 
 from vid_cleaner.cli.discovery_output import (
@@ -51,6 +54,10 @@ from vid_cleaner.models.video_file import VideoFile  # isort: skip
 H265_AND_VP9_ERROR = "Cannot convert to both H265 and VP9"
 ORIGINAL_REMOVAL_WARNING = "Warning: could not remove the original"
 FILES_FAILED_ERROR = "file(s) failed"
+NOT_ENOUGH_SPACE_ERROR = "not enough free space"
+# Upscaling, an added downmix track, or re-encoding a low-bitrate source can make the
+# output larger than the source, so each copy of the result is budgeted above source size.
+OUTPUT_SIZE_MARGIN = 1.5
 
 
 def write_output(
@@ -138,8 +145,49 @@ def approve_upscale(video_file: VideoFile, *, source_width: int, dryrun: bool) -
     return approved
 
 
+def _nearest_existing_directory(path: Path) -> Path:
+    """Return `path` or its closest ancestor that exists, since `--out` can name a new folder."""
+    return next(candidate for candidate in (path, *path.parents) if candidate.exists())
+
+
+def check_free_space(video_file: VideoFile, *, temp_dir: Path, destination_dir: Path) -> None:
+    """Stop a file before encoding when its disks cannot hold the result.
+
+    A transcode can take hours, so fail fast rather than discover a full disk at the end.
+    The encode writes the result to the temp directory, and the final copy stages another
+    copy beside the destination. Each copy needs `OUTPUT_SIZE_MARGIN` times the source
+    size. When both share a filesystem it must hold both.
+
+    Args:
+        video_file (VideoFile): The file about to be encoded.
+        temp_dir (Path): The directory the encode writes into.
+        destination_dir (Path): The directory the result is copied into.
+
+    Raises:
+        VideoCleanError: If a filesystem has less free space than the run needs on it.
+    """
+    output_size = math.ceil(video_file.path.stat().st_size * OUTPUT_SIZE_MARGIN)
+    destination_dir = _nearest_existing_directory(destination_dir.expanduser().resolve())
+    required_space: list[tuple[Path, int]]
+    if temp_dir.stat().st_dev == destination_dir.stat().st_dev:
+        required_space = [(temp_dir, 2 * output_size)]
+    else:
+        required_space = [(temp_dir, output_size), (destination_dir, output_size)]
+
+    for directory, required in required_space:
+        free = shutil.disk_usage(directory).free
+        if free < required:
+            raise VideoCleanError(
+                path=video_file.path,
+                reason=(
+                    f"{NOT_ENOUGH_SPACE_ERROR} on {directory}: "
+                    f"needs {decimal(required)}, has {decimal(free)}"
+                ),
+            )
+
+
 def clean_video_file(
-    video_file: VideoFile, *, config: Config, options: RunOptions
+    video_file: VideoFile, *, destination_dir: Path, config: Config, options: RunOptions
 ) -> ConversionPlan:
     """Plan a file's cleaning, report the plan, and run it unless it changes nothing.
 
@@ -147,6 +195,8 @@ def clean_video_file(
 
     Args:
         video_file (VideoFile): The file to clean.
+        destination_dir (Path): The directory the result is copied into, checked for
+            free space before encoding.
         config (Config): The settings for this run.
         options (RunOptions): The CLI-only values for this run.
 
@@ -181,6 +231,12 @@ def clean_video_file(
             config=config,
             dryrun=options.dryrun,
         )
+        if not options.dryrun:
+            check_free_space(
+                video_file=video_file,
+                temp_dir=command.output_path.parent,
+                destination_dir=destination_dir,
+            )
         run_ffmpeg_step(video_file, command, title="Processing", dryrun=options.dryrun)
     return plan
 
@@ -295,8 +351,13 @@ def main(
             # Read before ffmpeg runs: once a temp file exists, the probe reads that instead
             verifying = verification_enabled(config=config, options=options)
             source_length = SourceLength.of_video(video_file) if verifying else None
-            plan = clean_video_file(video_file, config=config, options=options)
             destination = out_path_override or video_file.path
+            plan = clean_video_file(
+                video_file=video_file,
+                destination_dir=destination.parent,
+                config=config,
+                options=options,
+            )
             if plan.output_suffix:
                 destination = destination.with_suffix(plan.output_suffix)
             if not options.dryrun:
