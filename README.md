@@ -112,7 +112,7 @@ vidcleaner search /media --filters=4k --sort=size --depth=2 --limit=5
 
 If you name several filters, a file must have every trait to match. More filters give fewer results.
 
-vid-cleaner keeps the ffprobe result for each file in the cache. If the size and the modification time of a file do not change, the next search uses the result in the cache and does not read the file again. A second search of a large library is fast because of this.
+vid-cleaner keeps the ffprobe result for each file in the cache. If the size and the modification time of a file do not change, the next search uses the result in the cache and does not read the file again. A second search of a large library is fast because of this. vid-cleaner removes the result for a file that no command used in 90 days.
 
 ```shell
 # Only 4k files that also have a 5.1 track and no stereo track to go with it

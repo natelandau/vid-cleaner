@@ -1,6 +1,7 @@
 """Test the discovery controller."""
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -169,12 +170,18 @@ def test_discover_limit_above_match_count_truncates_nothing(video_library):
     assert report.truncated == 0
 
 
-def test_discover_collects_unreadable_files(
-    video_library,
-    mocker,
-):
+@pytest.mark.parametrize(
+    "probe_error",
+    [
+        pytest.param(
+            VideoProbeError(path=Path("bad.mkv"), reason="Invalid data found"), id="rejected"
+        ),
+        pytest.param(OSError(24, "Too many open files"), id="ffprobe cannot launch"),
+    ],
+)
+def test_discover_collects_unreadable_files(video_library, mocker, probe_error):
     """Verify a file that cannot be probed is collected rather than aborting discovery."""
-    # Given: One readable file and one that ffprobe rejects
+    # Given: One readable file and one whose probe fails
     directory = video_library([("good.mkv", 100, 1_000_000)])
     bad = directory / "bad.mkv"
     bad.touch()
@@ -182,7 +189,7 @@ def test_discover_collects_unreadable_files(
 
     def probe(path, **_kwargs):
         if path.name == "bad.mkv":
-            raise VideoProbeError(path=path, reason="Invalid data found when processing input")
+            raise probe_error
         return good_box
 
     mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", side_effect=probe)

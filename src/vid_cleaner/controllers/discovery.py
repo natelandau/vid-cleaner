@@ -153,8 +153,6 @@ def _collect_video_files(
 
     Args:
         root (Path): Directory to search.
-        probe_cache (ProbeCache): Cache of earlier ffprobe results. `ProbeCache(None)`
-            probes every file.
         depth (int): Subdirectory levels to descend. 0 searches only `root`.
         unreadable (list[VideoProbeError]): Receives each directory or file that could
             not be read, so the caller reports it alongside the files that failed to probe.
@@ -221,9 +219,15 @@ def _read_search_result(
         SearchResult | None: The file's row, or None when it lacks a required trait.
 
     Raises:
-        VideoProbeError: If the file cannot be probed or vanished before its size was read.
+        VideoProbeError: If the file cannot be probed, ffprobe cannot be launched, or the
+            file vanished before its size was read.
     """
-    video_file.load_probe(probe_cache)
+    # Many `--jobs` can exhaust the open-file limit and make ffprobe fail to launch;
+    # skipping that file beats aborting a scan that has already probed the rest.
+    try:
+        video_file.load_probe(probe_cache)
+    except OSError as e:
+        raise VideoProbeError(path=video_file.path, reason=f"ffprobe could not run: {e}") from e
     video_traits = video_file.get_traits()
     if not filters.issubset(video_traits):
         return None

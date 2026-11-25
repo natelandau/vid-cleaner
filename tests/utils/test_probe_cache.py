@@ -2,7 +2,11 @@
 
 import pytest
 
-from vid_cleaner.utils.probe_cache import PROBE_CACHE_FILENAME, ProbeCache
+from vid_cleaner.utils.probe_cache import (
+    PROBE_CACHE_FILENAME,
+    PROBE_CACHE_UNUSABLE_WARNING,
+    ProbeCache,
+)
 
 PROBE = {"format": {"filename": "movie.mkv"}, "streams": [{"codec_type": "video"}]}
 
@@ -59,4 +63,48 @@ def test_unusable_database_turns_the_cache_off(tmp_path, capsys) -> None:
 
     # Then: Every lookup misses and the user is told once
     assert result is None
-    assert capsys.readouterr().err.count("Probe cache") == 1
+    assert capsys.readouterr().err.count(PROBE_CACHE_UNUSABLE_WARNING) == 1
+
+
+def test_closed_cache_stores_nothing(tmp_path) -> None:
+    """Verify a probe that finishes after the cache closes is not written."""
+    # Given: A cache whose `with` block has ended
+    path = tmp_path / "movie.mkv"
+    with ProbeCache(tmp_path) as cache:
+        pass
+
+    # When: A late probe stores its result
+    cache.put(path, size=100, mtime_ns=5, probe=PROBE)
+
+    # Then: A later run finds nothing for it
+    with ProbeCache(tmp_path) as later:
+        assert later.get(path, size=100, mtime_ns=5) is None
+
+
+def test_closing_drops_entries_unused_for_90_days(tmp_path, monkeypatch) -> None:
+    """Verify entries for files no run has looked up in 90 days are removed, and used ones stay."""
+    day = 24 * 60 * 60
+    clock = {"now": 1_000 * day}
+    monkeypatch.setattr("vid_cleaner.utils.probe_cache.time.time", lambda: clock["now"])
+    kept = tmp_path / "kept.mkv"
+    deleted = tmp_path / "deleted.mkv"
+
+    # Given: Two files cached, and only one looked up again 89 days later
+    with ProbeCache(tmp_path) as cache:
+        cache.put(kept, size=1, mtime_ns=1, probe=PROBE)
+        cache.put(deleted, size=1, mtime_ns=1, probe=PROBE)
+    clock["now"] += 89 * day
+    with ProbeCache(tmp_path) as cache:
+        cache.get(kept, size=1, mtime_ns=1)
+
+    # When: A run of another directory closes the cache 100 days after the files were cached
+    clock["now"] += 11 * day
+    with ProbeCache(tmp_path) as cache:
+        cache.get(tmp_path / "other.mkv", size=1, mtime_ns=1)
+    with ProbeCache(tmp_path) as cache:
+        kept_result = cache.get(kept, size=1, mtime_ns=1)
+        deleted_result = cache.get(deleted, size=1, mtime_ns=1)
+
+    # Then: Only the entry no run used in 90 days is gone
+    assert kept_result == PROBE
+    assert deleted_result is None
