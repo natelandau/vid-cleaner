@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import pytest
 from iso639 import Lang
 
 from tests.helpers import run_vidcleaner
@@ -230,26 +229,6 @@ def test_clean_from_depth_writes_each_file_back_to_its_own_directory(
         ]
     )
     assert {call.kwargs["overwrite"] for call in write.mock_calls} == {True}
-
-
-@pytest.fixture
-def fake_transcode(mocker):
-    """Replace the ffmpeg pass with one that writes a real temporary file.
-
-    Lets a test exercise the genuine `copy_to_output` write, and so the output path and
-    the fate of the original, rather than stubbing the write out.
-
-    Returns:
-        Callable[[], None]: Call to install the replacement.
-    """
-
-    def _inner() -> None:
-        def run_ffmpeg(command, *, on_progress):
-            command.output_path.write_bytes(b"transcoded")
-
-        mocker.patch("vid_cleaner.cli.ffmpeg_step.run_ffmpeg", run_ffmpeg)
-
-    return _inner
 
 
 def test_clean_vp9_writes_a_webm_file(mocker, tmp_path, fake_transcode, mock_video_probe):

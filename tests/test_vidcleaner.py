@@ -238,6 +238,19 @@ def test_default_config_created_private(capsys) -> None:
     assert stat.S_IMODE(constants.USER_CONFIG_PATH.stat().st_mode) == 0o600
 
 
+def test_default_config_never_replaces_an_existing_file(capsys) -> None:
+    """Verify an existing user config, with its settings and API keys, is left as written."""
+    # Given: A user config the user has edited
+    constants.USER_CONFIG_PATH.write_text('tmdb_api_key = "mine"\n')
+
+    # When: Creating the default config, as every launch does
+    create_default_config()
+
+    # Then: The file is unchanged and no creation is announced
+    assert constants.USER_CONFIG_PATH.read_text() == 'tmdb_api_key = "mine"\n'
+    assert "created" not in capsys.readouterr().out
+
+
 def test_trace_output_hides_api_keys(capsys, user_config, captured_clean, video_path) -> None:
     """Verify the `-vv` settings dump never prints an API key."""
     user_config('tmdb_api_key = "k3y-value"')

@@ -292,6 +292,28 @@ def test_clean_from_yes_reaches_the_transcode_loop(capsys, video_library, mocker
     assert "banana.mkv" in output
 
 
+def test_clean_from_applies_conversion_flags_to_each_selected_file(
+    video_library, mocker, mock_ffmpeg
+):
+    """Verify a conversion flag such as --h265 reaches files that discovery selected."""
+    # Given: One discoverable h264 file and a stubbed writer
+    directory = video_library([("apple.mkv", 100_000_000, 1_000_000)])
+    mocker.patch(
+        "vid_cleaner.cli.clean_video.copy_to_output",
+        side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
+    )
+    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+
+    # When: Cleaning the directory with --h265
+    exit_code = run_vidcleaner(["clean", "--from", str(directory), "--h265", "--yes"])
+
+    # Then: The single ffmpeg pass encodes the video to H.265
+    assert exit_code == 0
+    mock_ffmpeg.assert_called_once()
+    command = " ".join(mock_ffmpeg.call_args.args[0])
+    assert "libx265" in command
+
+
 def test_clean_from_yes_reuses_the_discovery_probe(video_library, mocker, mock_ffmpeg):
     """Verify each file is probed once, not again when the transcode loop reaches it.
 

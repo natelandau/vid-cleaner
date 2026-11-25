@@ -158,19 +158,28 @@ def test_confirm_errors_on_non_tty_without_yes(mocker, capsys, interactive_conso
     assert "--yes" in capsys.readouterr().err
 
 
-def test_confirm_exits_zero_when_declined(mocker, interactive_console):
-    """Verify declining is a successful no-op, not a failure."""
-    # Given: An interactive console where the user answers no
+@pytest.mark.parametrize(
+    ("typed", "expected_code"),
+    [
+        pytest.param("", 0, id="Enter declines"),
+        pytest.param(EOFError(), 1, id="closed stdin refuses"),
+    ],
+)
+def test_confirm_never_approves_without_an_explicit_yes(
+    mocker, interactive_console, typed, expected_code
+):
+    """Verify pressing Enter or a closed stdin never approves rewriting the selection."""
+    # Given: An interactive console whose input is Enter alone, or end of input
     report = make_report(results=[make_result(mocker, "a.mkv", 100)], total=1)
     interactive_console(is_terminal=True)
-    mocker.patch("vid_cleaner.cli.discovery_output.Confirm.ask", return_value=False)
+    mocker.patch("rich.prompt.Confirm.get_input", side_effect=[typed])
 
     # When: Confirming
     with pytest.raises(cappa.Exit) as exc_info:
         confirm_selection(report, assume_yes=False, overwrite=False)
 
-    # Then: The command exits successfully without acting
-    assert exc_info.value.code == 0
+    # Then: The run stops instead of returning to the caller to clean the files
+    assert exc_info.value.code == expected_code
 
 
 def test_confirm_returns_when_accepted(mocker, interactive_console):

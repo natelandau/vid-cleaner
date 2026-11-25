@@ -37,7 +37,7 @@ def test_clip_option_errors(capsys, video_path, args, expected):
         (["--duration", "00:10:00"], "-ss 00:00:00 -t 00:10:00 -map 0"),
     ],
 )
-def test_clipping_video(mocker, capsys, video_path, mock_ffmpeg, args, expected, mock_video_probe):
+def test_clipping_video(mocker, video_path, mock_ffmpeg, args, expected, mock_video_probe):
     """Verify clip command extracts video segment with specified time range."""
     # Given: Mock video file and time range arguments
     args = ["clip", *args, str(video_path)]
@@ -53,17 +53,13 @@ def test_clipping_video(mocker, capsys, video_path, mock_ffmpeg, args, expected,
     # When: Running clip command
     exit_code = run_vidcleaner(args)
 
-    output = capsys.readouterr().out
-
-    # THEN verify ffmpeg was called with correct parameters
+    # Then: ffmpeg cuts the requested range
     mock_ffmpeg.assert_called_once()
     args, _ = mock_ffmpeg.call_args
     command = " ".join(args[0])
     assert expected in command
 
-    # And: Success message is displayed
     assert exit_code == 0
-    assert "clipped_video.mkv" in output
 
 
 @pytest.mark.parametrize(
@@ -92,11 +88,55 @@ def test_clipping_video_dryrun(mocker, capsys, video_path, mock_ffmpeg, args, mo
 
     output = capsys.readouterr().out
 
-    # THEN verify ffmpeg was not called
+    # Then: ffmpeg does not run and nothing is saved
     mock_ffmpeg.assert_not_called()
     assert exit_code == 0
     assert "dry run" in output
-    assert "clipped_video.mkv" not in output
+    assert "Saved to" not in output
+
+
+def test_clip_out_writes_the_clip_there_and_leaves_the_source(
+    tmp_path, video_path, fake_transcode, mock_video_probe
+):
+    """Verify `--out` receives the clip and the source video is untouched."""
+    # Given: A source video and an output path beside it
+    video_path.write_bytes(b"source")
+    out = tmp_path / "clip.mkv"
+    mock_video_probe("reference.json")
+    fake_transcode()
+
+    # When: Clipping to the output path
+    exit_code = run_vidcleaner(["clip", "--out", str(out), str(video_path)])
+
+    # Then: The clip lands at --out and the source keeps its content
+    assert exit_code == 0
+    assert out.read_bytes() == b"transcoded"
+    assert video_path.read_bytes() == b"source"
+
+
+@pytest.mark.parametrize(
+    ("flags", "expected_backups"),
+    [([], 1), (["--overwrite"], 0)],
+    ids=["backup by default", "no backup with --overwrite"],
+)
+def test_clip_in_place_backs_up_the_source_unless_overwriting(
+    tmp_path, video_path, fake_transcode, mock_video_probe, flags, expected_backups
+):
+    """Verify clipping in place keeps the original as a backup unless --overwrite is set."""
+    # Given: A source video clipped in place
+    video_path.write_bytes(b"source")
+    mock_video_probe("reference.json")
+    fake_transcode()
+
+    # When: Clipping
+    exit_code = run_vidcleaner(["clip", *flags, str(video_path)])
+
+    # Then: The clip replaces the source, and the original survives only as a backup
+    backups = list(tmp_path.glob(f"{video_path.name}.*.bak"))
+    assert exit_code == 0
+    assert video_path.read_bytes() == b"transcoded"
+    assert len(backups) == expected_backups
+    assert all(backup.read_bytes() == b"source" for backup in backups)
 
 
 def test_clip_cleanup_failure_still_reports_the_save(

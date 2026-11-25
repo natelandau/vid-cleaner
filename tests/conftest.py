@@ -240,3 +240,23 @@ def interactive_console(mocker):
         )
 
     return _inner
+
+
+@pytest.fixture
+def fake_transcode(mocker):
+    """Replace the ffmpeg pass with one that writes a real temporary file.
+
+    Lets a test exercise the genuine `copy_to_output` write, and so the output path and
+    the fate of the original, rather than stubbing the write out.
+
+    Returns:
+        Callable[[], None]: Call to install the replacement.
+    """
+
+    def _inner() -> None:
+        def run_ffmpeg(command, *, on_progress):
+            command.output_path.write_bytes(b"transcoded")
+
+        mocker.patch("vid_cleaner.cli.ffmpeg_step.run_ffmpeg", run_ffmpeg)
+
+    return _inner
