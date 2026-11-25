@@ -13,7 +13,7 @@ from vid_cleaner.cli.discovery_output import (
     REQUIRES_FROM_ERROR,
 )
 from vid_cleaner.utils.cli import (
-    LIMIT_BELOW_ONE_ERROR,
+    COUNT_BELOW_ONE_ERROR,
     OUT_WITH_FROM_ERROR,
     OUT_WITH_MULTIPLE_FILES_ERROR,
 )
@@ -110,6 +110,7 @@ def test_clean_rejects_from_with_out(capsys, tmp_path):
         ["--depth", "1"],
         ["--reverse"],
         ["--sort", "size"],
+        ["--jobs", "2"],
         ["--yes"],
     ],
 )
@@ -186,11 +187,14 @@ def test_clean_langs_short_flag_takes_a_value(captured_clean, video_path):
     assert captured_clean["config"].langs_to_keep == ("es", "fr")
 
 
-@pytest.mark.parametrize("limit", ["0", "-1"])
-def test_clean_rejects_limit_below_one(tmp_path, limit):
-    """Verify a limit below one is refused instead of silently selecting the wrong files."""
-    # Given: A discovery run asking for a zero or negative limit
-    args = ["clean", "--from", str(tmp_path), "--limit", limit]
+@pytest.mark.parametrize(
+    ("flag", "value"),
+    [("--limit", "0"), ("--limit", "-1"), ("--jobs", "0"), ("--jobs", "-1")],
+)
+def test_clean_rejects_count_below_one(tmp_path, flag, value):
+    """Verify a count below one is refused instead of silently selecting the wrong files."""
+    # Given: A discovery run asking for a zero or negative count
+    args = ["clean", "--from", str(tmp_path), flag, value]
 
     # When: Running clean
     with pytest.raises(cappa.Exit) as exc_info:
@@ -198,7 +202,7 @@ def test_clean_rejects_limit_below_one(tmp_path, limit):
 
     # Then: The command fails with a message naming the acceptable range
     assert exc_info.value.code != 0
-    assert LIMIT_BELOW_ONE_ERROR in str(exc_info.value.message)
+    assert COUNT_BELOW_ONE_ERROR in str(exc_info.value.message)
 
 
 @pytest.mark.parametrize(

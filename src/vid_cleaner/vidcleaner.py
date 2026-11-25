@@ -13,12 +13,28 @@ from nclutils import pp
 from rich.console import Console
 from rich.traceback import install
 
-from vid_cleaner.config import SETTING_NAMES, Config, ConfigError, RunOptions, load_config
-from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel, SortOrder, VerifyLevel, VideoTrait
+from vid_cleaner.config import (
+    SETTING_NAMES,
+    Config,
+    ConfigError,
+    RunOptions,
+    load_cache_dir,
+    load_config,
+)
+from vid_cleaner.constants import (
+    DEFAULT_PROBE_JOBS,
+    USER_CONFIG_PATH,
+    PrintLevel,
+    SortOrder,
+    VerifyLevel,
+    VideoTrait,
+)
 from vid_cleaner.exceptions import RunStopped, VideoProbeError
 from vid_cleaner.utils import (
+    ProbeCache,
     create_default_config,
     find_missing_binaries,
+    parse_jobs,
     parse_limit,
     parse_trait_filters,
     stop_run,
@@ -181,6 +197,23 @@ def build_config(vidcleaner: VidCleaner) -> Config:
     return loaded.config
 
 
+def build_probe_cache() -> ProbeCache:
+    """Open the cache of earlier ffprobe results for a command that selects files by query.
+
+    Resolve only `cache_dir` rather than every setting, so a broken config file still
+    cannot stop `check` or `search`. It turns the cache off for that run instead.
+
+    Returns:
+        ProbeCache: The cache, turned off when the cache directory cannot be resolved.
+    """
+    try:
+        cache_dir = load_cache_dir()
+    except ConfigError as e:
+        pp.debug("Probe cache off: the cache directory setting is unusable", details=list(e.errors))
+        return ProbeCache(None)
+    return ProbeCache(cache_dir)
+
+
 def build_run_options(vidcleaner: VidCleaner) -> RunOptions:
     """Collect the CLI-only values for this run that are not settings.
 
@@ -248,6 +281,16 @@ class SelectionOptions:
             group="Discovery",
         ),
     ] = False
+    jobs: Annotated[
+        int,
+        cappa.Arg(
+            help="Number of files to read at once",
+            long=True,
+            show_default=True,
+            group="Discovery",
+            parse=parse_jobs,
+        ),
+    ] = DEFAULT_PROBE_JOBS
 
 
 @dataclass

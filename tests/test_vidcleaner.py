@@ -201,12 +201,27 @@ def test_help_works_with_invalid_config(user_config, subcommand) -> None:
     assert exit_code == 0
 
 
-def test_check_runs_with_invalid_config(capsys, user_config, video_path) -> None:
+@pytest.mark.parametrize(
+    "cache_dir_line",
+    [
+        pytest.param("", id="valid cache_dir"),
+        pytest.param('cache_dir = "relative"', id="bad cache_dir"),
+    ],
+)
+@pytest.mark.parametrize("subcommand", ["check", "search"])
+def test_query_commands_run_with_invalid_config(
+    capsys, monkeypatch, user_config, video_path, mock_video_probe, subcommand, cache_dir_line
+) -> None:
     """Verify a command that reads no settings is not stopped by a bad config."""
-    user_config('radarr_url = "nope"')
+    mock_video_probe("reference.json")
+    # The test cache directory variable would hide the file's cache_dir
+    monkeypatch.delenv("VIDCLEANER_CACHE_DIR")
+    user_config(f'radarr_url = "nope"\n{cache_dir_line}')
+    target = str(video_path) if subcommand == "check" else str(video_path.parent)
 
-    run_vidcleaner(["check", str(video_path)])
+    exit_code = run_vidcleaner([subcommand, target])
 
+    assert exit_code == 0
     assert "radarr_url" not in capsys.readouterr().err
 
 

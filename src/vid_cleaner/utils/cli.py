@@ -27,7 +27,7 @@ OUT_WITH_FROM_ERROR = "`--out` cannot be used with `--from`"
 OUT_WITH_MULTIPLE_FILES_ERROR = "`--out` cannot be used with multiple input files"
 BACKED_UP_ORIGINAL_MESSAGE = "Backed up original to"
 SAVED_TO_MESSAGE = "Saved to"
-LIMIT_BELOW_ONE_ERROR = "must be 1 or greater"
+COUNT_BELOW_ONE_ERROR = "must be 1 or greater"
 TEMP_CLEANUP_WARNING = "Warning: could not clean up temporary files"
 ONLY_MACOS_SIDECARS_ERROR = (
     "No video files to process: every path named is a macOS `._` metadata file"
@@ -282,9 +282,39 @@ def parse_limit(raw: str) -> int:
     Raises:
         ValueError: If the value is not a whole number of 1 or greater.
     """
+    return _parse_count(raw)
+
+
+def parse_jobs(raw: str) -> int:
+    """Parse `--jobs` as the number of files to probe at once, rejecting anything below one.
+
+    Args:
+        raw (str): The raw command line value.
+
+    Returns:
+        int: The validated number of parallel probes.
+
+    Raises:
+        ValueError: If the value is not a whole number of 1 or greater.
+    """
+    return _parse_count(raw)
+
+
+def _parse_count(raw: str) -> int:
+    """Parse a whole number of 1 or greater.
+
+    Args:
+        raw (str): The raw command line value.
+
+    Returns:
+        int: The validated count.
+
+    Raises:
+        ValueError: If the value is not a whole number of 1 or greater.
+    """
     value = int(raw)
     if value < 1:
-        msg = f"{LIMIT_BELOW_ONE_ERROR}, got {value}"
+        msg = f"{COUNT_BELOW_ONE_ERROR}, got {value}"
         raise ValueError(msg)
     return value
 

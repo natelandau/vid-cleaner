@@ -4,7 +4,7 @@ import cappa
 
 from vid_cleaner.cli.discovery_output import discover_from_directory, present_discovery
 from vid_cleaner.controllers.discovery import sorts_descending
-from vid_cleaner.vidcleaner import SearchCommand, VidCleaner, json_report_for
+from vid_cleaner.vidcleaner import SearchCommand, VidCleaner, build_probe_cache, json_report_for
 from vid_cleaner.views.json_output import report_on_exit, search_query, search_report_fields
 
 
@@ -38,12 +38,14 @@ def main(search_cmd: SearchCommand, vidcleaner: VidCleaner) -> None:
             report.summary = {"total": 0, "shown": 0, "skipped": 0, "truncated": 0}
             report.extra = {"query": query, "skipped": []}
 
-        discovery_report = discover_from_directory(
-            directory=search_cmd.directory,
-            options=options,
-            argument_name="The search path",
-            limit=options.limit,
-        )
+        with build_probe_cache() as probe_cache:
+            discovery_report = discover_from_directory(
+                directory=search_cmd.directory,
+                options=options,
+                argument_name="The search path",
+                probe_cache=probe_cache,
+                limit=options.limit,
+            )
 
         if report:
             # The query reports the directory discovery resolved, not the path as typed

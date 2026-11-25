@@ -1,0 +1,163 @@
+"""Keep ffprobe results between runs so an unchanged library is not probed again."""
+
+import json
+import sqlite3
+import threading
+import zlib
+from pathlib import Path
+from types import TracebackType
+from typing import Any, Self
+
+from nclutils import pp
+
+PROBE_CACHE_FILENAME = "ffprobe-cache.sqlite3"
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS probes (
+    path TEXT PRIMARY KEY,
+    size INTEGER NOT NULL,
+    mtime_ns INTEGER NOT NULL,
+    probe BLOB NOT NULL
+)
+"""
+
+
+class ProbeCache:
+    """Store raw ffprobe output keyed on a file's path, size, and modification time.
+
+    Use one instance per run as a context manager, which closes the database, and share
+    it across threads. A change to a file's size or
+    modification time makes its entry a miss, and storing the new result replaces it, so
+    the cache holds at most one entry per path. Any database error turns the cache off
+    for the rest of the run instead of failing it, since every lookup can fall back to
+    running ffprobe.
+
+    Args:
+        directory (Path | None): The cache directory. The database file is created inside
+            it on first use. None makes every lookup a miss and stores nothing.
+    """
+
+    def __init__(self, directory: Path | None) -> None:
+        """Remember where the database lives without touching the filesystem."""
+        self.database_path = directory / PROBE_CACHE_FILENAME if directory else None
+        self._connection: sqlite3.Connection | None = None
+        self._disabled = directory is None
+        self._lock = threading.Lock()
+
+    def __enter__(self) -> Self:
+        """Return the cache for use in a `with` block.
+
+        Returns:
+            Self: This cache.
+        """
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        """Close the database when the `with` block ends."""
+        self.close()
+
+    def close(self) -> None:
+        """Close the database connection. Later lookups reopen it."""
+        with self._lock:
+            if self._connection is not None:
+                self._connection.close()
+                self._connection = None
+
+    def get(self, path: Path, *, size: int, mtime_ns: int) -> dict[str, Any] | None:
+        """Look up the stored ffprobe output for a file that has not changed since it was stored.
+
+        Args:
+            path (Path): The probed file.
+            size (int): The file's current size in bytes.
+            mtime_ns (int): The file's current modification time in nanoseconds.
+
+        Returns:
+            dict[str, Any] | None: The stored ffprobe output, or None on a miss.
+        """
+        with self._lock:
+            connection = self._open()
+            if connection is None:
+                return None
+            try:
+                row = connection.execute(
+                    "SELECT probe FROM probes WHERE path = ? AND size = ? AND mtime_ns = ?",
+                    (str(path), size, mtime_ns),
+                ).fetchone()
+            except sqlite3.Error as e:
+                self._disable(e)
+                return None
+
+        if row is None:
+            return None
+        try:
+            probe = json.loads(zlib.decompress(row[0]))
+        except (zlib.error, ValueError) as e:
+            pp.debug(f"Ignoring unreadable probe cache entry for {path}: {e}")
+            return None
+        return probe if isinstance(probe, dict) else None
+
+    def put(self, path: Path, *, size: int, mtime_ns: int, probe: dict[str, Any]) -> None:
+        """Store a file's ffprobe output, replacing any older entry for the same path.
+
+        Args:
+            path (Path): The probed file.
+            size (int): The file's size in bytes when it was probed.
+            mtime_ns (int): The file's modification time in nanoseconds when it was probed.
+            probe (dict[str, Any]): The raw ffprobe output.
+        """
+        # ffprobe JSON is repetitive text, so compression keeps a large library's cache small
+        blob = zlib.compress(json.dumps(probe).encode())
+        with self._lock:
+            connection = self._open()
+            if connection is None:
+                return
+            try:
+                with connection:
+                    connection.execute(
+                        "INSERT OR REPLACE INTO probes (path, size, mtime_ns, probe) "
+                        "VALUES (?, ?, ?, ?)",
+                        (str(path), size, mtime_ns, blob),
+                    )
+            except sqlite3.Error as e:
+                self._disable(e)
+
+    def _open(self) -> sqlite3.Connection | None:
+        """Open the database on first use. Call only while holding the lock.
+
+        Returns:
+            sqlite3.Connection | None: The connection, or None when the cache is off.
+        """
+        if self._disabled or self.database_path is None:
+            return None
+        if self._connection is not None:
+            return self._connection
+        try:
+            self.database_path.parent.mkdir(parents=True, exist_ok=True)
+            # Worker threads share this connection; the lock serializes every use of it
+            connection = sqlite3.connect(self.database_path, check_same_thread=False)
+            connection.execute(_SCHEMA)
+        except (OSError, sqlite3.Error) as e:
+            self._disable(e)
+            return None
+        self._connection = connection
+        return connection
+
+    def _disable(self, error: Exception) -> None:
+        """Turn the cache off for the rest of the run and say why. Call only while holding the lock.
+
+        Args:
+            error (Exception): The error that made the database unusable.
+        """
+        self._disabled = True
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
+        pp.warning(
+            f"Probe cache at {self.database_path} is unusable ({error}); "
+            "reading every file with ffprobe instead"
+        )

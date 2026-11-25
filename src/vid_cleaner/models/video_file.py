@@ -49,6 +49,7 @@ from vid_cleaner.models.conversion_plan import ConversionPlan, OutputStream, Pla
 from vid_cleaner.utils import (
     FfmpegCommand,
     MediaId,
+    ProbeCache,
     build_ffmpeg_command,
     find_media_ids,
     get_probe_as_box,
@@ -116,6 +117,19 @@ class VideoFile:
             self._probe_box = get_probe_as_box(self.temp_file.latest_temp_path())
 
         return self._probe_box
+
+    def load_probe(self, probe_cache: ProbeCache | None) -> None:
+        """Probe the source file through a cache of earlier results, ahead of first use.
+
+        Call this before reading `probe_box` when probing many files, so an unchanged file
+        reuses its stored ffprobe output. The cache never sees temporary files, which
+        `probe_box` probes directly once a run has written one.
+
+        Args:
+            probe_cache (ProbeCache | None): The cache to read and fill. None probes directly.
+        """
+        if self.temp_file.latest_temp_path() == self.path:
+            self._probe_box = get_probe_as_box(self.path, probe_cache=probe_cache)
 
     @property
     def video_streams(self) -> list[Box]:

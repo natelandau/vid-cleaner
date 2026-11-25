@@ -13,11 +13,11 @@ from vid_cleaner.cli.discovery_output import (
     REQUIRES_FROM_ERROR,
     discover_from_directory,
 )
-from vid_cleaner.constants import SortOrder
+from vid_cleaner.constants import DEFAULT_PROBE_JOBS, SortOrder
 from vid_cleaner.controllers.discovery import DiscoveryReport
 from vid_cleaner.controllers.validation import CheckResult, check_probed_video, check_video_file
 from vid_cleaner.utils import drop_macos_sidecars, stop_run, track_progress
-from vid_cleaner.vidcleaner import CheckCommand, VidCleaner, json_report_for
+from vid_cleaner.vidcleaner import CheckCommand, VidCleaner, build_probe_cache, json_report_for
 from vid_cleaner.views.json_output import check_report_entry, report_on_exit
 
 
@@ -131,19 +131,24 @@ def select_results(check_cmd: CheckCommand) -> Iterator[CheckResult]:
         or discovery.depth
         or discovery.reverse
         or discovery.sort != SortOrder.ALPHA
+        or discovery.jobs != DEFAULT_PROBE_JOBS
     )
 
     if check_cmd.from_ is not None and check_cmd.files:
         raise stop_run(FROM_WITH_FILES_ERROR)
 
     if check_cmd.from_ is None and uses_discovery_flags:
-        msg = f"{REQUIRES_FROM_ERROR}: `--filters`, `--sort`, `--reverse`, `--depth`"
+        msg = f"{REQUIRES_FROM_ERROR}: `--filters`, `--sort`, `--reverse`, `--depth`, `--jobs`"
         raise stop_run(msg)
 
     if check_cmd.from_ is not None:
-        report = discover_from_directory(
-            directory=check_cmd.from_, options=check_cmd.discovery, argument_name="`--from`"
-        )
+        with build_probe_cache() as probe_cache:
+            report = discover_from_directory(
+                directory=check_cmd.from_,
+                options=check_cmd.discovery,
+                argument_name="`--from`",
+                probe_cache=probe_cache,
+            )
         return check_discovered_files(report, deep=check_cmd.deep)
 
     if not check_cmd.files:

@@ -172,7 +172,7 @@ def test_discover_collects_unreadable_files(
     bad.touch()
     good_box = mocker.MagicMock()
 
-    def probe(path):
+    def probe(path, **_kwargs):
         if path.name == "bad.mkv":
             raise VideoProbeError(path=path, reason="Invalid data found when processing input")
         return good_box

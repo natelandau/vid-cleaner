@@ -22,6 +22,7 @@ from vid_cleaner.cli.discovery_output import (
 )
 from vid_cleaner.config import Config, RunOptions
 from vid_cleaner.constants import (
+    DEFAULT_PROBE_JOBS,
     FHD_RESOLUTION,
     SCALE_TO_1080P_LABEL,
     SYMBOL_CROSS,
@@ -35,6 +36,7 @@ from vid_cleaner.utils import (
     TEMP_CLEANUP_WARNING,
     FfmpegCommand,
     OutputWrite,
+    ProbeCache,
     coerce_video_files,
     output_write_messages,
     render_operations,
@@ -454,6 +456,7 @@ def select_video_files(
         or discovery.depth
         or discovery.reverse
         or discovery.sort != SortOrder.ALPHA
+        or discovery.jobs != DEFAULT_PROBE_JOBS
         or clean_cmd.yes
     )
 
@@ -461,7 +464,7 @@ def select_video_files(
         raise stop_run(FROM_WITH_FILES_ERROR)
 
     if clean_cmd.from_ is None and uses_discovery_flags:
-        msg = f"{REQUIRES_FROM_ERROR}: `--filters`, `--sort`, `--reverse`, `--depth`, `--limit`, `--yes`"
+        msg = f"{REQUIRES_FROM_ERROR}: `--filters`, `--sort`, `--reverse`, `--depth`, `--limit`, `--jobs`, `--yes`"
         raise stop_run(msg)
 
     if clean_cmd.from_ is None:
@@ -469,12 +472,14 @@ def select_video_files(
             raise stop_run(NO_FILES_OR_FROM_ERROR)
         return coerce_video_files(clean_cmd.files)
 
-    report = discover_from_directory(
-        directory=clean_cmd.from_,
-        options=discovery,
-        argument_name="`--from`",
-        limit=discovery.limit,
-    )
+    with ProbeCache(config.cache_dir) as probe_cache:
+        report = discover_from_directory(
+            directory=clean_cmd.from_,
+            options=discovery,
+            argument_name="`--from`",
+            probe_cache=probe_cache,
+            limit=discovery.limit,
+        )
 
     present_discovery(report)
 
