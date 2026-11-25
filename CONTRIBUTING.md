@@ -56,7 +56,8 @@ The project uses these conventions:
 
 -   Every public function, class, and method has a Google-style docstring.
 -   Every function signature has type annotations. ty checks `src/` and `tests/`.
--   Every change in behavior has a test. Tests run the real command line with `invoke` from `cappa.base`, not the internal functions. `tests/conftest.py` has the shared fixtures.
+-   Every change in behavior has a test. Tests run the real command line with `run_vidcleaner` from `tests/helpers.py`, not the internal functions. `tests/conftest.py` has the shared fixtures.
+-   The `tests/` folders match the folders in `src/vid_cleaner/`. Put a test in the folder of the module that it covers. Subcommand tests go in `tests/cli/`.
 
 ## Commit a change
 

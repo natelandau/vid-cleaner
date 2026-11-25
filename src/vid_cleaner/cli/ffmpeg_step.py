@@ -11,6 +11,8 @@ from vid_cleaner.utils import FfmpegCommand, run_ffmpeg
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
+DRY_RUN_HEADER_SUFFIX = "(dry run)"
+
 
 def run_ffmpeg_step(
     video_file: VideoFile, command: FfmpegCommand, *, title: str, dryrun: bool
@@ -35,7 +37,7 @@ def run_ffmpeg_step(
     pp.trace(Text(f"RUN FFMPEG:\n{command_line}"))
 
     if dryrun:
-        pp.header(f"{title} (dry run)")
+        pp.header(f"{title} {DRY_RUN_HEADER_SUFFIX}")
         pp.console().print(Markdown(f"```console\n{command_line}\n```"))
         return []
 

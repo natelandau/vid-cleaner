@@ -1,20 +1,24 @@
 """Shared fixtures for tests."""
 
 import copy
-import json
 import os
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from box import Box
-from rich.console import Console
+from iso639 import Lang
 
+from tests.helpers import FFPROBE_FIXTURES_DIR, load_ffprobe_json, set_file_size
 from vid_cleaner import constants
-from vid_cleaner.config import Config, load_config
+from vid_cleaner.config import Config, RunOptions, load_config
+from vid_cleaner.constants import SYMBOL_CHECK
+from vid_cleaner.exceptions import VideoProbeError
+from vid_cleaner.models.conversion_plan import ConversionPlan
 from vid_cleaner.utils import get_probe_as_box
+from vid_cleaner.utils.cli import SAVED_TO_MESSAGE
 
-console = Console()
+from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
 
 @pytest.fixture(autouse=True)
@@ -63,81 +67,134 @@ def make_config(tmp_path):
 
 
 @pytest.fixture
-def mock_video_path(tmp_path):
-    """Fixture to return a VideoFile instance with a specified path.
+def video_path(tmp_path) -> Path:
+    """Create an empty video file to pass where the code needs a real path on disk.
 
     Returns:
-        VideoFile: A VideoFile instance with a specified path.
+        Path: The empty `test_video.mp4` under `tmp_path`.
     """
-    # GIVEN a VideoFile instance with a specified path
-    test_path = Path(tmp_path / "test_video.mp4")
-    test_path.touch()  # Create a dummy file
-    return test_path
+    path = tmp_path / "test_video.mp4"
+    path.touch()
+    return path
 
 
 @pytest.fixture
 def mock_ffprobe_box(mocker):
-    """Return mocked JSON response from ffprobe."""
+    """Build the probe box for a recorded ffprobe response.
 
-    def _inner(filename: str):
-        fixture = Path(__file__).resolve().parent / "fixtures/ffprobe" / filename
+    Also patches `run_ffprobe` to return that response, so code that probes through
+    `get_probe_as_box` sees the same data.
 
-        cleaned_content = []  # Remove comments from JSON
-        with fixture.open() as f:
-            for line in f.readlines():
-                # Remove comments
-                if "//" in line:
-                    continue
-                cleaned_content.append(line)
+    Returns:
+        Callable[[str], Box]: Call with a fixture file name to get its probe box.
+    """
 
+    def _inner(filename: str) -> Box:
         mocker.patch(
             "vid_cleaner.utils.ffmpeg_utils.run_ffprobe",
-            return_value=json.loads("".join(line for line in cleaned_content)),
+            return_value=load_ffprobe_json(filename),
         )
-
-        return get_probe_as_box(fixture)
+        return get_probe_as_box(FFPROBE_FIXTURES_DIR / filename)
 
     return _inner
 
 
 @pytest.fixture
-def mock_ffprobe():
-    """Return mocked JSON response from ffprobe."""
+def mock_video_probe(mocker, mock_ffprobe_box):
+    """Make every `VideoFile` probe return a recorded ffprobe response.
 
-    def _inner(filename: str):
-        fixture = Path(__file__).resolve().parent / "fixtures/ffprobe" / filename
+    Returns:
+        Callable[[str], Box]: Call with a fixture file name; returns the box the probe
+            now reports, so a test can adjust it.
+    """
 
-        cleaned_content = []  # Remove comments from JSON
-        with fixture.open() as f:
-            for line in f.readlines():
-                # Remove comments
-                if "//" in line:
-                    continue
-                cleaned_content.append(line)
+    def _inner(filename: str) -> Box:
+        box = mock_ffprobe_box(filename)
+        mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", return_value=box)
+        return box
 
-        return json.loads("".join(line for line in cleaned_content))
+    return _inner
+
+
+@pytest.fixture
+def mock_unreadable_probe(mocker, mock_ffprobe_box):
+    """Make the named files fail to probe and every other file probe as `reference.json`.
+
+    Returns:
+        Callable[..., Box]: Call with the file names ffprobe rejects; returns the box the
+            readable files report.
+    """
+
+    def _inner(*unreadable_names: str) -> Box:
+        readable_box = mock_ffprobe_box("reference.json")
+
+        def _probe(path: Path) -> Box:
+            if path.name in unreadable_names:
+                raise VideoProbeError(path=path, reason="Invalid data found when processing input")
+            return readable_box
+
+        mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", side_effect=_probe)
+        return readable_box
+
+    return _inner
+
+
+@pytest.fixture
+def mock_original_language(mocker):
+    """Report English as each video's original language without querying TMDB, Radarr, or Sonarr.
+
+    Returns:
+        MagicMock: The patched lookup. Set `return_value` to report another language.
+    """
+    return mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+
+
+@pytest.fixture
+def stub_output_write(mocker):
+    """Skip copying a processed file to its destination and report the save as done.
+
+    Patches the copy in both `clean` and `clip`. Use `fake_transcode` instead when the test
+    needs the real write.
+
+    Returns:
+        MagicMock: The patched copy used by `clean`.
+    """
+
+    def _report_save(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list[str]]:
+        return dst, [f"{SYMBOL_CHECK} {SAVED_TO_MESSAGE} {dst}"]
+
+    mocker.patch("vid_cleaner.cli.clip_video.copy_to_output", side_effect=_report_save)
+    return mocker.patch("vid_cleaner.cli.clean_video.copy_to_output", side_effect=_report_save)
+
+
+@pytest.fixture
+def make_video(video_path, mock_video_probe, mock_original_language):
+    """Build a `VideoFile` from a recorded ffprobe response without any network lookup.
+
+    Returns:
+        Callable[..., VideoFile]: Call with a fixture file name and, optionally, the
+            original language to report (default `en`).
+    """
+
+    def _inner(fixture_name: str, language: str = "en") -> VideoFile:
+        # Matching the probed path keeps `VideoFile` from re-probing on every access
+        mock_video_probe(fixture_name).path_to_file = video_path.resolve()
+        mock_original_language.return_value = Lang(language)
+        return VideoFile(video_path)
 
     return _inner
 
 
 @pytest.fixture
 def mock_ffmpeg(mocker):
-    """Fixture to mock the FfmpegProgress class to effectively mock the ffmpeg command and its progress output.
+    """Replace ffmpeg with a stub that reports progress and writes nothing.
 
-    Usage:
-        def test_something(mock_ffmpeg):
-            # Mock the FfmpegProgress class
-            mock_ffmpeg_progress = mock_ffmpeg()
-
-            # Test the functionality
-            do_something()
-            mock_ffmpeg.assert_called_once() # Confirm that the ffmpeg command was called once
-            args, _ = mock_ffmpeg.call_args # Grab the ffmpeg command arguments
-            command = " ".join(args[0]) # Join the arguments into a single string
-            assert command == "ffmpeg -i input.mp4 output.mp4" # Check the command
+    Read the one command a run issued with `ffmpeg_command(mock_ffmpeg)` from
+    `tests/helpers.py`. Use `fake_transcode` instead when the test needs a real output file.
 
     Returns:
-        Mock: A mock object for the FfmpegProgress class.
+        MagicMock: The patched `FfmpegProgress` class. Each call's first argument is the
+            ffmpeg command as a list of strings.
     """
     mock_ffmpeg_progress = mocker.patch(
         "vid_cleaner.utils.ffmpeg_utils.FfmpegProgress",
@@ -170,7 +227,7 @@ def video_library(tmp_path, mocker, mock_ffprobe_box):
         for name, size, bitrate in files:
             path = directory / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(b"\0" * size)
+            set_file_size(path, size)
             file_box = copy.deepcopy(reference)
             file_box.bit_rate = str(bitrate) if bitrate else None
             # Real probe boxes carry the path they were built from, and `VideoFile`
@@ -231,3 +288,36 @@ def interactive_console(mocker):
         )
 
     return _inner
+
+
+@pytest.fixture
+def fake_transcode(mocker) -> None:
+    """Replace the ffmpeg pass with one that writes a real temporary file.
+
+    Lets a test exercise the genuine `copy_to_output` write, and so the output path and
+    the fate of the original, rather than stubbing the write out.
+    """
+
+    def run_ffmpeg(command, *, on_progress):
+        command.output_path.write_bytes(b"transcoded")
+
+    mocker.patch("vid_cleaner.cli.ffmpeg_step.run_ffmpeg", run_ffmpeg)
+
+
+@pytest.fixture
+def captured_clean(mocker):
+    """Record the settings `clean` hands to each file instead of running ffmpeg.
+
+    Returns:
+        dict[str, object]: Holds the `config` and `options` of the last cleaned file.
+    """
+    captured: dict[str, object] = {}
+
+    def _record(self, config: Config, options: RunOptions) -> ConversionPlan:
+        captured["config"] = config
+        captured["options"] = options
+        return ConversionPlan()
+
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.plan_clean", _record)
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.plan_changes_file", return_value=False)
+    return captured

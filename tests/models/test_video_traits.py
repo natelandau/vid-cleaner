@@ -1,27 +1,8 @@
 """Test VideoFile trait derivation."""
 
 import pytest
-from iso639 import Lang
 
 from vid_cleaner.constants import VideoTrait
-
-from vid_cleaner.models.video_file import VideoFile  # isort: skip
-
-
-@pytest.fixture
-def make_video(mocker, mock_video_path, mock_ffprobe_box):
-    """Build a VideoFile whose probe data comes from a named ffprobe fixture."""
-
-    def _inner(fixture_name: str, language: str = "en") -> VideoFile:
-        mocker.patch(
-            "vid_cleaner.models.video_file.get_probe_as_box",
-            return_value=mock_ffprobe_box(fixture_name),
-        )
-        mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang(language))
-        return VideoFile(mock_video_path)
-
-    return _inner
-
 
 DOWNMIXABLE_FIXTURES = [
     "no_stereo.json",

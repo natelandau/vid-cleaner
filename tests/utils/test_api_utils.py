@@ -143,15 +143,29 @@ def test_http_error_message_hides_api_key(error):
     assert SECRET not in message
 
 
-def test_tmdb_failure_output_hides_api_key(mocker, capsys):
-    """Verify neither the trace nor the error printed for a failed query shows the key."""
-    pp.configure(verbosity=2)
-    mocker.patch("vid_cleaner.utils.api_utils.httpx.get", side_effect=_status_error())
+@pytest.mark.parametrize(
+    "error",
+    [
+        httpx.ConnectError(f"connection refused for https://x/?api_key={SECRET}"),
+        _status_error(),
+    ],
+    ids=["unreachable", "status"],
+)
+def test_tmdb_failure_is_reported_without_the_api_key(mocker, capsys, error):
+    """Verify a failed query reports the service and returns no data instead of raising.
 
-    query_tmdb("tt1", api_key=SECRET)
+    A raised network error would escape the per-file error handling and stop a whole batch
+    because one service is down.
+    """
+    pp.configure(verbosity=2)
+    mocker.patch("vid_cleaner.utils.api_utils.httpx.get", side_effect=error)
+
+    result = query_tmdb("tt1", api_key=SECRET)
 
     captured = capsys.readouterr()
     pp.configure(verbosity=0)
+    assert result == {}
+    assert "TMDB request failed" in captured.err
     assert SECRET not in captured.out + captured.err
 
 

@@ -11,6 +11,7 @@ from vid_cleaner.config import Config, RunOptions
 from vid_cleaner.constants import SYMBOL_CROSS
 from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
 from vid_cleaner.utils import (
+    TEMP_CLEANUP_WARNING,
     coerce_video_files,
     copy_to_output,
     render_substeps,
@@ -19,6 +20,8 @@ from vid_cleaner.utils import (
 from vid_cleaner.vidcleaner import ClipCommand, build_config, build_run_options
 
 from vid_cleaner.cli.ffmpeg_step import run_ffmpeg_step  # isort: skip
+
+TIME_FORMAT_ERROR = "must be in format HH:MM:SS"
 
 
 def main(
@@ -42,11 +45,11 @@ def main(
     time_pattern = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 
     if not time_pattern.match(clip_cmd.start):
-        pp.error("`--start` must be in format HH:MM:SS")
+        pp.error(f"`--start` {TIME_FORMAT_ERROR}")
         raise cappa.Exit(code=1)
 
     if not time_pattern.match(clip_cmd.duration):
-        pp.error("`--duration` must be in format HH:MM:SS")
+        pp.error(f"`--duration` {TIME_FORMAT_ERROR}")
         raise cappa.Exit(code=1)
 
     out_path_override = resolve_out_path_override(clip_cmd.files, out=options.out)
@@ -83,9 +86,7 @@ def main(
                 try:
                     video.temp_file.clean_up()
                 except OSError as e:
-                    substeps.append(
-                        f"{SYMBOL_CROSS} Warning: could not clean up temporary files: {e}"
-                    )
+                    substeps.append(f"{SYMBOL_CROSS} {TEMP_CLEANUP_WARNING}: {e}")
         # One unusable or failing file must not discard the files queued behind it.
         # `cappa.Exit` is deliberately not caught: it carries KeyboardInterrupt, which
         # means stop the whole run.
@@ -100,9 +101,7 @@ def main(
             try:
                 video.temp_file.clean_up()
             except OSError as cleanup_error:
-                substeps.append(
-                    f"{SYMBOL_CROSS} Warning: could not clean up temporary files: {cleanup_error}"
-                )
+                substeps.append(f"{SYMBOL_CROSS} {TEMP_CLEANUP_WARNING}: {cleanup_error}")
         finally:
             render_substeps(substeps)
 

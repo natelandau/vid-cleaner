@@ -23,6 +23,11 @@ if TYPE_CHECKING:
     from vid_cleaner.vidcleaner import SelectionOptions
 
 NOT_AN_EXISTING_DIRECTORY_ERROR = "must be an existing directory"
+FROM_WITH_FILES_ERROR = "`--from` cannot be combined with explicit file paths"
+REQUIRES_FROM_ERROR = "These options require `--from`"
+NO_FILES_OR_FROM_ERROR = "Provide file path(s) or `--from` to discover them"
+NO_VIDEO_FILES_FOUND = "No video files found"
+UNREADABLE_FILES_TITLE = "Unreadable files"
 
 
 def _resolve_discovery_root(path: Path, *, argument_name: str) -> Path:
@@ -110,12 +115,12 @@ def present_discovery(report: DiscoveryReport) -> None:
             code 1 when files were found but none survived the filters or none could be read.
     """
     if report.total == 0 and not report.skipped:
-        pp.warning(f"No video files found in {report.root}")
+        pp.warning(f"{NO_VIDEO_FILES_FOUND} in {report.root}")
         raise cappa.Exit(code=0)
 
     if report.skipped:
         pp.debug(
-            "Unreadable files",
+            UNREADABLE_FILES_TITLE,
             details=[f"{e.path}: {e.reason}" for e in report.skipped],
             markup=False,
         )
@@ -126,7 +131,7 @@ def present_discovery(report: DiscoveryReport) -> None:
         # leaving the user unable to tell "nothing matches" from "nothing was readable".
         human_readable_filters = " and ".join(f"'{f}'" for f in sorted(report.filters))
         message = (
-            f"No video files found matching {human_readable_filters}"
+            f"{NO_VIDEO_FILES_FOUND} matching {human_readable_filters}"
             if human_readable_filters
             else "No video files could be read"
         )

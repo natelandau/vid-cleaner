@@ -110,6 +110,7 @@ def test_environment_value_parsing(tmp_path, variable, text, expected) -> None:
         ({}, {}, 'langs_to_keep = ["english"]', "langs_to_keep"),
         ({}, {}, 'radarr_url = "ftp://host"', "radarr_url"),
         ({}, {}, 'radarr_url = "http://[bad"', "radarr_url"),
+        ({}, {}, 'radarr_url = "http://"\nradarr_api_key = "k"', "radarr_url"),
         ({}, {}, 'cache_dir = ""', "cache_dir"),
         ({"VIDCLEANER_CACHE_DIR": "cache"}, {}, "", "environment variable VIDCLEANER_CACHE_DIR"),
         ({}, {}, 'radarr_url = "http://host:7878"', "`radarr_api_key`"),
@@ -142,6 +143,8 @@ def test_every_invalid_setting_reported_at_once(tmp_path) -> None:
     )
 
     assert len(errors) == 3
+    for key in ("keep_commentary", "overwrite", "sonarr_url"):
+        assert any(key in error for error in errors), (key, errors)
 
 
 def test_api_key_value_never_in_error(tmp_path) -> None:
