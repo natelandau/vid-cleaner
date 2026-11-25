@@ -5,4 +5,6 @@
 # as `vid_cleaner.controllers.discovery` instead.
 from .temp_files import TempFile
 
+# `validation` is absent for the same reason as `discovery`: import it as
+# `vid_cleaner.controllers.validation`.
 __all__ = ["TempFile"]

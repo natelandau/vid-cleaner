@@ -2,13 +2,17 @@
 
 from pathlib import Path
 
+import cappa
 import pytest
+from cappa.base import invoke
 
-from tests.helpers import run_vidcleaner
+from tests.helpers import leftover_cache_files, run_vidcleaner
 from vid_cleaner.cli.clean_video import ORIGINAL_REMOVAL_WARNING
-from vid_cleaner.cli.ffmpeg_step import DRY_RUN_HEADER_SUFFIX
+from vid_cleaner.cli.ffmpeg_step import DRY_RUN_HEADER_SUFFIX, VERIFY_INTERRUPTED_MESSAGE
 from vid_cleaner.constants import SYMBOL_CHECK
+from vid_cleaner.controllers.validation import OUTPUT_STREAM_COUNT_REASON
 from vid_cleaner.utils.cli import SAVED_TO_MESSAGE, TEMP_CLEANUP_WARNING
+from vid_cleaner.vidcleaner import VidCleaner, configure_output
 
 from vid_cleaner.controllers import TempFile  # isort: skip
 
@@ -254,3 +258,98 @@ def test_clean_dryrun_writes_nothing_to_the_cache(
     assert DRY_RUN_HEADER_SUFFIX in capsys.readouterr().out
     mock_ffmpeg.assert_not_called()
     assert not any(locked.iterdir())
+
+
+def test_clean_verify_failure_keeps_original(
+    tmp_path, capsys, fake_transcode, mock_video_probe, mock_original_language
+) -> None:
+    """Verify an output that misses the plan fails the file and leaves the original alone."""
+    # Given: a plan that drops audio streams, while the output probe still shows every stream
+    video = tmp_path / "movie.mkv"
+    video.write_bytes(b"original")
+    cache_dir = tmp_path / "cache"
+    mock_video_probe("reference.json")
+
+    # When: cleaning with a quick check
+    exit_code = run_vidcleaner(["clean", "--verify=quick", "--langs=en", str(video)])
+
+    # Then: the file fails, the input is unchanged, and nothing is left behind
+    assert exit_code == 1
+    assert OUTPUT_STREAM_COUNT_REASON in capsys.readouterr().out
+    assert video.read_bytes() == b"original"
+    assert not list(tmp_path.glob("*.bak"))
+    assert not leftover_cache_files(cache_dir)
+
+
+def test_clean_verify_skipped_on_dry_run(
+    mocker, video_path, mock_video_probe, mock_original_language
+) -> None:
+    """Verify a dry run never decodes, because it writes no output."""
+    # Given: a decode check that would be seen if called
+    mock_video_probe("reference.json")
+    decode = mocker.patch("vid_cleaner.controllers.validation.decode_check", return_value=None)
+
+    # When: dry-running with the full check
+    exit_code = run_vidcleaner(["clean", "-n", "--verify=full", str(video_path)])
+
+    # Then: nothing was decoded
+    assert exit_code == 0
+    decode.assert_not_called()
+
+
+def test_clean_verify_interrupt_exits(
+    mocker,
+    tmp_path,
+    video_path,
+    fake_transcode,
+    mock_video_probe,
+    mock_original_language,
+) -> None:
+    """Verify Ctrl-C during the decode check stops the run and removes the temp file."""
+    # Given: an output that passes the probe checks, then a decode that is interrupted
+    cache_dir = tmp_path / "cache"
+    mock_video_probe("reference.json")
+    mocker.patch("vid_cleaner.controllers.validation.decode_check", side_effect=KeyboardInterrupt)
+    args = [
+        "clean",
+        "--verify=full",
+        "--keep-subs",
+        "--keep-commentary",
+        "--h265",
+        "--langs=en,fr,da",
+        str(video_path),
+    ]
+
+    # When: running clean
+    with pytest.raises(cappa.Exit) as exc_info:
+        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+
+    # Then: the run stops with code 1 and leaves no temp file
+    assert exc_info.value.code == 1
+    assert exc_info.value.message == VERIFY_INTERRUPTED_MESSAGE
+    assert not leftover_cache_files(cache_dir)
+
+
+def test_clean_verify_skipped_when_plan_changes_nothing(
+    mocker, video_path, mock_ffmpeg, mock_video_probe, mock_original_language
+) -> None:
+    """Verify a clean that leaves the file as is never runs the verifier."""
+    # Given: keep-everything options that make the plan a no-op, and a spy on the verifier
+    mock_video_probe("reference.json")
+    verifier = mocker.patch("vid_cleaner.cli.ffmpeg_step.verify_output", autospec=True)
+    args = [
+        "clean",
+        "--verify=full",
+        "--keep-subs",
+        "--keep-commentary",
+        "--langs=en,fr,da",
+        str(video_path),
+    ]
+
+    # When: running clean
+    exit_code = run_vidcleaner(args)
+
+    # Then: ffmpeg and the verifier never ran
+    assert exit_code == 0
+    mock_ffmpeg.assert_not_called()
+    verifier.assert_not_called()

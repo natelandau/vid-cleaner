@@ -19,7 +19,8 @@ from vid_cleaner.utils import (
 )
 from vid_cleaner.vidcleaner import ClipCommand, build_config, build_run_options
 
-from vid_cleaner.cli.ffmpeg_step import run_ffmpeg_step  # isort: skip
+from vid_cleaner.cli.ffmpeg_step import run_ffmpeg_step, run_verify_step, verification_enabled  # isort: skip
+from vid_cleaner.controllers.validation import expected_clip_output  # isort: skip
 
 TIME_FORMAT_ERROR = "must be in format HH:MM:SS"
 
@@ -64,6 +65,12 @@ def main(
         substeps: list[str] = []
 
         try:
+            # Built before ffmpeg runs: once a temp file exists, the source probes that instead
+            expected = (
+                None
+                if not verification_enabled(config=config, options=options)
+                else expected_clip_output(video, start=clip_cmd.start, duration=clip_cmd.duration)
+            )
             command = video.prepare_ffmpeg(
                 video.clip_arguments(start=clip_cmd.start, duration=clip_cmd.duration),
                 step="clip",
@@ -75,6 +82,7 @@ def main(
             )
 
             if not options.dryrun:
+                substeps.extend(run_verify_step(video, expected=expected, level=config.verify))
                 _, messages = copy_to_output(
                     video.temp_file.latest_temp_path(),
                     out_path_override or video.path,
