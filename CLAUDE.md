@@ -5,7 +5,7 @@
 ```bash
 uv run duty lint              # ruff, ty, typos, actionlint, zizmor, prek hooks
 uv run duty test              # full suite with coverage
-uv run duty test -k downmix   # extra args pass through to pytest
+uv run duty test -k downmix   # extra args pass through to pytest; filtered runs skip coverage
 ```
 
 - Run checks only through these duties, never ruff, ty, typos, actionlint, zizmor, or pytest directly. Several duties run through gate-cache, and a direct run neither reads nor records its passes.

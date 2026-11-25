@@ -44,7 +44,7 @@ We use [duty](https://pawamoy.github.io/duty/) as the task runner. Run `uv run d
 | `uv run duty test`      | Runs the test suite with coverage. The run fails if coverage is less than 90%.       |
 | `uv run duty dev_setup` | Creates sample `.mkv` files in `.dev/` with ffmpeg, for manual tests of `vidcleaner` |
 
-To run only some tests, give pytest options to `duty test`. For example, `uv run duty test -k downmix` runs the tests with "downmix" in their names. Locally, `duty test` stops at the first failure and runs the tests that failed last time first.
+To run only some tests, give pytest options to `duty test`. For example, `uv run duty test -k downmix` runs the tests with "downmix" in their names. A run with pytest options does not measure coverage. Locally, `duty test` stops at the first failure and runs the tests that failed last time first.
 
 Some checks run through [gate-cache](https://github.com/natelandau/gate-cache). If a check already passed on the same files, it prints `already passed on tree ..., skipping` and exits 0. To force a full run, set `GATE_CACHE_DISABLE=1`.
 

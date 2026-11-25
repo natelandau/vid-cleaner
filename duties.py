@@ -153,7 +153,9 @@ def test(ctx: Context, *cli_args: str) -> None:
     # Locally, stop at the first failure and rerun earlier failures first. CI runs
     # every test so one push reports every failure.
     fail_fast = [] if CI else ["--exitfirst", "--failed-first"]
-    cmd = ["pytest", "--cov", "--cov-report=xml", "--cov-report=term", *fail_fast, *cli_args]
+    # A filtered run covers too little code to meet the coverage threshold
+    coverage = [] if cli_args else ["--cov", "--cov-report=xml", "--cov-report=term"]
+    cmd = ["pytest", *coverage, *fail_fast, *cli_args]
     # A filtered run is not gated: its pass must never skip the full suite
     ctx.run(
         cmd if cli_args else gated("test", cmd, junit=PYTEST_JUNIT_REPORT),
