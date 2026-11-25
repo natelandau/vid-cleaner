@@ -1,8 +1,10 @@
 """Helpers shared across test modules."""
 
 import json
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import cappa
 import pytest
@@ -29,7 +31,9 @@ def load_ffprobe_json(filename: str) -> dict[str, Any]:
     return json.loads("\n".join(line for line in lines if "//" not in line))
 
 
-def run_vidcleaner(argv: list[str]) -> str | int | None:
+def run_vidcleaner(
+    argv: list[str], *, deps: Sequence[Callable[..., object]] = (configure_output,)
+) -> str | int | None:
     """Run the real `vidcleaner` command line and return its exit code.
 
     Use this instead of calling `main()` so each test exercises argument parsing,
@@ -38,10 +42,25 @@ def run_vidcleaner(argv: list[str]) -> str | int | None:
 
     Args:
         argv: The arguments after the program name, such as `["clean", "-n", path]`.
+        deps: Functions cappa runs before the command. Defaults to output setup only, which
+            skips the ffmpeg and ffprobe preflight that `main()` adds.
 
     Returns:
         str | int | None: The exit code the command finished with.
     """
     with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=argv, deps=[configure_output])
+        invoke(obj=VidCleaner, argv=argv, deps=list(deps))
     return exc_info.value.code
+
+
+def ffmpeg_command(mock_ffmpeg: MagicMock) -> str:
+    """Return the one ffmpeg command a run issued, as a single string.
+
+    Args:
+        mock_ffmpeg: The `mock_ffmpeg` fixture after the run.
+
+    Returns:
+        str: The command's arguments joined with spaces, for substring assertions.
+    """
+    mock_ffmpeg.assert_called_once()
+    return " ".join(mock_ffmpeg.call_args.args[0])

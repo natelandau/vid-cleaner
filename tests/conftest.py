@@ -11,7 +11,9 @@ from iso639 import Lang
 
 from tests.helpers import FFPROBE_FIXTURES_DIR, load_ffprobe_json
 from vid_cleaner import constants
-from vid_cleaner.config import Config, load_config
+from vid_cleaner.config import Config, RunOptions, load_config
+from vid_cleaner.exceptions import VideoProbeError
+from vid_cleaner.models.conversion_plan import ConversionPlan
 from vid_cleaner.utils import get_probe_as_box
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
@@ -113,7 +115,58 @@ def mock_video_probe(mocker, mock_ffprobe_box):
 
 
 @pytest.fixture
-def make_video(mocker, video_path, mock_video_probe):
+def mock_unreadable_probe(mocker, mock_ffprobe_box):
+    """Make the named files fail to probe and every other file probe as `reference.json`.
+
+    Returns:
+        Callable[..., Box]: Call with the file names ffprobe rejects; returns the box the
+            readable files report.
+    """
+
+    def _inner(*unreadable_names: str) -> Box:
+        readable_box = mock_ffprobe_box("reference.json")
+
+        def _probe(path: Path) -> Box:
+            if path.name in unreadable_names:
+                raise VideoProbeError(path=path, reason="Invalid data found when processing input")
+            return readable_box
+
+        mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", side_effect=_probe)
+        return readable_box
+
+    return _inner
+
+
+@pytest.fixture
+def mock_original_language(mocker):
+    """Report English as each video's original language without querying TMDB, Radarr, or Sonarr.
+
+    Returns:
+        MagicMock: The patched lookup. Set `return_value` to report another language.
+    """
+    return mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
+
+
+@pytest.fixture
+def stub_output_write(mocker):
+    """Skip copying a processed file to its destination and report the save as done.
+
+    Patches the copy in both `clean` and `clip`. Use `fake_transcode` instead when the test
+    needs the real write.
+
+    Returns:
+        MagicMock: The patched copy used by `clean`.
+    """
+
+    def _report_save(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list[str]]:
+        return dst, [f"✔ Saved to {dst}"]
+
+    mocker.patch("vid_cleaner.cli.clip_video.copy_to_output", side_effect=_report_save)
+    return mocker.patch("vid_cleaner.cli.clean_video.copy_to_output", side_effect=_report_save)
+
+
+@pytest.fixture
+def make_video(video_path, mock_video_probe, mock_original_language):
     """Build a `VideoFile` from a recorded ffprobe response without any network lookup.
 
     Returns:
@@ -124,7 +177,7 @@ def make_video(mocker, video_path, mock_video_probe):
     def _inner(fixture_name: str, language: str = "en") -> VideoFile:
         # Matching the probed path keeps `VideoFile` from re-probing on every access
         mock_video_probe(fixture_name).path_to_file = video_path.resolve()
-        mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang(language))
+        mock_original_language.return_value = Lang(language)
         return VideoFile(video_path)
 
     return _inner
@@ -245,20 +298,33 @@ def interactive_console(mocker):
 
 
 @pytest.fixture
-def fake_transcode(mocker):
+def fake_transcode(mocker) -> None:
     """Replace the ffmpeg pass with one that writes a real temporary file.
 
     Lets a test exercise the genuine `copy_to_output` write, and so the output path and
     the fate of the original, rather than stubbing the write out.
-
-    Returns:
-        Callable[[], None]: Call to install the replacement.
     """
 
-    def _inner() -> None:
-        def run_ffmpeg(command, *, on_progress):
-            command.output_path.write_bytes(b"transcoded")
+    def run_ffmpeg(command, *, on_progress):
+        command.output_path.write_bytes(b"transcoded")
 
-        mocker.patch("vid_cleaner.cli.ffmpeg_step.run_ffmpeg", run_ffmpeg)
+    mocker.patch("vid_cleaner.cli.ffmpeg_step.run_ffmpeg", run_ffmpeg)
 
-    return _inner
+
+@pytest.fixture
+def captured_clean(mocker):
+    """Record the settings `clean` hands to each file instead of running ffmpeg.
+
+    Returns:
+        dict[str, object]: Holds the `config` and `options` of the last cleaned file.
+    """
+    captured: dict[str, object] = {}
+
+    def _record(self, config: Config, options: RunOptions) -> ConversionPlan:
+        captured["config"] = config
+        captured["options"] = options
+        return ConversionPlan()
+
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.plan_clean", _record)
+    mocker.patch("vid_cleaner.models.video_file.VideoFile.plan_changes_file", return_value=False)
+    return captured

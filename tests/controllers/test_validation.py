@@ -1,7 +1,5 @@
 """Test the video file validator behind the `check` subcommand."""
 
-from pathlib import Path
-
 import pytest
 from box import Box
 
@@ -195,7 +193,7 @@ def test_shallow_check_never_decodes(video_path, mocker, mock_video_probe):
 def test_extension_matching_is_case_insensitive(tmp_path, suffix, mock_video_probe):
     """Verify an uppercase container extension is accepted."""
     # Given: A file whose extension differs only in case
-    path = Path(tmp_path / f"video{suffix}")
+    path = tmp_path / f"video{suffix}"
     path.touch()
     mock_video_probe("reference.json")
 

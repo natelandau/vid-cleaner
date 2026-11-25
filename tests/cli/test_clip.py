@@ -2,7 +2,7 @@
 
 import pytest
 
-from tests.helpers import run_vidcleaner
+from tests.helpers import ffmpeg_command, run_vidcleaner
 from vid_cleaner.cli import clip_video
 from vid_cleaner.constants import NO_VIDEO_STREAMS_REASON
 from vid_cleaner.controllers import TempFile
@@ -38,51 +38,41 @@ def test_clip_option_errors(capsys, video_path, args, expected):
         (["--duration", "00:10:00"], "-ss 00:00:00 -t 00:10:00 -map 0"),
     ],
 )
-def test_clipping_video(mocker, video_path, mock_ffmpeg, args, expected, mock_video_probe):
+def test_clipping_video(
+    video_path, mock_ffmpeg, args, expected, mock_video_probe, stub_output_write
+):
     """Verify clip command extracts video segment with specified time range."""
-    # Given: Mock video file and time range arguments
+    # Given: A video and time range arguments
     args = ["clip", *args, str(video_path)]
-
-    # And: Mocked video metadata and output path
-
     mock_video_probe("reference.json")
-    mocker.patch(
-        "vid_cleaner.cli.clip_video.copy_to_output",
-        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to clipped_video.mkv"]),
-    )
 
     # When: Running clip command
     exit_code = run_vidcleaner(args)
 
     # Then: ffmpeg cuts the requested range
-    mock_ffmpeg.assert_called_once()
-    args, _ = mock_ffmpeg.call_args
-    command = " ".join(args[0])
+    command = ffmpeg_command(mock_ffmpeg)
     assert expected in command
 
     assert exit_code == 0
 
 
 @pytest.mark.parametrize(
-    ("args"),
+    "args",
     [
-        ([]),
-        (["--start", "00:05:00"]),
-        (["--start", "00:05:00", "--duration", "00:10:00"]),
-        (["--duration", "00:10:00"]),
+        [],
+        ["--start", "00:05:00"],
+        ["--start", "00:05:00", "--duration", "00:10:00"],
+        ["--duration", "00:10:00"],
     ],
 )
-def test_clipping_video_dryrun(mocker, capsys, video_path, mock_ffmpeg, args, mock_video_probe):
+def test_clipping_video_dryrun(
+    capsys, video_path, mock_ffmpeg, args, mock_video_probe, stub_output_write
+):
     """Verify clip command dry-run shows command without execution."""
     # Given: Mock video file and dry-run flag
     args = ["clip", "-n", *args, str(video_path)]
 
-    # And: Mocked video metadata and output path
     mock_video_probe("reference.json")
-    mocker.patch(
-        "vid_cleaner.cli.clip_video.copy_to_output",
-        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to clipped_video.mkv"]),
-    )
 
     # When: Running clip command in dry-run mode
     exit_code = run_vidcleaner(args)
@@ -104,7 +94,6 @@ def test_clip_out_writes_the_clip_there_and_leaves_the_source(
     video_path.write_bytes(b"source")
     out = tmp_path / "clip.mkv"
     mock_video_probe("reference.json")
-    fake_transcode()
 
     # When: Clipping to the output path
     exit_code = run_vidcleaner(["clip", "--out", str(out), str(video_path)])
@@ -127,7 +116,6 @@ def test_clip_in_place_backs_up_the_source_unless_overwriting(
     # Given: A source video clipped in place
     video_path.write_bytes(b"source")
     mock_video_probe("reference.json")
-    fake_transcode()
 
     # When: Clipping
     exit_code = run_vidcleaner(["clip", *flags, str(video_path)])
@@ -141,7 +129,7 @@ def test_clip_in_place_backs_up_the_source_unless_overwriting(
 
 
 def test_clip_cleanup_failure_still_reports_the_save(
-    mocker, video_path, capsys, mock_ffmpeg, mock_video_probe
+    mocker, video_path, capsys, mock_ffmpeg, mock_video_probe, stub_output_write
 ):
     """Verify a cleanup error after a successful clip is a warning, not a crash.
 
@@ -151,10 +139,6 @@ def test_clip_cleanup_failure_still_reports_the_save(
     # Given: a clip that writes successfully but whose temp-directory housekeeping raises
     args = ["clip", str(video_path)]
     mock_video_probe("reference.json")
-    mocker.patch(
-        "vid_cleaner.cli.clip_video.copy_to_output",
-        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to clipped_video.mkv"]),
-    )
     mocker.patch.object(TempFile, "clean_up", side_effect=OSError("temp dir busy"))
 
     # When: Running clip
@@ -164,7 +148,7 @@ def test_clip_cleanup_failure_still_reports_the_save(
 
     # Then: The save survives, the cleanup failure is a warning, and the run still succeeds
     assert exit_code == 0
-    assert "clipped_video.mkv" in output
+    assert "✔ Saved to" in output
     assert "temp dir busy" in output
 
 
@@ -190,7 +174,7 @@ def test_clip_rejects_file_without_video_streams(video_path, capsys, mock_ffmpeg
 
 
 def test_clip_continues_past_a_bad_file(
-    mocker, mock_ffprobe_box, video_path, capsys, mock_ffmpeg, tmp_path
+    mocker, mock_ffprobe_box, video_path, capsys, mock_ffmpeg, tmp_path, stub_output_write
 ):
     """Verify one unusable file does not discard the files queued behind it."""
     # Given: An audio-only file named ahead of a good one
@@ -209,10 +193,6 @@ def test_clip_continues_past_a_bad_file(
         "vid_cleaner.models.video_file.get_probe_as_box",
         side_effect=lambda path: boxes[path],
     )
-    mocker.patch(
-        "vid_cleaner.cli.clip_video.copy_to_output",
-        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to clipped_video.mkv"]),
-    )
 
     # When: Running clip over both
     exit_code = run_vidcleaner(args)
@@ -223,7 +203,7 @@ def test_clip_continues_past_a_bad_file(
     mock_ffmpeg.assert_called_once()
     assert exit_code == 1
     assert NO_VIDEO_STREAMS_REASON in captured.out + captured.err
-    assert "clipped_video.mkv" in captured.out
+    assert "✔ Saved to" in captured.out
 
 
 def test_clip_failure_clears_its_temp_files_and_continues(
@@ -236,7 +216,6 @@ def test_clip_failure_clears_its_temp_files_and_continues(
     for video in (first, second):
         video.write_bytes(b"source")
     mock_video_probe("reference.json")
-    fake_transcode()
     real_step = clip_video.run_ffmpeg_step
 
     def fail_first(video, command, **kwargs):

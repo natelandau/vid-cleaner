@@ -2,14 +2,10 @@
 
 from pathlib import Path
 
-import cappa
 import pytest
-from cappa.base import invoke
 
 from tests.helpers import run_vidcleaner
 from vid_cleaner.cli.discovery_output import NOT_AN_EXISTING_DIRECTORY_ERROR
-from vid_cleaner.exceptions import VideoProbeError
-from vid_cleaner.vidcleaner import VidCleaner, configure_output
 
 
 def test_search_no_video_files(tmp_path, capsys):
@@ -72,19 +68,12 @@ def test_search_filters_combine_with_and(capsys, video_path, mock_video_probe):
     assert "No video files found matching 'h264' and 'reorder'" in error
 
 
-def test_search_no_results_reports_skipped_count(capsys, video_path, mocker, mock_ffprobe_box):
+def test_search_no_results_reports_skipped_count(capsys, video_path, mock_unreadable_probe):
     """Verify the no-results error still surfaces how many files were skipped as unreadable."""
     # Given: One file that fails to probe and one that probes but matches no active filter
     unreadable = video_path.parent / "not_really_a_video.mkv"
     unreadable.touch()
-    good_box = mock_ffprobe_box("reference.json")
-
-    def probe(path):
-        if path.name == unreadable.name:
-            raise VideoProbeError(path=path, reason="Invalid data found when processing input")
-        return good_box
-
-    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", side_effect=probe)
+    mock_unreadable_probe(unreadable.name)
 
     # When: Filtering for a trait no readable file has, so results is empty and the
     # success-path table caption (the usual home for the skipped count) never renders
@@ -102,13 +91,12 @@ def test_search_no_results_reports_skipped_count(capsys, video_path, mocker, moc
 
 @pytest.mark.parametrize(
     ("verbosity", "lists_skipped_files"),
-    [(None, False), ("-v", True)],
+    [([], False), (["-v"], True)],
 )
 def test_search_skips_unreadable_files(
     capsys,
-    mocker,
     video_path,
-    mock_ffprobe_box,
+    mock_unreadable_probe,
     verbosity,
     lists_skipped_files,
 ):
@@ -116,21 +104,10 @@ def test_search_skips_unreadable_files(
     # Given: A directory holding one readable video and one file that ffprobe rejects
     unreadable = video_path.parent / "not_really_a_video.mkv"
     unreadable.touch()
-    good_box = mock_ffprobe_box("reference.json")
-
-    def probe(path):
-        if path.name == unreadable.name:
-            raise VideoProbeError(path=path, reason="Invalid data found when processing input")
-        return good_box
-
-    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", side_effect=probe)
-
-    args = ["search", str(video_path.parent), "--filters", "h264"]
-    if verbosity:
-        args.insert(0, verbosity)
+    mock_unreadable_probe(unreadable.name)
 
     # When: Running the search command
-    exit_code = run_vidcleaner(args)
+    exit_code = run_vidcleaner([*verbosity, "search", str(video_path.parent), "--filters", "h264"])
 
     output, error = capsys.readouterr()
 
@@ -336,13 +313,11 @@ def test_search_table_marks_the_active_sort_column(capsys, video_library):
 
     # When: Sorting by size
     args = ["search", str(directory), "--filters", "h264", "--sort", "size"]
-    with pytest.raises(cappa.Exit):
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    run_vidcleaner(args)
     forward = capsys.readouterr().out
 
     # When: Sorting by size in reverse
-    with pytest.raises(cappa.Exit):
-        invoke(obj=VidCleaner, argv=[*args, "--reverse"], deps=[configure_output])
+    run_vidcleaner([*args, "--reverse"])
     reversed_output = capsys.readouterr().out
 
     # Then: The arrow marks the size column and flips with --reverse
@@ -357,13 +332,11 @@ def test_search_table_arrow_reports_the_direction_rows_run(capsys, video_library
 
     # When: Sorting alphabetically, which ascends by default
     args = ["search", str(directory), "--filters", "h264"]
-    with pytest.raises(cappa.Exit):
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    run_vidcleaner(args)
     forward = capsys.readouterr().out
 
     # When: Reversing that order
-    with pytest.raises(cappa.Exit):
-        invoke(obj=VidCleaner, argv=[*args, "--reverse"], deps=[configure_output])
+    run_vidcleaner([*args, "--reverse"])
     reversed_output = capsys.readouterr().out
 
     # Then: A→Z rows carry the up arrow and Z→A rows the down arrow, matching the
@@ -376,7 +349,7 @@ def test_search_table_arrow_reports_the_direction_rows_run(capsys, video_library
 
 def test_search_table_caption_reports_counts(capsys, video_library):
     """Verify the caption reports how many files matched out of those scanned."""
-    # Given: Two files where only one matches the active filter
+    # Given: Two files that both match the active filter
     directory = video_library([("apple.mkv", 100, 2_000_000), ("banana.mkv", 100, 1_000_000)])
 
     # When: Running a search whose filter matches both
@@ -452,31 +425,6 @@ def test_search_without_limit_caption_omits_truncation(capsys, video_library):
     assert exit_code == 0
     assert "2 of 2 files matched" in output
     assert "showing" not in output
-
-
-def test_search_table_caption_reports_skipped_files(capsys, video_path, mocker, mock_ffprobe_box):
-    """Verify the caption counts files that could not be read as video."""
-    # Given: One readable video and one file ffprobe rejects
-    unreadable = video_path.parent / "not_really_a_video.mkv"
-    unreadable.touch()
-    good_box = mock_ffprobe_box("reference.json")
-
-    def probe(path):
-        if path.name == unreadable.name:
-            raise VideoProbeError(path=path, reason="Invalid data found when processing input")
-        return good_box
-
-    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", side_effect=probe)
-
-    # When: Running the search command
-    args = ["search", str(video_path.parent), "--filters", "h264"]
-    exit_code = run_vidcleaner(args)
-
-    output = capsys.readouterr().out
-
-    # Then: The caption reports the skipped file
-    assert exit_code == 0
-    assert "1 skipped" in output
 
 
 @pytest.mark.parametrize(

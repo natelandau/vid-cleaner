@@ -2,15 +2,12 @@
 
 from pathlib import Path
 
-import cappa
 import pytest
-from cappa.base import invoke
 
 from tests.helpers import run_vidcleaner
 from vid_cleaner.cli.check_video import display_path
 from vid_cleaner.cli.discovery_output import NOT_AN_EXISTING_DIRECTORY_ERROR
 from vid_cleaner.exceptions import VideoProbeError
-from vid_cleaner.vidcleaner import VidCleaner, configure_output
 
 
 @pytest.fixture(autouse=True)
@@ -60,7 +57,7 @@ def test_check_invalid_file_exits_one(capsys, video_path, mocker):
     assert "0 valid, 1 invalid" in captured.out
 
 
-def test_check_reports_every_file_in_a_mixed_batch(capsys, tmp_path, mocker, mock_ffprobe_box):
+def test_check_reports_every_file_in_a_mixed_batch(capsys, tmp_path, mock_unreadable_probe):
     """Verify one bad file never hides the verdict on the files beside it."""
     # Given: A good file, a broken file, a missing path, and a non-video file
     good = tmp_path / "good.mkv"
@@ -71,14 +68,7 @@ def test_check_reports_every_file_in_a_mixed_batch(capsys, tmp_path, mocker, moc
     notes.write_text("hello")
     missing = tmp_path / "missing.mkv"
 
-    good_box = mock_ffprobe_box("reference.json")
-
-    def probe(path):
-        if path.name == broken.name:
-            raise VideoProbeError(path=path, reason="Invalid data found")
-        return good_box
-
-    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", side_effect=probe)
+    mock_unreadable_probe(broken.name)
 
     # When: Checking all four at once
     args = ["check", str(good), str(broken), str(notes), str(missing)]
@@ -141,81 +131,44 @@ def test_check_without_deep_does_not_decode(video_path, mocker, mock_video_probe
 
     # When: Checking it without `--deep`
     args = ["check", str(video_path)]
-    with pytest.raises(cappa.Exit):
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    run_vidcleaner(args)
 
     # Then: No decode was attempted
     decode.assert_not_called()
 
 
-def test_check_from_directory_reports_unreadable_files(capsys, tmp_path, mocker, mock_ffprobe_box):
-    """Verify `--from` checks every video file it discovers."""
-    # Given: A directory holding one good file and one that cannot be probed
-    library = tmp_path / "library"
-    library.mkdir()
-    good = library / "good.mkv"
-    good.write_bytes(b"\0" * 100)
-    broken = library / "broken.mkv"
-    broken.write_bytes(b"\0" * 100)
-
-    good_box = mock_ffprobe_box("reference.json")
-    good_box.path_to_file = good
-
-    def probe(path):
-        if path.name == broken.name:
-            raise VideoProbeError(path=path, reason="Invalid data found")
-        return good_box
-
-    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", side_effect=probe)
-
-    # When: Checking the directory
-    args = ["check", "--from", str(library)]
-    exit_code = run_vidcleaner(args)
-
-    captured = capsys.readouterr()
-
-    # Then: Both files are accounted for and the run fails
-    assert exit_code == 1
-    assert "Invalid data found" in captured.err
-    assert "1 valid, 1 invalid" in captured.out
-
-
-def test_check_from_reports_unreadable_files_despite_a_filter(
-    capsys, tmp_path, mocker, mock_ffprobe_box
+@pytest.mark.parametrize(
+    ("filters", "summary"),
+    [
+        pytest.param([], "1 valid, 1 invalid", id="no filter"),
+        pytest.param(["--filters", "vp9"], "0 valid, 1 invalid", id="filter matching neither"),
+    ],
+)
+def test_check_from_reports_unreadable_files(
+    capsys, tmp_path, mock_unreadable_probe, filters, summary
 ):
-    """Verify a trait filter cannot hide a file that failed to read.
+    """Verify `--from` reports every file it cannot read, even when a filter excludes the rest.
 
     An unreadable file carries no traits, so letting a filter exclude it would let
     `check` exit zero over the very files it exists to find.
     """
-    # Given: A directory with one unreadable file and one readable file lacking the trait
+    # Given: A directory holding one readable file and one that cannot be probed
     library = tmp_path / "library"
     library.mkdir()
     good = library / "good.mkv"
     good.write_bytes(b"\0" * 100)
     broken = library / "broken.mkv"
     broken.write_bytes(b"\0" * 100)
+    mock_unreadable_probe(broken.name).path_to_file = good
 
-    good_box = mock_ffprobe_box("reference.json")
-    good_box.path_to_file = good
+    # When: Checking the directory
+    exit_code = run_vidcleaner(["check", "--from", str(library), *filters])
 
-    def probe(path):
-        if path.name == broken.name:
-            raise VideoProbeError(path=path, reason="Invalid data found")
-        return good_box
-
-    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", side_effect=probe)
-
-    # When: Checking with a filter the readable file does not match
-    args = ["check", "--from", str(library), "--filters", "vp9"]
-    exit_code = run_vidcleaner(args)
-
+    # Then: The unreadable file is reported and the run fails
     captured = capsys.readouterr()
-
-    # Then: The unreadable file is still reported and the run fails
     assert exit_code == 1
     assert "Invalid data found" in captured.err
-    assert "0 valid, 1 invalid" in captured.out
+    assert summary in captured.out
 
 
 def test_check_from_empty_directory_exits_zero(capsys, tmp_path):
@@ -300,7 +253,7 @@ def test_check_with_no_arguments_errors(capsys):
     assert "Provide file path(s) or `--from`" in captured.err
 
 
-def test_check_does_not_accept_limit(video_path):
+def test_check_does_not_accept_limit():
     """Verify `--limit` is absent, so a truncated selection cannot mask unchecked files."""
     # Given: A limit applied to a check run
     args = ["check", "--from", ".", "--limit", "5"]
@@ -340,10 +293,9 @@ def test_check_prints_square_brackets_verbatim(capsys, tmp_path, mocker):
     assert "[matroska,webm @ 0x14f1] Read error" in captured.err
 
 
-def test_display_path_uses_bare_name_in_cwd(tmp_path, monkeypatch):
+def test_display_path_uses_bare_name_in_cwd(tmp_path):
     """Verify a file in the working directory prints as a bare filename."""
     # Given: A file in the current working directory
-    monkeypatch.chdir(tmp_path)
     path = tmp_path / "movie.mkv"
     path.touch()
 
@@ -352,10 +304,9 @@ def test_display_path_uses_bare_name_in_cwd(tmp_path, monkeypatch):
     assert display_path(path) == "movie.mkv"
 
 
-def test_display_path_is_relative_below_cwd(tmp_path, monkeypatch):
+def test_display_path_is_relative_below_cwd(tmp_path):
     """Verify a file in a subdirectory prints as a path relative to the working directory."""
     # Given: A file one level below the working directory
-    monkeypatch.chdir(tmp_path)
     nested = tmp_path / "movies" / "movie.mkv"
     nested.parent.mkdir()
     nested.touch()

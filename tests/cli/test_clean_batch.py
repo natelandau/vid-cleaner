@@ -2,9 +2,8 @@
 
 import cappa
 import pytest
-from iso639 import Lang
 
-from tests.helpers import run_vidcleaner
+from tests.helpers import ffmpeg_command, run_vidcleaner
 from vid_cleaner.exceptions import VideoCleanError
 from vid_cleaner.models import video_file as video_file_module
 from vid_cleaner.models.conversion_plan import ConversionPlan
@@ -14,12 +13,11 @@ from vid_cleaner.controllers import TempFile  # isort: skip
 
 
 def test_clean_interrupt_removes_temp_files_and_stops(
-    mocker, mock_ffmpeg, video_path, tmp_path, mock_video_probe
+    mock_ffmpeg, video_path, tmp_path, mock_video_probe, mock_original_language
 ) -> None:
     """Verify Ctrl-C during ffmpeg removes the run's temporary files and exits with an error."""
     # Given: a file that needs cleaning and an ffmpeg run the user interrupts
     mock_video_probe("reference.json")
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
     mock_ffmpeg.return_value.run_command_with_progress.side_effect = KeyboardInterrupt
 
     # When: running the clean command
@@ -279,15 +277,12 @@ def test_clean_from_cleanup_failure_does_not_mask_the_real_failure(
     assert "movie.mkv: no video streams found" in combined
 
 
-def test_clean_from_yes_reaches_the_transcode_loop(capsys, video_library, mocker, mock_ffmpeg):
+def test_clean_from_yes_reaches_the_transcode_loop(
+    capsys, video_library, mock_ffmpeg, mock_original_language, stub_output_write
+):
     """Verify --yes skips the prompt and actually transcodes the discovered selection."""
     # Given: Two discoverable files and a stubbed writer
     directory = video_library([("apple.mkv", 100, 1_000_000), ("banana.mkv", 200, 1_000_000)])
-    mocker.patch(
-        "vid_cleaner.cli.clean_video.copy_to_output",
-        side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
-    )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
     args = ["clean", "--from", str(directory), "--filters", "h264", "--yes"]
 
     # When: Running clean with --yes and no TTY
@@ -303,28 +298,23 @@ def test_clean_from_yes_reaches_the_transcode_loop(capsys, video_library, mocker
 
 
 def test_clean_from_applies_conversion_flags_to_each_selected_file(
-    video_library, mocker, mock_ffmpeg
+    video_library, mock_ffmpeg, mock_original_language, stub_output_write
 ):
     """Verify a conversion flag such as --h265 reaches files that discovery selected."""
     # Given: One discoverable h264 file and a stubbed writer
     directory = video_library([("apple.mkv", 100, 1_000_000)])
-    mocker.patch(
-        "vid_cleaner.cli.clean_video.copy_to_output",
-        side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
-    )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
     # When: Cleaning the directory with --h265
     exit_code = run_vidcleaner(["clean", "--from", str(directory), "--h265", "--yes"])
 
     # Then: The single ffmpeg pass encodes the video to H.265
     assert exit_code == 0
-    mock_ffmpeg.assert_called_once()
-    command = " ".join(mock_ffmpeg.call_args.args[0])
-    assert "libx265" in command
+    assert "libx265" in ffmpeg_command(mock_ffmpeg)
 
 
-def test_clean_from_yes_reuses_the_discovery_probe(video_library, mocker, mock_ffmpeg):
+def test_clean_from_yes_reuses_the_discovery_probe(
+    video_library, mocker, mock_ffmpeg, mock_original_language, stub_output_write
+):
     """Verify each file is probed once, not again when the transcode loop reaches it.
 
     Discovery already probed every candidate and `VideoFile` caches the result, so
@@ -338,11 +328,6 @@ def test_clean_from_yes_reuses_the_discovery_probe(video_library, mocker, mock_f
         "vid_cleaner.models.video_file.get_probe_as_box",
         side_effect=video_file_module.get_probe_as_box,
     )
-    mocker.patch(
-        "vid_cleaner.cli.clean_video.copy_to_output",
-        side_effect=lambda src, dst, *, overwrite: (dst, [f"✔ Saved to {dst}"]),
-    )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
     args = ["clean", "--from", str(directory), "--filters", "h264", "--yes"]
 
     # When: Running clean with --yes

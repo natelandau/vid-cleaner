@@ -1,14 +1,12 @@
 """Test how the clean subcommand parses and validates its arguments."""
 
-from pathlib import Path
-
 import cappa
 import pytest
-from cappa.base import invoke, parse
+from cappa.base import invoke
 
 from tests.helpers import run_vidcleaner
 from vid_cleaner.cli.discovery_output import NOT_AN_EXISTING_DIRECTORY_ERROR
-from vid_cleaner.vidcleaner import CleanCommand, VidCleaner, configure_output
+from vid_cleaner.vidcleaner import VidCleaner, configure_output
 
 
 def test_fail_on_flag_conflict(capsys, video_path) -> None:
@@ -29,9 +27,9 @@ def test_fail_on_flag_conflict(capsys, video_path) -> None:
 def test_clean_out_with_multiple_files_errors(tmp_path, capsys) -> None:
     """Verify clean command rejects --out when given more than one input file."""
     # Given: an explicit --out alongside two input files
-    first = Path(tmp_path / "first_video.mkv")
+    first = tmp_path / "first_video.mkv"
     first.touch()
-    second = Path(tmp_path / "second_video.mkv")
+    second = tmp_path / "second_video.mkv"
     second.touch()
     args = ["clean", "-vv", "--out", str(tmp_path / "out.mkv"), str(first), str(second)]
 
@@ -127,34 +125,31 @@ def test_clean_rejects_no_files_and_no_from(capsys):
         ("-w", "--overwrite", "overwrite"),
     ],
 )
-def test_clean_short_flag_matches_long_flag(tmp_path, short, long, attribute):
-    """Verify each short flag toggles the same option as its long form."""
-    # Given: A clean invocation naming one file
-    video = tmp_path / "movie.mkv"
-    video.touch()
+def test_clean_short_flag_matches_long_flag(captured_clean, video_path, short, long, attribute):
+    """Verify each short flag sets the same setting or run option as its long form."""
 
-    # When: Parsing the short form and the long form of the same option
-    from_short = parse(VidCleaner, argv=["clean", short, str(video)]).command
-    from_long = parse(VidCleaner, argv=["clean", long, str(video)]).command
-    unset = parse(VidCleaner, argv=["clean", str(video)]).command
+    def setting_after(flags: list[str]) -> object:
+        run_vidcleaner(["clean", "-n", *flags, str(video_path)])
+        config, options = captured_clean["config"], captured_clean["options"]
+        return getattr(config, attribute, getattr(options, attribute, None))
 
-    # Then: Both set the same field, and to something other than the default
-    assert getattr(from_short, attribute) == getattr(from_long, attribute)
-    assert getattr(from_short, attribute) != getattr(unset, attribute)
+    # When: Running clean with the short form, the long form, and neither
+    from_short = setting_after([short])
+    from_long = setting_after([long])
+    unset = setting_after([])
+
+    # Then: Both forms reach the command with the same non-default value
+    assert from_short == from_long
+    assert from_short != unset
 
 
-def test_clean_langs_short_flag_takes_a_value(tmp_path):
+def test_clean_langs_short_flag_takes_a_value(captured_clean, video_path):
     """Verify -l accepts a language list rather than being treated as a boolean."""
-    # Given: A clean invocation passing languages via the short flag
-    video = tmp_path / "movie.mkv"
-    video.touch()
+    # When: Passing languages via the short flag
+    run_vidcleaner(["clean", "-n", "-l", "es,fr", str(video_path)])
 
-    # When: Parsing the short form
-    command = parse(VidCleaner, argv=["clean", "-l", "es,fr", str(video)]).command
-    assert isinstance(command, CleanCommand)
-
-    # Then: The value lands in langs_to_keep
-    assert command.langs_to_keep == "es,fr"
+    # Then: The languages reach the settings
+    assert captured_clean["config"].langs_to_keep == ("es", "fr")
 
 
 @pytest.mark.parametrize("limit", ["0", "-1"])

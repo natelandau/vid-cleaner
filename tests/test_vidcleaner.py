@@ -3,30 +3,20 @@
 import stat
 from pathlib import Path
 
-import cappa
 import pytest
-from cappa.base import invoke
 
 from tests.helpers import run_vidcleaner
 from vid_cleaner import constants
-from vid_cleaner.config import Config, RunOptions
-from vid_cleaner.models.conversion_plan import ConversionPlan
 from vid_cleaner.utils import create_default_config
-from vid_cleaner.vidcleaner import VidCleaner, configure_output, verify_required_binaries
+from vid_cleaner.vidcleaner import verify_required_binaries
 
 
-@pytest.mark.parametrize(
-    ("subcommand"),
-    [("inspect"), ("clip"), ("clean"), ("cache")],
-)
+@pytest.mark.parametrize("subcommand", ["inspect", "clip", "clean", "cache"])
 def test_vidcleaner_cli_help(capsys, subcommand: str) -> None:
     """Verify help text displays for each subcommand."""
     # Given: Command line arguments requesting help
-    args = [subcommand, "--help"] if subcommand else ["--help"]
-
     # When: Invoking CLI with help flag
-    with pytest.raises(cappa.Exit):
-        invoke(obj=VidCleaner, argv=args, deps=[configure_output])
+    run_vidcleaner([subcommand, "--help"])
 
     # Then: Help output contains expected information
     output = capsys.readouterr().out
@@ -53,13 +43,12 @@ def test_missing_binaries_stops_the_run(capsys, mocker, missing, expected) -> No
 
     # When: Running a command that needs them
     args = ["check", "movie.mkv"]
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[verify_required_binaries])
+    exit_code = run_vidcleaner(args, deps=[verify_required_binaries])
 
     captured = capsys.readouterr()
 
     # Then: The run stops and names every absent program
-    assert exc_info.value.code == 1
+    assert exit_code == 1
     assert expected in captured.err
 
 
@@ -70,11 +59,10 @@ def test_present_binaries_allow_the_run(mocker) -> None:
 
     # When: Running the preflight for a command that needs them
     args = ["check", "movie.mkv"]
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=args, deps=[verify_required_binaries])
+    exit_code = run_vidcleaner(args, deps=[verify_required_binaries])
 
     # Then: The run reaches the command itself rather than stopping at the preflight
-    assert exc_info.value.code == 1  # `movie.mkv` does not exist
+    assert exit_code == 1  # `movie.mkv` does not exist
 
 
 def test_cache_runs_without_ffmpeg(
@@ -89,13 +77,12 @@ def test_cache_runs_without_ffmpeg(
     mocker.patch("vid_cleaner.utils.cli.which", return_value=None)
 
     # When: Running the cache command
-    with pytest.raises(cappa.Exit) as exc_info:
-        invoke(obj=VidCleaner, argv=["cache"], deps=[verify_required_binaries])
+    exit_code = run_vidcleaner(["cache"], deps=[verify_required_binaries])
 
     captured = capsys.readouterr()
 
     # Then: The preflight does not block it
-    assert exc_info.value.code == 0
+    assert exit_code == 0
     assert "ffmpeg" not in captured.err
 
 
@@ -118,25 +105,6 @@ def test_invalid_filter_is_a_usage_error(capsys, args):
     assert exit_code == 2
     assert "--filters" in error
     assert "bogus" in error
-
-
-@pytest.fixture
-def captured_clean(mocker):
-    """Record the settings `clean` hands to each file instead of running ffmpeg.
-
-    Returns:
-        dict[str, object]: Holds the `config` and `options` of the last cleaned file.
-    """
-    captured: dict[str, object] = {}
-
-    def _record(self, config: Config, options: RunOptions) -> ConversionPlan:
-        captured["config"] = config
-        captured["options"] = options
-        return ConversionPlan()
-
-    mocker.patch("vid_cleaner.models.video_file.VideoFile.plan_clean", _record)
-    mocker.patch("vid_cleaner.models.video_file.VideoFile.plan_changes_file", return_value=False)
-    return captured
 
 
 def _run_clean(argv: list[str]) -> str | int | None:
@@ -173,11 +141,10 @@ def test_bundled_short_flags_set_each_setting(captured_clean, video_path) -> Non
     assert captured_clean["config"].keep_commentary is True
 
 
-def test_positive_and_negative_flag_together_is_usage_error(capsys, video_path) -> None:
+def test_positive_and_negative_flag_together_is_usage_error(video_path) -> None:
     """Verify `--downmix` and `--no-downmix` cannot be combined."""
     code = _run_clean(["--downmix", "--no-downmix", str(video_path)])
 
-    capsys.readouterr()
     assert code == 2
 
 
@@ -201,13 +168,12 @@ def test_run_flags_reach_run_options(captured_clean, video_path) -> None:
 
 
 @pytest.mark.parametrize("subcommand", ["clean", "clip", "cache", "check", "search", "inspect"])
-def test_help_works_with_invalid_config(capsys, user_config, subcommand) -> None:
+def test_help_works_with_invalid_config(user_config, subcommand) -> None:
     """Verify `--help` never loads the config."""
     user_config('radarr_url = "nope"')
 
     exit_code = run_vidcleaner([subcommand, "--help"])
 
-    capsys.readouterr()
     assert exit_code == 0
 
 
@@ -215,8 +181,7 @@ def test_check_runs_with_invalid_config(capsys, user_config, video_path) -> None
     """Verify a command that reads no settings is not stopped by a bad config."""
     user_config('radarr_url = "nope"')
 
-    with pytest.raises(cappa.Exit):
-        invoke(obj=VidCleaner, argv=["check", str(video_path)], deps=[configure_output])
+    run_vidcleaner(["check", str(video_path)])
 
     assert "radarr_url" not in capsys.readouterr().err
 
@@ -245,11 +210,10 @@ def test_config_warnings_are_shown_and_the_run_continues(
     assert "config" in captured_clean
 
 
-def test_default_config_created_private(capsys) -> None:
+def test_default_config_created_private() -> None:
     """Verify the user config file, which can hold API keys, is readable only by its owner."""
     create_default_config()
 
-    capsys.readouterr()
     assert stat.S_IMODE(constants.USER_CONFIG_PATH.stat().st_mode) == 0o600
 
 
