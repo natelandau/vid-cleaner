@@ -53,6 +53,27 @@ def test_clean_out_with_multiple_files_errors(tmp_path, capsys) -> None:
     assert OUT_WITH_MULTIPLE_FILES_ERROR in output
 
 
+def test_clean_out_accepts_a_video_named_with_its_macos_sidecar(
+    tmp_path, stub_output_write, mock_ffmpeg, mock_video_probe, mock_original_language
+) -> None:
+    """Verify --out works when a shell glob also matched the video's `._` metadata file."""
+    # Given: one video and its AppleDouble sidecar, as `*.mkv` would expand
+    video = tmp_path / "movie.mkv"
+    video.touch()
+    sidecar = tmp_path / "._movie.mkv"
+    sidecar.write_bytes(b"\x00\x05\x16\x07")
+    mock_video_probe("reference.json")
+    out = tmp_path / "out.mkv"
+    args = ["clean", "--h265", "--verify=off", "--out", str(out), str(sidecar), str(video)]
+
+    # When: running clean with --out
+    exit_code = run_vidcleaner(args)
+
+    # Then: the one video is written to the --out path
+    assert exit_code == 0
+    assert stub_output_write.call_args.args[1] == out
+
+
 def test_clean_rejects_from_with_positional_files(capsys, tmp_path):
     """Verify --from and explicit files are refused together as conflicting sources."""
     # Given: Both a discovery root and an explicit file

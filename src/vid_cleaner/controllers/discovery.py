@@ -15,6 +15,7 @@ from rich.progress import track
 from vid_cleaner.constants import VIDEO_SUFFIXES, SortOrder, VideoTrait
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.models import SearchResult, VideoFile
+from vid_cleaner.utils import is_macos_sidecar
 
 # Each key pairs a getter with the direction that reads naturally for it: names ascend,
 # magnitudes descend. `reverse` flips whichever is active.
@@ -121,16 +122,13 @@ def _walk_video_paths(
         if level >= depth:
             dirnames[:] = []
         # Compare suffixes rather than globbing, since glob is case-sensitive on POSIX and
-        # would miss `MOVIE.MKV`. macOS writes an AppleDouble `._` metadata sidecar beside
-        # every file it copies to a non-HFS volume; it shares the video's extension but
-        # holds no video. Other dotfiles stay in scope because a user may deliberately hide
-        # a real video.
+        # would miss `MOVIE.MKV`.
         yield (
             directory,
             [
                 directory / name
                 for name in filenames
-                if Path(name).suffix.lower() in VIDEO_SUFFIXES and not name.startswith("._")
+                if Path(name).suffix.lower() in VIDEO_SUFFIXES and not is_macos_sidecar(Path(name))
             ],
         )
 

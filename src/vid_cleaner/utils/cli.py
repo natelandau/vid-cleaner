@@ -27,6 +27,58 @@ BACKED_UP_ORIGINAL_MESSAGE = "Backed up original to"
 SAVED_TO_MESSAGE = "Saved to"
 LIMIT_BELOW_ONE_ERROR = "must be 1 or greater"
 TEMP_CLEANUP_WARNING = "Warning: could not clean up temporary files"
+ONLY_MACOS_SIDECARS_ERROR = (
+    "No video files to process: every path named is a macOS `._` metadata file"
+)
+
+
+def is_macos_sidecar(path: Path) -> bool:
+    """Report whether a path is a macOS AppleDouble `._` metadata file rather than a video.
+
+    macOS writes one beside every file it copies to a non-HFS volume. It shares the
+    video's extension but holds no video, so every way of naming files must skip it.
+    Other dotfiles are not matched, because a user may deliberately hide a real video.
+
+    Args:
+        path (Path): The path to test. Only its name is read.
+
+    Returns:
+        bool: True when the file name starts with `._`.
+
+    Examples:
+        >>> is_macos_sidecar(Path("/share/._Movie.mkv"))
+        True
+        >>> is_macos_sidecar(Path("/share/.Movie.mkv"))
+        False
+    """
+    return path.name.startswith("._")
+
+
+def drop_macos_sidecars(paths: list[Path]) -> list[Path]:
+    """Remove macOS `._` metadata files from paths named on the command line.
+
+    A shell glob such as `/Volumes/share/*.mkv` matches the sidecars along with the
+    videos, so they are skipped here the same way discovery skips them.
+
+    Args:
+        paths (list[Path]): The paths as the user named them.
+
+    Returns:
+        list[Path]: The paths that are not sidecars, in their original order.
+
+    Raises:
+        cappa.Exit: If paths were named and every one of them is a sidecar.
+    """
+    kept: list[Path] = []
+    for path in paths:
+        if is_macos_sidecar(path):
+            pp.debug(f"Skip macOS metadata file: {path}")
+        else:
+            kept.append(path)
+
+    if paths and not kept:
+        raise cappa.Exit(ONLY_MACOS_SIDECARS_ERROR, code=1)
+    return kept
 
 
 def coerce_video_files(files: list[Path]) -> list["VideoFile"]:
@@ -41,12 +93,14 @@ def coerce_video_files(files: list[Path]) -> list["VideoFile"]:
         list[VideoFile]: List of validated VideoFile objects
 
     Raises:
-        cappa.Exit: If a file doesn't exist or has an invalid extension
+        cappa.Exit: If a file doesn't exist or has an invalid extension, or every file is a
+            macOS `._` metadata file
     """
     # Imported here because `vid_cleaner.models.video_file` imports this package at module
     # scope; a top-level import makes `vid_cleaner.models` unimportable on its own.
     from vid_cleaner.models.video_file import VideoFile  # noqa: PLC0415
 
+    files = drop_macos_sidecars(files)
     for file in files:
         f = file.expanduser().resolve().absolute()
 
@@ -83,7 +137,9 @@ def resolve_out_path_override(
     if override and from_directory is not None:
         pp.error(OUT_WITH_FROM_ERROR)
         raise cappa.Exit(code=1)
-    if override and len(files) > 1:
+    # Count only what will be processed, so `--out` with a glob that also matched a
+    # video's `._` sidecar still names a single output
+    if override and len([file for file in files if not is_macos_sidecar(file)]) > 1:
         pp.error(OUT_WITH_MULTIPLE_FILES_ERROR)
         raise cappa.Exit(code=1)
     return override

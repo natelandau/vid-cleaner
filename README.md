@@ -40,6 +40,8 @@ python -m pip install --user vid-cleaner
 
 Run `vidcleaner --help` to see the commands, and `vidcleaner COMMAND --help` to see the options of one command. Every command accepts `--dryrun` (`-n`), which shows what the command will do without a change to a file.
 
+Every command that reads video files skips the `._` metadata files that macOS writes beside each file it copies to a network share or external disk. This includes `._` files that a shell pattern such as `*.mkv` adds to the command line.
+
 ### Inspecting a video file
 
 `vidcleaner inspect FILES` prints a table of the video, audio, and subtitle streams in each file, with the codec, language, and channel layout of each stream. Use `--json` to print the raw ffprobe output instead.

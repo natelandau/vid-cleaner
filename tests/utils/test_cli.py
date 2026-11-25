@@ -14,7 +14,11 @@ from vid_cleaner.utils import (
     create_default_config,
     parse_trait_filters,
 )
-from vid_cleaner.utils.cli import BACKED_UP_ORIGINAL_MESSAGE, SAVED_TO_MESSAGE
+from vid_cleaner.utils.cli import (
+    BACKED_UP_ORIGINAL_MESSAGE,
+    ONLY_MACOS_SIDECARS_ERROR,
+    SAVED_TO_MESSAGE,
+)
 
 
 def test_copy_to_output_backs_up_existing(tmp_path: Path) -> None:
@@ -191,6 +195,33 @@ def test_coerce_video_files_rejects_unusable_paths(tmp_path, name, create) -> No
         coerce_video_files([path])
 
     assert exc_info.value.code == 1
+
+
+def test_coerce_video_files_skips_macos_sidecars(tmp_path) -> None:
+    """Verify a `._` metadata file matched by a shell glob is skipped, not probed."""
+    # Given: a video and the AppleDouble sidecar macOS wrote beside it
+    video = tmp_path / "movie.mkv"
+    sidecar = tmp_path / "._movie.mkv"
+    video.touch()
+    sidecar.write_bytes(b"\x00\x05\x16\x07")
+
+    # When: both are named, as `*.mkv` would expand
+    videos = coerce_video_files([sidecar, video])
+
+    # Then: only the real video remains
+    assert [v.path for v in videos] == [video.resolve()]
+
+
+def test_coerce_video_files_rejects_only_macos_sidecars(tmp_path) -> None:
+    """Verify naming nothing but `._` metadata files stops the run instead of doing nothing."""
+    sidecar = tmp_path / "._movie.mkv"
+    sidecar.write_bytes(b"\x00\x05\x16\x07")
+
+    with pytest.raises(cappa.Exit) as exc_info:
+        coerce_video_files([sidecar])
+
+    assert exc_info.value.code == 1
+    assert exc_info.value.message == ONLY_MACOS_SIDECARS_ERROR
 
 
 def test_parse_trait_filters_ignores_case_and_spacing() -> None:

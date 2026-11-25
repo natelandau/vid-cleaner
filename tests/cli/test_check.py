@@ -92,6 +92,24 @@ def test_check_reports_every_file_in_a_mixed_batch(capsys, tmp_path, mock_unread
     assert "1 valid, 3 invalid" in captured.out
 
 
+def test_check_skips_named_macos_sidecars(capsys, video_path, mock_video_probe):
+    """Verify a `._` metadata file named beside a video is skipped rather than reported invalid."""
+    # Given: A valid video and its AppleDouble sidecar
+    mock_video_probe("reference.json")
+    sidecar = video_path.with_name(f"._{video_path.name}")
+    sidecar.write_bytes(b"\x00\x05\x16\x07")
+
+    # When: Checking both, as a shell glob would name them
+    exit_code = run_vidcleaner(["check", str(sidecar), str(video_path)])
+
+    captured = capsys.readouterr()
+
+    # Then: Only the video is checked
+    assert exit_code == 0
+    assert "Checked 1 file(s): 1 valid, 0 invalid" in captured.out
+    assert sidecar.name not in captured.out + captured.err
+
+
 def test_check_audio_only_file_fails(capsys, video_path, mock_video_probe):
     """Verify a file that probes cleanly but holds no video stream fails."""
     # Given: A file whose only stream is audio

@@ -16,6 +16,7 @@ from vid_cleaner.cli.discovery_output import (
 from vid_cleaner.constants import SortOrder
 from vid_cleaner.controllers.discovery import DiscoveryReport
 from vid_cleaner.controllers.validation import CheckResult, check_probed_video, check_video_file
+from vid_cleaner.utils import drop_macos_sidecars
 from vid_cleaner.vidcleaner import CheckCommand
 
 
@@ -94,13 +95,17 @@ def check_explicit_files(check_cmd: CheckCommand) -> list[CheckResult]:
         check_cmd (CheckCommand): The parsed check command.
 
     Returns:
-        list[CheckResult]: A verdict per path given.
+        list[CheckResult]: A verdict per path given, except macOS `._` metadata files.
+
+    Raises:
+        cappa.Exit: If every path given is a macOS `._` metadata file.
     """
+    files = drop_macos_sidecars(check_cmd.files)
     return [
         check_video_file(path, deep=check_cmd.deep)
         for path in track(
-            check_cmd.files,
-            description=f"Decoding {len(check_cmd.files)} files...",
+            files,
+            description=f"Decoding {len(files)} files...",
             transient=True,
             disable=not check_cmd.deep,
         )
