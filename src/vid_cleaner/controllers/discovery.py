@@ -153,6 +153,8 @@ def _collect_video_files(
 
     Args:
         root (Path): Directory to search.
+        probe_cache (ProbeCache): Cache of earlier ffprobe results. `ProbeCache(None)`
+            probes every file.
         depth (int): Subdirectory levels to descend. 0 searches only `root`.
         unreadable (list[VideoProbeError]): Receives each directory or file that could
             not be read, so the caller reports it alongside the files that failed to probe.
@@ -204,7 +206,7 @@ def _collect_video_files(
 
 
 def _read_search_result(
-    video_file: VideoFile, *, filters: set[VideoTrait], probe_cache: ProbeCache | None
+    video_file: VideoFile, *, filters: set[VideoTrait], probe_cache: ProbeCache
 ) -> SearchResult | None:
     """Probe one file and describe it, or report that it does not match the filters.
 
@@ -213,7 +215,7 @@ def _read_search_result(
     Args:
         video_file (VideoFile): The file to probe.
         filters (set[VideoTrait]): Traits the file must have all of.
-        probe_cache (ProbeCache | None): Cache of earlier ffprobe results.
+        probe_cache (ProbeCache): Cache of earlier ffprobe results.
 
     Returns:
         SearchResult | None: The file's row, or None when it lacks a required trait.
@@ -247,7 +249,7 @@ def _probe_in_parallel(
     video_files: list[VideoFile],
     *,
     filters: set[VideoTrait],
-    probe_cache: ProbeCache | None,
+    probe_cache: ProbeCache,
     jobs: int,
     description: str,
 ) -> tuple[list[SearchResult], list[VideoProbeError]]:
@@ -256,7 +258,7 @@ def _probe_in_parallel(
     Args:
         video_files (list[VideoFile]): The files to probe.
         filters (set[VideoTrait]): Traits a file must have all of.
-        probe_cache (ProbeCache | None): Cache of earlier ffprobe results.
+        probe_cache (ProbeCache): Cache of earlier ffprobe results.
         jobs (int): The most files to probe at once.
         description (str): The label beside the progress bar.
 
@@ -299,13 +301,13 @@ def _probe_in_parallel(
 def discover_video_files(  # noqa: PLR0913
     root: Path,
     *,
+    probe_cache: ProbeCache,
     depth: int = 0,
     filters: set[VideoTrait] | None = None,
     sort: SortOrder = SortOrder.ALPHA,
     reverse: bool = False,
     limit: int | None = None,
     jobs: int = DEFAULT_PROBE_JOBS,
-    probe_cache: ProbeCache | None = None,
 ) -> DiscoveryReport:
     """Find, probe, filter, and rank the video files under a directory.
 
@@ -314,6 +316,8 @@ def discover_video_files(  # noqa: PLR0913
 
     Args:
         root (Path): Directory to search.
+        probe_cache (ProbeCache): Cache of earlier ffprobe results. `ProbeCache(None)`
+            probes every file.
         depth (int): Subdirectory levels to descend. 0 searches only `root`.
         filters (set[VideoTrait] | None): Traits a file must have all of. None or an empty
             set keeps every readable file.
@@ -321,8 +325,6 @@ def discover_video_files(  # noqa: PLR0913
         reverse (bool): Flip the key's natural direction.
         limit (int | None): Keep only the first N results after sorting.
         jobs (int): The most files to probe at once.
-        probe_cache (ProbeCache | None): Cache of earlier ffprobe results. None probes
-            every file.
 
     Returns:
         DiscoveryReport: The ranked selection plus the counts needed to describe it.

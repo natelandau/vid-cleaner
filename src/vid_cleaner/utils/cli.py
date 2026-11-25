@@ -266,42 +266,12 @@ def create_default_config() -> None:
     pp.info(f"Default configuration file created: `{user_config_path}`")
 
 
-def parse_limit(raw: str) -> int:
-    """Parse `--limit` as a count of results to keep, rejecting anything below one.
+def parse_count(raw: str) -> int:
+    """Parse a count flag such as `--limit` or `--jobs`, rejecting anything below one.
 
-    Reject the bad value at parse time because the limit reaches a list slice unchecked:
-    zero selects nothing and a negative value quietly trims from the end, so either one
-    acts on a selection the user never described.
-
-    Args:
-        raw (str): The raw command line value.
-
-    Returns:
-        int: The validated limit.
-
-    Raises:
-        ValueError: If the value is not a whole number of 1 or greater.
-    """
-    return _parse_count(raw)
-
-
-def parse_jobs(raw: str) -> int:
-    """Parse `--jobs` as the number of files to probe at once, rejecting anything below one.
-
-    Args:
-        raw (str): The raw command line value.
-
-    Returns:
-        int: The validated number of parallel probes.
-
-    Raises:
-        ValueError: If the value is not a whole number of 1 or greater.
-    """
-    return _parse_count(raw)
-
-
-def _parse_count(raw: str) -> int:
-    """Parse a whole number of 1 or greater.
+    Reject the bad value at parse time because a count reaches a list slice or a thread
+    pool unchecked: zero selects nothing and a negative `--limit` quietly trims from the
+    end, so either one acts on a selection the user never described.
 
     Args:
         raw (str): The raw command line value.

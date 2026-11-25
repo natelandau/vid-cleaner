@@ -266,9 +266,14 @@ def _read_environment(environ: Mapping[str, str]) -> dict[str, _SourcedValue]:
     return layer
 
 
-def _convert_all(values: Mapping[str, _SourcedValue], errors: list[str]) -> dict[str, Any]:
+def _convert_all(
+    values: Mapping[str, _SourcedValue],
+    errors: list[str],
+    keys: Sequence[str] = SETTING_NAMES,
+) -> dict[str, Any]:
     converted: dict[str, Any] = {}
-    for key, converter in _CONVERTERS.items():
+    for key in keys:
+        converter = _CONVERTERS[key]
         sourced = values.get(key)
         if sourced is None:
             if key in _CODE_DEFAULTS:
@@ -325,14 +330,11 @@ def load_cache_dir(
     if errors:
         raise ConfigError(errors)
 
-    sourced = ChainMap(_read_environment(environ), file_layer).get("cache_dir")
-    if sourced is None:
-        return CACHE_DIR
-    try:
-        return _to_path(sourced.value)
-    except _InvalidValueError as e:
-        msg = f"`cache_dir` from {sourced.source}: {sourced.value!r} is invalid; expected {e.expected}"
-        raise ConfigError([msg]) from e
+    values = ChainMap(_read_environment(environ), file_layer)
+    converted = _convert_all(values=values, errors=errors, keys=("cache_dir",))
+    if errors:
+        raise ConfigError(errors)
+    return converted["cache_dir"]
 
 
 def load_config(

@@ -22,13 +22,11 @@ from vid_cleaner.cli.discovery_output import (
 )
 from vid_cleaner.config import Config, RunOptions
 from vid_cleaner.constants import (
-    DEFAULT_PROBE_JOBS,
     FHD_RESOLUTION,
     SCALE_TO_1080P_LABEL,
     SYMBOL_CROSS,
     UPSCALE_DECLINED_REASON,
     CleanStatus,
-    SortOrder,
     VerifyLevel,
 )
 from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
@@ -448,23 +446,13 @@ def select_video_files(
             files, or the selection is not confirmed.
     """
     discovery = clean_cmd.discovery
-    # Compare against defaults rather than asking cappa what the user typed; an explicit
-    # `--sort=alpha` would have been a no-op anyway, so treating it as unset is harmless.
-    uses_discovery_flags = bool(
-        discovery.filters
-        or discovery.limit is not None
-        or discovery.depth
-        or discovery.reverse
-        or discovery.sort != SortOrder.ALPHA
-        or discovery.jobs != DEFAULT_PROBE_JOBS
-        or clean_cmd.yes
-    )
+    discovery_flags = discovery.flags_in_use() + (["`--yes`"] if clean_cmd.yes else [])
 
     if clean_cmd.from_ is not None and clean_cmd.files:
         raise stop_run(FROM_WITH_FILES_ERROR)
 
-    if clean_cmd.from_ is None and uses_discovery_flags:
-        msg = f"{REQUIRES_FROM_ERROR}: `--filters`, `--sort`, `--reverse`, `--depth`, `--limit`, `--jobs`, `--yes`"
+    if clean_cmd.from_ is None and discovery_flags:
+        msg = f"{REQUIRES_FROM_ERROR}: {', '.join(discovery_flags)}"
         raise stop_run(msg)
 
     if clean_cmd.from_ is None:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import signal
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
@@ -34,8 +34,7 @@ from vid_cleaner.utils import (
     ProbeCache,
     create_default_config,
     find_missing_binaries,
-    parse_jobs,
-    parse_limit,
+    parse_count,
     parse_trait_filters,
     stop_run,
 )
@@ -288,9 +287,25 @@ class SelectionOptions:
             long=True,
             show_default=True,
             group="Discovery",
-            parse=parse_jobs,
+            parse=parse_count,
         ),
     ] = DEFAULT_PROBE_JOBS
+
+    def flags_in_use(self) -> list[str]:
+        """Name each query flag set to something other than its default.
+
+        Use this to refuse query flags given without `--from`, where they would do
+        nothing. Comparing against defaults rather than asking cappa what the user typed
+        treats an explicit `--sort=alpha` as unset, which is harmless since it is a no-op.
+
+        Returns:
+            list[str]: The flags in use, such as `--depth`, in declaration order.
+        """
+        return [
+            f"`--{option.name}`"
+            for option in fields(self)
+            if getattr(self, option.name) != option.default
+        ]
 
 
 @dataclass
@@ -308,7 +323,7 @@ class DiscoveryOptions(SelectionOptions):
             long=True,
             show_default=False,
             group="Discovery",
-            parse=parse_limit,
+            parse=parse_count,
         ),
     ] = None
 

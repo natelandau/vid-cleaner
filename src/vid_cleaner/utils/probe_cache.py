@@ -41,7 +41,7 @@ class ProbeCache:
         """Remember where the database lives without touching the filesystem."""
         self.database_path = directory / PROBE_CACHE_FILENAME if directory else None
         self._connection: sqlite3.Connection | None = None
-        self._disabled = directory is None
+        self._disabled = False
         self._lock = threading.Lock()
 
     def __enter__(self) -> Self:
@@ -140,6 +140,10 @@ class ProbeCache:
             self.database_path.parent.mkdir(parents=True, exist_ok=True)
             # Worker threads share this connection; the lock serializes every use of it
             connection = sqlite3.connect(self.database_path, check_same_thread=False)
+            # Every probed file is its own commit; WAL without a sync per commit keeps those
+            # cheap, and a cache can afford to lose its last writes in a power cut
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA synchronous=NORMAL")
             connection.execute(_SCHEMA)
         except (OSError, sqlite3.Error) as e:
             self._disable(e)

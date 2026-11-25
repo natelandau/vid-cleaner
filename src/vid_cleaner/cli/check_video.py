@@ -13,7 +13,6 @@ from vid_cleaner.cli.discovery_output import (
     REQUIRES_FROM_ERROR,
     discover_from_directory,
 )
-from vid_cleaner.constants import DEFAULT_PROBE_JOBS, SortOrder
 from vid_cleaner.controllers.discovery import DiscoveryReport
 from vid_cleaner.controllers.validation import CheckResult, check_probed_video, check_video_file
 from vid_cleaner.utils import drop_macos_sidecars, stop_run, track_progress
@@ -123,22 +122,13 @@ def select_results(check_cmd: CheckCommand) -> Iterator[CheckResult]:
         cappa.Exit: If the two modes are mixed, if discovery flags appear without
             `--from`, or if neither a file nor `--from` was given.
     """
-    discovery = check_cmd.discovery
-    # Compare against defaults rather than asking cappa what the user typed; an explicit
-    # `--sort=alpha` would have been a no-op anyway, so treating it as unset is harmless.
-    uses_discovery_flags = bool(
-        discovery.filters
-        or discovery.depth
-        or discovery.reverse
-        or discovery.sort != SortOrder.ALPHA
-        or discovery.jobs != DEFAULT_PROBE_JOBS
-    )
+    discovery_flags = check_cmd.discovery.flags_in_use()
 
     if check_cmd.from_ is not None and check_cmd.files:
         raise stop_run(FROM_WITH_FILES_ERROR)
 
-    if check_cmd.from_ is None and uses_discovery_flags:
-        msg = f"{REQUIRES_FROM_ERROR}: `--filters`, `--sort`, `--reverse`, `--depth`, `--jobs`"
+    if check_cmd.from_ is None and discovery_flags:
+        msg = f"{REQUIRES_FROM_ERROR}: {', '.join(discovery_flags)}"
         raise stop_run(msg)
 
     if check_cmd.from_ is not None:
