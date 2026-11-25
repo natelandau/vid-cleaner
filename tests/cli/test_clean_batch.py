@@ -1,6 +1,7 @@
 """Test how the clean subcommand runs a batch of files: discovery, failures, and interrupts."""
 
 import cappa
+import pytest
 from iso639 import Lang
 
 from tests.helpers import run_vidcleaner
@@ -88,7 +89,18 @@ def test_clean_from_limit_selects_top_results(capsys, video_library, mock_ffmpeg
     assert "apple.mkv" not in output
 
 
-def test_clean_continues_after_a_file_fails(capsys, tmp_path, mocker, mock_ffmpeg):
+@pytest.mark.parametrize(
+    "make_error",
+    [
+        pytest.param(
+            lambda path: VideoCleanError(path=path, reason="no video streams found"),
+            id="unusable video",
+        ),
+        pytest.param(lambda path: OSError(28, "No space left on device"), id="disk error"),
+        pytest.param(lambda path: RuntimeError("ffmpeg exited 1"), id="ffmpeg failure"),
+    ],
+)
+def test_clean_continues_after_a_file_fails(capsys, tmp_path, mocker, make_error):
     """Verify one failing file does not discard the work queued behind it."""
     # Given: Two files where the first fails to clean
     first = tmp_path / "first.mkv"
@@ -98,16 +110,14 @@ def test_clean_continues_after_a_file_fails(capsys, tmp_path, mocker, mock_ffmpe
 
     def plan_clean(self, config, options):
         if self.path.name == "first.mkv":
-            msg = "no video streams found"
-            raise VideoCleanError(path=self.path, reason=msg)
+            raise make_error(self.path)
         return ConversionPlan()
 
     mocker.patch("vid_cleaner.models.video_file.VideoFile.plan_clean", plan_clean)
     mocker.patch.object(VideoFile, "plan_changes_file", return_value=False)
 
     # When: Cleaning both files
-    args = ["-n", "clean", str(first), str(second)]
-    exit_code = run_vidcleaner(args)
+    exit_code = run_vidcleaner(["-n", "clean", str(first), str(second)])
 
     output, error = capsys.readouterr()
 

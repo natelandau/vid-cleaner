@@ -74,7 +74,14 @@ def test_clean_rejects_from_with_out(capsys, tmp_path):
 
 @pytest.mark.parametrize(
     "discovery_arg",
-    [["--filters", "h264"], ["--limit", "2"], ["--depth", "1"], ["--reverse"], ["--sort", "size"]],
+    [
+        ["--filters", "h264"],
+        ["--limit", "2"],
+        ["--depth", "1"],
+        ["--reverse"],
+        ["--sort", "size"],
+        ["--yes"],
+    ],
 )
 def test_clean_rejects_discovery_flags_without_from(capsys, tmp_path, discovery_arg):
     """Verify a discovery flag without --from errors rather than silently doing nothing."""
@@ -102,21 +109,6 @@ def test_clean_rejects_no_files_and_no_from(capsys):
     # Then: The command errors
     assert exit_code == 1
     assert "Provide file path(s) or `--from`" in capsys.readouterr().err
-
-
-def test_clean_rejects_yes_without_from(capsys, tmp_path):
-    """Verify --yes without --from errors rather than being accepted as a no-op."""
-    # Given: --yes on an explicit-file run, where no prompt would ever be shown
-    video = tmp_path / "movie.mkv"
-    video.touch()
-    args = ["clean", "--yes", str(video)]
-
-    # When: Running clean
-    exit_code = run_vidcleaner(args)
-
-    # Then: The command errors naming --from
-    assert exit_code == 1
-    assert "require `--from`" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
@@ -151,23 +143,6 @@ def test_clean_short_flag_matches_long_flag(tmp_path, short, long, attribute):
     assert getattr(from_short, attribute) != getattr(unset, attribute)
 
 
-def test_clean_short_flags_bundle(tmp_path):
-    """Verify short flags combine into one token so common conversions stay terse."""
-    # Given: A clean invocation bundling several boolean short flags
-    video = tmp_path / "movie.mkv"
-    video.touch()
-
-    # When: Parsing the bundled form
-    command = parse(VidCleaner, argv=["clean", "-Hdsc", str(video)]).command
-    assert isinstance(command, CleanCommand)
-
-    # Then: Every bundled flag is set
-    assert command.h265
-    assert command.downmix_stereo
-    assert command.keep_all_subtitles
-    assert command.keep_commentary
-
-
 def test_clean_langs_short_flag_takes_a_value(tmp_path):
     """Verify -l accepts a language list rather than being treated as a boolean."""
     # Given: A clean invocation passing languages via the short flag
@@ -197,25 +172,20 @@ def test_clean_rejects_limit_below_one(tmp_path, limit):
     assert "must be 1 or greater" in str(exc_info.value.message)
 
 
-def test_clean_rejects_from_that_does_not_exist(capsys, tmp_path):
-    """Verify a missing --from directory fails instead of reporting a successful no-op."""
-    # Given: A --from path that does not exist
-    args = ["clean", "--from", str(tmp_path / "does-not-exist")]
-
-    # When: Running clean
-    exit_code = run_vidcleaner(args)
-
-    # Then: The command errors rather than exiting 0
-    assert exit_code == 1
-    assert f"`--from` {NOT_AN_EXISTING_DIRECTORY_ERROR}" in capsys.readouterr().err
-
-
-def test_clean_rejects_from_that_is_a_file(capsys, tmp_path):
-    """Verify a --from pointing at a file fails, since clean otherwise takes file paths."""
-    # Given: A --from path naming a file rather than a directory
-    video = tmp_path / "movie.mkv"
-    video.touch()
-    args = ["clean", "--from", str(video)]
+@pytest.mark.parametrize(
+    ("name", "create"),
+    [
+        pytest.param("does-not-exist", False, id="missing"),
+        pytest.param("movie.mkv", True, id="a file"),
+    ],
+)
+def test_clean_rejects_from_that_is_not_a_directory(capsys, tmp_path, name, create):
+    """Verify a --from that is missing or a file fails instead of reporting a successful no-op."""
+    # Given: A --from path that is not an existing directory
+    from_path = tmp_path / name
+    if create:
+        from_path.touch()
+    args = ["clean", "--from", str(from_path)]
 
     # When: Running clean
     exit_code = run_vidcleaner(args)

@@ -546,63 +546,32 @@ def test_convert_video(
         assert "Converting to VP9, setting output to `test_video.webm`" in output
 
 
-def test_clean_video_h265_skip_shown_in_debug_mode(
-    mocker,
-    mock_ffprobe_box,
-    video_path,
-    capsys,
-    mock_ffmpeg,
+@pytest.mark.parametrize(
+    ("verbosity", "skip_shown"),
+    [pytest.param([], False, id="normal"), pytest.param(["-vv"], True, id="-vv")],
+)
+def test_clean_h265_skip_shown_only_in_debug_mode(
+    mocker, video_path, capsys, mock_ffmpeg, mock_video_probe, verbosity, skip_shown
 ):
-    """Verify -vv reports a skipped --h265 request with its reason when already H.265."""
+    """Verify a skipped --h265 request and its reason appear only with -vv."""
     # Given: reference.json rewritten so the video stream is already HEVC
-    args = ["clean", "-vv", "--h265", str(video_path)]
-    box = mock_ffprobe_box("reference.json")
+    box = mock_video_probe("reference.json")
     box.streams[0].codec_name = "hevc"
-    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", return_value=box)
     mocker.patch(
         "vid_cleaner.cli.clean_video.copy_to_output",
         side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
     )
     mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
 
-    # When: running clean in debug mode with --h265 requested
-    exit_code = run_vidcleaner(args)
+    # When: running clean with --h265 requested
+    exit_code = run_vidcleaner(["clean", *verbosity, "--h265", str(video_path)])
 
-    # Then: the skipped H.265 conversion is reported with its reason
+    # Then: the result tree renders, and lists the skip only in debug mode
     output = capsys.readouterr().out
     assert exit_code == 0
-    assert f"✖ {CONVERT_TO_H265_LABEL}  ({ALREADY_MODERN_CODEC_REASON})" in output
-
-
-def test_clean_video_h265_skip_hidden_in_normal_mode(
-    mocker,
-    mock_ffprobe_box,
-    video_path,
-    capsys,
-    mock_ffmpeg,
-):
-    """Verify normal mode (no -vv) hides the skipped --h265 request and its reason."""
-    # Given: reference.json rewritten so the video stream is already HEVC, and no -vv flag
-    args = ["clean", "--h265", str(video_path)]
-    box = mock_ffprobe_box("reference.json")
-    box.streams[0].codec_name = "hevc"
-    mocker.patch("vid_cleaner.models.video_file.get_probe_as_box", return_value=box)
-    mocker.patch(
-        "vid_cleaner.cli.clean_video.copy_to_output",
-        side_effect=lambda src, dst, *, overwrite: (dst, ["✔ Saved to cleaned_video.mkv"]),
-    )
-    mocker.patch.object(VideoFile, "_find_original_language", return_value=Lang("en"))
-
-    # When: running clean in normal mode with --h265 requested
-    exit_code = run_vidcleaner(args)
-
-    # Then: normal mode is genuinely active and the skipped operation is not shown
-    output = capsys.readouterr().out
-    assert exit_code == 0
-    assert "✖ Convert to H.265" not in output
-    assert "already H.265/VP9; use --force" not in output
-    # But verify that rendering actually happened (positive assertion)
     assert f"✔ {DROP_AUDIO_LABEL}" in output
+    skip_line = f"✖ {CONVERT_TO_H265_LABEL}  ({ALREADY_MODERN_CODEC_REASON})"
+    assert (skip_line in output) is skip_shown
 
 
 def test_clean_renders_completed_steps_on_error(

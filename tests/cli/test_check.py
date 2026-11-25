@@ -266,10 +266,14 @@ def test_check_rejects_from_combined_with_files(capsys, tmp_path, video_path):
     assert "cannot be combined with explicit file paths" in captured.err
 
 
-def test_check_rejects_discovery_flags_without_from(capsys, video_path):
+@pytest.mark.parametrize(
+    "discovery_arg",
+    [["--filters", "h264"], ["--depth", "1"], ["--reverse"], ["--sort", "size"]],
+)
+def test_check_rejects_discovery_flags_without_from(capsys, video_path, discovery_arg):
     """Verify discovery flags without `--from` are an error rather than a silent no-op."""
-    # Given: A filter applied to explicitly named files
-    args = ["check", "--filters", "h264", str(video_path)]
+    # Given: A discovery flag applied to explicitly named files
+    args = ["check", *discovery_arg, str(video_path)]
 
     # When: Checking
     exit_code = run_vidcleaner(args)

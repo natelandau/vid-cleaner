@@ -3,6 +3,7 @@
 import pytest
 
 from tests.helpers import run_vidcleaner
+from vid_cleaner.cli import clip_video
 from vid_cleaner.constants import NO_VIDEO_STREAMS_REASON
 from vid_cleaner.controllers import TempFile
 
@@ -223,3 +224,35 @@ def test_clip_continues_past_a_bad_file(
     assert exit_code == 1
     assert NO_VIDEO_STREAMS_REASON in captured.out + captured.err
     assert "clipped_video.mkv" in captured.out
+
+
+def test_clip_failure_clears_its_temp_files_and_continues(
+    tmp_path, mocker, mock_video_probe, fake_transcode
+):
+    """Verify a failed clip discards its temp files and the next file is still clipped."""
+    # Given: Two videos where ffmpeg fails on the first
+    first = tmp_path / "first.mkv"
+    second = tmp_path / "second.mkv"
+    for video in (first, second):
+        video.write_bytes(b"source")
+    mock_video_probe("reference.json")
+    fake_transcode()
+    real_step = clip_video.run_ffmpeg_step
+
+    def fail_first(video, command, **kwargs):
+        if video.path.name == first.name:
+            msg = "ffmpeg exited 1"
+            raise RuntimeError(msg)
+        return real_step(video, command, **kwargs)
+
+    mocker.patch("vid_cleaner.cli.clip_video.run_ffmpeg_step", side_effect=fail_first)
+    cleanup = mocker.spy(TempFile, "clean_up")
+
+    # When: Clipping both
+    exit_code = run_vidcleaner(["clip", "--overwrite", str(first), str(second)])
+
+    # Then: The run fails, both files' temp files are cleared, and the second is clipped
+    assert exit_code == 1
+    assert cleanup.call_count == 2
+    assert first.read_bytes() == b"source"
+    assert second.read_bytes() == b"transcoded"

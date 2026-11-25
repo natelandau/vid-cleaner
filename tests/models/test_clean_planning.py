@@ -1,6 +1,7 @@
 """Test VideoFile single-pass conversion planning."""
 
 from dataclasses import fields
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -368,6 +369,41 @@ def test_build_plan_vp9_drops_bitmap_subtitles(make_video, plan_settings):
     drop_subs = next(a for a in plan.actions if a.label == DROP_SUBTITLES_LABEL)
     assert drop_subs.applied is True
     assert drop_subs.reason is None
+
+
+@pytest.mark.parametrize(
+    ("out", "expected_name"),
+    [
+        pytest.param(None, "test_video.webm", id="in place"),
+        pytest.param(Path("result.mkv"), "result.webm", id="--out with another container"),
+    ],
+)
+def test_vp9_notice_names_the_real_output_file(make_video, plan_settings, out, expected_name):
+    """Verify --vp9 tells the user the .webm name it writes in place of the expected one."""
+    # Given: --vp9, optionally with --out
+    plan_settings.update({"vp9": True, "out": out})
+    video = make_video("reference.json")
+
+    # When: building the plan
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
+
+    # Then: one notice names the .webm file
+    container_notices = [n for n in plan.notices if "setting output to" in n]
+    assert len(container_notices) == 1
+    assert expected_name in container_notices[0]
+
+
+def test_vp9_notice_absent_when_out_is_already_webm(make_video, plan_settings):
+    """Verify --vp9 adds no container notice when --out already names a .webm file."""
+    # Given: --vp9 with a .webm --out
+    plan_settings.update({"vp9": True, "out": Path("result.webm")})
+    video = make_video("reference.json")
+
+    # When: building the plan
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
+
+    # Then: no notice about the output name
+    assert not any("setting output to" in n for n in plan.notices)
 
 
 @pytest.mark.parametrize(

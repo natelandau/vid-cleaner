@@ -148,7 +148,6 @@ def _run_clean(argv: list[str]) -> str | int | None:
     [
         ("true", ["--no-keep-commentary"], False),
         ("false", ["--keep-commentary"], True),
-        ("false", ["-c"], True),
         ("true", [], True),
     ],
 )
@@ -165,10 +164,12 @@ def test_track_flag_wins_over_config(
 
 
 def test_bundled_short_flags_set_each_setting(captured_clean, video_path) -> None:
-    """Verify bundled short flags still set each paired setting."""
-    _run_clean(["-dc", str(video_path)])
+    """Verify bundled short flags set each setting and run option they stand for."""
+    _run_clean(["-Hdsc", str(video_path)])
 
+    assert captured_clean["options"].h265 is True
     assert captured_clean["config"].downmix_stereo is True
+    assert captured_clean["config"].keep_all_subtitles is True
     assert captured_clean["config"].keep_commentary is True
 
 
@@ -228,6 +229,20 @@ def test_invalid_config_stops_clean(capsys, user_config, video_path) -> None:
 
     assert code == 1
     assert "radarr_url" in capsys.readouterr().err
+
+
+def test_config_warnings_are_shown_and_the_run_continues(
+    capsys, captured_clean, user_config, video_path
+) -> None:
+    """Verify config warnings, such as an unknown setting, reach the user without stopping the run."""
+    user_config("keep_comentary = true")
+
+    code = _run_clean([str(video_path)])
+
+    output, error = capsys.readouterr()
+    assert code == 0
+    assert "keep_comentary" in output + error
+    assert "config" in captured_clean
 
 
 def test_default_config_created_private(capsys) -> None:

@@ -276,13 +276,22 @@ def test_discover_matches_extensions_case_insensitively(video_library):
     assert [r.video_file.path.name for r in report.results] == ["MOVIE.MKV"]
 
 
-def test_discover_lists_a_file_reached_through_a_symlink_once(video_library):
-    """Verify a symlinked subdirectory does not list, and so clean, its files twice."""
-    # Given: A nested video and a sibling symlink pointing at its directory
+@pytest.mark.parametrize(
+    ("link_name", "target", "is_directory"),
+    [
+        pytest.param("latest", "nested", True, id="symlinked directory"),
+        pytest.param("nested/alias.mkv", "nested/deep.mkv", False, id="symlinked file"),
+    ],
+)
+def test_discover_lists_a_file_reached_through_a_symlink_once(
+    video_library, link_name, target, is_directory
+):
+    """Verify a file reachable through a symlink is listed, and so cleaned, only once."""
+    # Given: A nested video and a symlink that reaches it a second way
     directory = video_library([("nested/deep.mkv", 100, 1_000_000)])
-    (directory / "latest").symlink_to(directory / "nested", target_is_directory=True)
+    (directory / link_name).symlink_to(directory / target, target_is_directory=is_directory)
 
-    # When: Discovering one level deep, which visits both directories
+    # When: Discovering one level deep, which visits both paths
     report = discover_video_files(directory, depth=1)
 
     # Then: The file appears once

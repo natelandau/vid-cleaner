@@ -2,9 +2,11 @@
 
 from pathlib import Path
 
+import cappa
 import pytest
 
-from vid_cleaner.utils import copy_to_output
+from vid_cleaner.constants import VideoTrait
+from vid_cleaner.utils import coerce_video_files, copy_to_output, parse_trait_filters
 
 
 def test_copy_to_output_backs_up_existing(tmp_path: Path) -> None:
@@ -152,3 +154,37 @@ def test_copy_to_output_overwrite_does_not_mutate_hardlink(tmp_path: Path) -> No
     # Then: the destination has the new content but the hardlink keeps the original
     assert dst.read_text() == "new content"
     assert link.read_text() == "original content"
+
+
+def test_coerce_video_files_accepts_an_uppercase_extension(tmp_path) -> None:
+    """Verify a video named with an uppercase extension, such as `MOVIE.MKV`, is accepted."""
+    path = tmp_path / "MOVIE.MKV"
+    path.touch()
+
+    videos = coerce_video_files([path])
+
+    assert [video.path for video in videos] == [path.resolve()]
+
+
+@pytest.mark.parametrize(
+    ("name", "create"),
+    [
+        pytest.param("movie.mkv", False, id="missing file"),
+        pytest.param("notes.txt", True, id="non-video file"),
+    ],
+)
+def test_coerce_video_files_rejects_unusable_paths(tmp_path, name, create) -> None:
+    """Verify a named path that is missing or not a video stops the run."""
+    path = tmp_path / name
+    if create:
+        path.touch()
+
+    with pytest.raises(cappa.Exit) as exc_info:
+        coerce_video_files([path])
+
+    assert exc_info.value.code == 1
+
+
+def test_parse_trait_filters_ignores_case_and_spacing() -> None:
+    """Verify `--filters` accepts names as users type them, such as ` H264, 1080P `."""
+    assert parse_trait_filters(" H264, 1080P ") == {VideoTrait.H264, VideoTrait.FHD}
