@@ -28,6 +28,8 @@ from vid_cleaner.constants import (
 )
 from vid_cleaner.exceptions import VideoCleanError
 
+from vid_cleaner.models.video_file import VideoFile  # isort: skip
+
 from vid_cleaner.cli.clean_video import clean_video_file  # isort: skip
 
 
@@ -108,21 +110,6 @@ def test_build_plan_h265_sets_video_codec_and_bitrates(make_video, plan_settings
     assert h265_action.applied is True
 
 
-def test_h265_records_applied_action(make_video, plan_settings):
-    """Verify --h265 records an applied action when the encode runs."""
-    # Given: reference.json (h264 video) with --h265 and a 1 MB input file
-    plan_settings.update({"h265": True})
-    video = make_video("reference.json")
-    video.temp_file.path.write_bytes(b"0" * 1_000_000)
-
-    # When: building the plan
-    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
-
-    # Then: the recorded action is applied
-    h265_action = next(a for a in plan.actions if a.label == CONVERT_TO_H265_LABEL)
-    assert h265_action.applied is True
-
-
 @pytest.mark.parametrize(
     ("flag", "label"),
     [
@@ -149,6 +136,50 @@ def test_codec_conversion_records_skip_reason_when_already_modern(
     assert action.reason == ALREADY_MODERN_CODEC_REASON
     assert plan.streams[0].codec == "copy"
     assert plan.output_suffix is None
+
+
+@pytest.mark.parametrize(
+    ("flag", "label", "codec"),
+    [
+        pytest.param("h265", CONVERT_TO_H265_LABEL, "libx265", id="h265"),
+        pytest.param("vp9", CONVERT_TO_VP9_LABEL, "libvpx-vp9", id="vp9"),
+    ],
+)
+def test_codec_conversion_with_force_reencodes_a_modern_video(
+    make_video, plan_settings, flag, label, codec
+):
+    """Verify --force re-encodes a video that is already H.265."""
+    # Given: reference.json rewritten so the video codec is hevc, with --force
+    plan_settings.update({flag: True, "force": True})
+    video = make_video("reference.json")
+    video.probe_box.streams[0].codec_name = "hevc"
+    video.temp_file.path.write_bytes(b"0" * 1_000_000)
+
+    # When: building the plan
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
+
+    # Then: the video is encoded and the conversion is reported as applied
+    action = next(a for a in plan.actions if a.label == label)
+    assert action.applied is True
+    assert plan.streams[0].codec == codec
+
+
+def test_h265_uses_the_stream_duration_when_the_container_has_none(make_video, plan_settings):
+    """Verify --h265 still sizes the encode from the video stream's own duration."""
+    # Given: reference.json with no container duration but a timed video stream
+    plan_settings.update({"h265": True})
+    video = make_video("reference.json")
+    video.temp_file.path.write_bytes(b"0" * 1_000_000)
+    video.probe_box.duration = None
+    video.probe_box.streams[0].duration = "60.0"
+
+    # When: building the plan
+    plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
+
+    # Then: the encode is planned rather than skipped for an unknown duration
+    action = next(a for a in plan.actions if a.label == CONVERT_TO_H265_LABEL)
+    assert action.applied is True
+    assert plan.streams[0].codec == "libx265"
 
 
 def test_h265_skips_when_duration_unknown(make_video, plan_settings):
@@ -380,16 +411,22 @@ def test_build_plan_vp9_downmix_uses_vorbis(make_video, plan_settings):
     assert downmix.codec == "libvorbis"
 
 
-def test_estimate_cleaned_size_subtracts_dropped_streams(make_video):
+@pytest.mark.parametrize(
+    "bitrate_field",
+    [
+        pytest.param("bit_rate", id="ffprobe bit_rate"),
+        pytest.param("bps", id="Matroska BPS tag"),
+    ],
+)
+def test_estimate_cleaned_size_subtracts_dropped_streams(make_video, bitrate_field):
     """Verify the size estimate subtracts dropped streams' bitrate-derived bytes."""
     # Given: a 10 MB file where a dropped 640 kbps stream spans 60 seconds
     video = make_video("reference.json")
     video.temp_file.path.write_bytes(b"0" * 10_000_000)
-    video.probe_box.streams[3].bit_rate = "640000"
     for stream in video.probe_box.streams:
-        if stream.index != 3:
-            stream.bit_rate = None
-            stream.bps = None
+        stream.bit_rate = None
+        stream.bps = None
+    video.probe_box.streams[3][bitrate_field] = "640000"
 
     # When: estimating with only stream 3 dropped
     mapped = {s.index for s in video.probe_box.streams if s.index != 3}
@@ -480,7 +517,9 @@ def test_drop_audio_records_fallback_reason_when_every_stream_filtered(make_vide
     # When: building the plan
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
-    # Then: the drop-audio action is truthfully unapplied with the fallback reason
+    # Then: the audio stays in the output and the report gives the fallback reason
+    audio_indexes = {stream.index for stream in video.audio_streams}
+    assert audio_indexes <= {stream.source_index for stream in plan.streams}
     drop = next(a for a in plan.actions if a.label == DROP_AUDIO_LABEL)
     assert drop.applied is False
     assert drop.reason == SILENT_FILE_REASON
@@ -658,18 +697,48 @@ def test_downmix_prefers_first_configured_language(make_video, plan_settings):
     assert [s.source_index for s in downmixes] == [3]
 
 
-def test_downmix_discounts_commentary_source(make_video, plan_settings):
-    """Verify a surround commentary track is not chosen as the downmix source."""
-    # Given: a kept, untagged-language 5.1 commentary bed (#1) ahead of the main 5.1 bed (#2)
-    plan_settings.update({"downmix_stereo": True, "keep_commentary": True})
-    video = make_video("surround_commentary_no_lang.json")
+def test_downmix_never_sources_a_commentary_bed(make_video, plan_settings):
+    """Verify a kept commentary bed loses to a main bed even in a better language and layout."""
+    # Given: reference.json's English 5.1 bed (#2) retitled as commentary, the 7.1 English
+    # bed (#1) as the only other English surround, and --keep-commentary
+    plan_settings.update(
+        {"downmix_stereo": True, "force": True, "langs_to_keep": ["en"], "keep_commentary": True}
+    )
+    video = make_video("reference.json")
+    video.probe_box.streams[2].title = "Director's commentary"
 
     # When: building the plan
     plan = video._build_plan(*plan_settings.args())  # noqa: SLF001
 
-    # Then: the main bed alone seeds the downmix, not the commentary bed listed first
+    # Then: the 7.1 main bed seeds the stereo track, not the simpler 5.1 commentary
     downmixes = [s for s in plan.streams if s.stream_filter is not None]
-    assert [s.source_index for s in downmixes] == [2]
+    assert [s.source_index for s in downmixes] == [1]
+
+
+@pytest.mark.parametrize(
+    ("drop_original_audio", "drop_local_subs", "looks_up"),
+    [
+        pytest.param(True, True, False, id="no setting needs it"),
+        pytest.param(True, False, True, id="local subtitles need it"),
+        pytest.param(False, True, True, id="original audio needs it"),
+    ],
+)
+def test_original_language_looked_up_only_when_a_setting_uses_it(
+    mocker, make_video, plan_settings, drop_original_audio, drop_local_subs, looks_up
+):
+    """Verify planning skips the network lookup when no setting uses the original language."""
+    # Given: settings that do or do not depend on the original language
+    plan_settings.update(
+        {"drop_original_audio": drop_original_audio, "drop_local_subs": drop_local_subs}
+    )
+    video = make_video("reference.json")
+    lookup = mocker.patch.object(VideoFile, "_find_original_language", return_value=None)
+
+    # When: building the plan
+    video._build_plan(*plan_settings.args())  # noqa: SLF001
+
+    # Then: the lookup runs only when its answer is used
+    assert lookup.called is looks_up
 
 
 def test_audio_plan_drops_untagged_commentary(make_video, plan_settings):

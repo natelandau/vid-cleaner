@@ -4,6 +4,7 @@ These mock at the TMDB, Radarr, and Sonarr query boundary so the real ID discove
 and fallback order run.
 """
 
+import pytest
 from iso639 import Lang
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
@@ -39,15 +40,19 @@ def test_find_original_language_skips_arr_when_filename_id_resolves(
     mock_sonarr.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("radarr_answer", "sonarr_answer"),
+    [
+        pytest.param("tt0245712", None, id="Radarr knows the movie"),
+        pytest.param(None, "tt0245712", id="Sonarr knows the show"),
+    ],
+)
 def test_find_original_language_consults_arr_when_no_id_resolves(
-    mocker,
-    tmp_path,
-    mock_probe_tags,
-    make_config,
+    mocker, tmp_path, mock_probe_tags, make_config, radarr_answer, sonarr_answer
 ) -> None:
-    """Verify Radarr/Sonarr are consulted as a last resort when no ID is discoverable."""
+    """Verify Radarr, then Sonarr, supply the IMDb ID when no ID is discoverable."""
     # Given: a filename and container with no discoverable media ID
-    path = tmp_path / "Some Movie (1999).mkv"
+    path = tmp_path / "Some Title (1999).mkv"
     path.touch()
     video_file = VideoFile(path)
     mock_probe_tags()
@@ -56,16 +61,14 @@ def test_find_original_language_consults_arr_when_no_id_resolves(
         autospec=True,
         return_value={"movie_results": [{"original_language": "fr"}]},
     )
-    mock_radarr = mocker.patch(
-        "vid_cleaner.models.video_file.radarr_imdb_id", return_value="tt0245712"
-    )
+    mocker.patch("vid_cleaner.models.video_file.radarr_imdb_id", return_value=radarr_answer)
+    mocker.patch("vid_cleaner.models.video_file.sonarr_imdb_id", return_value=sonarr_answer)
 
     # When: finding the original language
     result = video_file._find_original_language(make_config(), notes=[])  # noqa: SLF001
 
-    # Then: Radarr/Sonarr is queried and its IMDb ID resolves the language
+    # Then: the IMDb ID from whichever service knew the title resolves the language
     assert result == Lang("fr")
-    mock_radarr.assert_called_once()
     mock_query_tmdb.assert_called_once_with("tt0245712", api_key=mocker.ANY)
 
 
