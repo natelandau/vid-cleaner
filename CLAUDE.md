@@ -9,6 +9,7 @@ uv run duty test -k downmix   # extra args pass through to pytest
 ```
 
 - Run checks only through these duties, never ruff, ty, typos, actionlint, zizmor, or pytest directly. Several duties run through gate-cache, and a direct run neither reads nor records its passes.
+- No duty writes fixes. To apply them, run `uv run ruff check --fix <files>` and `uv run ruff format <files>`, then confirm with `duty lint`. Unused imports and variables (F401, F841) are never auto-fixed; remove them by hand.
 - `already passed on tree ..., skipping` means the check passed on this content. Do not rerun it another way. `GATE_CACHE_DISABLE=1` forces a real run.
 - Run `uv run gate-cache --skill` before adding or changing a gate.
 - Locally `duty test` stops at the first failure. Fix it and rerun to see the next one.
