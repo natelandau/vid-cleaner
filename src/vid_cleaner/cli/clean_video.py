@@ -36,7 +36,11 @@ from vid_cleaner.utils import (
 )
 from vid_cleaner.vidcleaner import CleanCommand, build_config, build_run_options
 
-from vid_cleaner.cli.ffmpeg_step import run_ffmpeg_step  # isort: skip
+from vid_cleaner.cli.ffmpeg_step import run_ffmpeg_step, run_verify_step, verification_enabled  # isort: skip
+from vid_cleaner.controllers.validation import (  # isort: skip
+    SourceLength,
+    expected_clean_output,
+)
 from vid_cleaner.models.conversion_plan import ConversionPlan, PlanAction  # isort: skip
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
@@ -288,11 +292,18 @@ def main(
         substeps: list[str] = []
 
         try:
+            # Read before ffmpeg runs: once a temp file exists, the probe reads that instead
+            verifying = verification_enabled(config=config, options=options)
+            source_length = SourceLength.of_video(video_file) if verifying else None
             plan = clean_video_file(video_file, config=config, options=options)
             destination = out_path_override or video_file.path
             if plan.output_suffix:
                 destination = destination.with_suffix(plan.output_suffix)
             if not options.dryrun:
+                expected = (
+                    expected_clean_output(plan, source_length=source_length) if verifying else None
+                )
+                substeps.extend(run_verify_step(video_file, expected=expected, level=config.verify))
                 substeps.extend(
                     write_output(
                         video_file,

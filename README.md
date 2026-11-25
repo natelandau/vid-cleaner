@@ -147,6 +147,16 @@ These rules apply to `--from`:
 
 If one file fails when you clean or clip several files, the command continues with the other files. At the end, it lists the failures and exits with a non-zero status. `clean` and `clip` refuse a file that has no video stream.
 
+### Checking the output
+
+Before `clean` or `clip` replaces the original, the command checks the new file. The `--verify` option sets the level, for example `--verify=full`. The default level is `quick`. To change the default, set `verify` in the configuration file.
+
+-   `off`: no check.
+-   `quick`: reads the new file and makes sure that it has a video stream, the expected number of audio and subtitle streams, and the expected length.
+-   `full`: does the `quick` check, then decodes the whole file. This check takes minutes for each file.
+
+If the check fails, the command keeps the original, reports the file as failed, and continues with the next file. A dry run does not check anything, because it writes no file.
+
 ### Checking that files are valid
 
 `vidcleaner check` reports if each video file is valid. If a file is not valid, the command exits `1`. Use it to find damaged and mislabeled files in a library.
@@ -236,6 +246,9 @@ downmix_stereo = false
 
 # Replace the original file without keeping a timestamped .bak copy
 overwrite = false
+
+# Check the new file before it replaces the original: "off", "quick", or "full"
+verify = "quick"
 
 # External services used to determine the original language of a movie or TV show
 radarr_api_key = ""

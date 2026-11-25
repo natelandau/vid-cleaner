@@ -32,6 +32,27 @@ def test_clean_interrupt_removes_temp_files_and_stops(
     assert video_path.exists()
 
 
+def test_clean_interrupt_stops_batch_when_cleanup_fails(
+    mocker, mock_ffmpeg, tmp_path, mock_video_probe, mock_original_language
+) -> None:
+    """Verify Ctrl-C stops the whole batch even when removing the temporary files fails."""
+    # Given: two files, an ffmpeg run the user interrupts, and a cleanup that cannot delete
+    first = tmp_path / "first.mkv"
+    second = tmp_path / "second.mkv"
+    first.touch()
+    second.touch()
+    mock_video_probe("reference.json")
+    mock_ffmpeg.return_value.run_command_with_progress.side_effect = KeyboardInterrupt
+    mocker.patch.object(TempFile, "clean_up", side_effect=OSError("device busy"))
+
+    # When: cleaning both files
+    exit_code = run_vidcleaner(["clean", str(first), str(second)])
+
+    # Then: the run stops with an error before ffmpeg runs for the second file
+    assert exit_code == 1
+    assert mock_ffmpeg.call_count == 1
+
+
 def test_clean_from_previews_and_requires_confirmation(capsys, video_library):
     """Verify discovery mode renders the selection table and refuses to run non-interactively."""
     # Given: Two discoverable files

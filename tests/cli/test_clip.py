@@ -2,12 +2,13 @@
 
 import pytest
 
-from tests.helpers import ffmpeg_command, run_vidcleaner
+from tests.helpers import ffmpeg_command, leftover_cache_files, run_vidcleaner
 from vid_cleaner.cli import clip_video
 from vid_cleaner.cli.clip_video import TIME_FORMAT_ERROR
 from vid_cleaner.cli.ffmpeg_step import DRY_RUN_HEADER_SUFFIX
 from vid_cleaner.constants import NO_VIDEO_STREAMS_REASON, SYMBOL_CHECK
 from vid_cleaner.controllers import TempFile
+from vid_cleaner.controllers.validation import OUTPUT_DURATION_REASON
 from vid_cleaner.utils.cli import SAVED_TO_MESSAGE
 
 
@@ -238,3 +239,22 @@ def test_clip_failure_clears_its_temp_files_and_continues(
     assert cleanup.call_count == 2
     assert first.read_bytes() == b"source"
     assert second.read_bytes() == b"transcoded"
+
+
+def test_clip_verify_failure_keeps_original(
+    capsys, tmp_path, video_path, fake_transcode, mock_video_probe
+) -> None:
+    """Verify a clip that comes out much longer than requested fails and leaves the source alone."""
+    # Given: a ten-second clip request, while the output probe reports the full source length
+    video_path.write_bytes(b"source")
+    cache_dir = tmp_path / "cache"
+    mock_video_probe("reference.json")
+
+    # When: clipping with a quick check
+    exit_code = run_vidcleaner(["clip", "--verify=quick", "--duration=00:00:10", str(video_path)])
+
+    # Then: the file fails, the source is unchanged, and no temp file is left
+    assert exit_code == 1
+    assert OUTPUT_DURATION_REASON in capsys.readouterr().out
+    assert video_path.read_bytes() == b"source"
+    assert not leftover_cache_files(cache_dir)

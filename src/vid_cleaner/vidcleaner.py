@@ -12,7 +12,7 @@ from nclutils import pp
 from rich.traceback import install
 
 from vid_cleaner.config import SETTING_NAMES, Config, ConfigError, RunOptions, load_config
-from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel, SortOrder, VideoTrait
+from vid_cleaner.constants import USER_CONFIG_PATH, PrintLevel, SortOrder, VerifyLevel, VideoTrait
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.utils import (
     create_default_config,
@@ -319,6 +319,15 @@ class CleanCommand:
         ),
         cappa.Arg(long="--no-overwrite", action=cappa.ArgAction.store_false),
     ] = None
+    verify: Annotated[
+        VerifyLevel | None,
+        cappa.Arg(
+            help="Check the output before it replaces the original (Default: quick)",
+            long="--verify",
+            show_default=False,
+            group="Configuration",
+        ),
+    ] = None
     downmix_stereo: Annotated[
         bool | None,
         cappa.Arg(
@@ -540,6 +549,14 @@ class ClipCommand:
             action=cappa.ArgAction.store_true,
         ),
         cappa.Arg(long="--no-overwrite", action=cappa.ArgAction.store_false),
+    ] = None
+    verify: Annotated[
+        VerifyLevel | None,
+        cappa.Arg(
+            help="Check the output before it replaces the original (Default: quick)",
+            long="--verify",
+            show_default=False,
+        ),
     ] = None
 
 

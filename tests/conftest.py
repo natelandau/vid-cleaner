@@ -33,6 +33,9 @@ def _isolate_config(tmp_path, monkeypatch):
     monkeypatch.setattr(constants, "USER_CONFIG_PATH", tmp_path / "user-config.toml")
     monkeypatch.setattr(constants, "DEV_CONFIG_PATH", tmp_path / "dev-config.toml")
     monkeypatch.setenv("VIDCLEANER_CACHE_DIR", str(tmp_path / "cache"))
+    # CLI tests mock ffmpeg and never write a real output, so the default `quick` check would
+    # fail them; verification tests turn it on with `--verify`, which beats this variable
+    monkeypatch.setenv("VIDCLEANER_VERIFY", "off")
 
 
 @pytest.fixture

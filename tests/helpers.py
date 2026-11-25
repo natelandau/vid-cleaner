@@ -76,3 +76,15 @@ def ffmpeg_command(mock_ffmpeg: MagicMock) -> str:
     """
     mock_ffmpeg.assert_called_once()
     return " ".join(mock_ffmpeg.call_args.args[0])
+
+
+def leftover_cache_files(cache_dir: Path) -> list[Path]:
+    """List the files still under a cache directory, to assert a run cleaned up its temp files.
+
+    Args:
+        cache_dir: The cache directory to search recursively.
+
+    Returns:
+        list[Path]: Every file under `cache_dir`, directories excluded.
+    """
+    return [path for path in cache_dir.rglob("*") if path.is_file()]

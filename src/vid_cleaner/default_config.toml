@@ -24,6 +24,9 @@ downmix_stereo = false
 # Replace the original file without keeping a timestamped .bak copy
 overwrite = false
 
+# How to check the ffmpeg output before it replaces the original: off, quick, or full
+verify = "quick"
+
 # External services used to determine the original language of a movie or TV show
 radarr_api_key = ""
 radarr_url     = ""
