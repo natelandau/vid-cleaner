@@ -14,7 +14,7 @@ from iso639 import Lang
 from iso639.exceptions import DeprecatedLanguageValue, InvalidLanguageValue
 
 from vid_cleaner import constants
-from vid_cleaner.constants import CACHE_DIR
+from vid_cleaner.constants import CACHE_DIR, VerifyLevel
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -48,6 +48,7 @@ class Config:
     drop_original_audio: bool
     downmix_stereo: bool
     overwrite: bool
+    verify: VerifyLevel
     cache_dir: Path
     radarr_url: str
     radarr_api_key: str = field(repr=False)
@@ -125,6 +126,18 @@ def _to_str(value: object) -> str:
     raise _InvalidValueError(msg)
 
 
+def _to_verify_level(value: object) -> VerifyLevel:
+    expected = "one of off, quick, full"
+    if isinstance(value, VerifyLevel):
+        return value
+    if not isinstance(value, str):
+        raise _InvalidValueError(expected)
+    try:
+        return VerifyLevel(value.strip().lower())
+    except ValueError as e:
+        raise _InvalidValueError(expected) from e
+
+
 def _to_path(value: object) -> Path:
     path = Path(_to_str(value)).expanduser()
     # `cache --clear` deletes this directory, so an empty or relative value must not
@@ -185,6 +198,7 @@ _CONVERTERS: dict[str, Callable[[object], object]] = {
     "drop_original_audio": _to_bool,
     "downmix_stereo": _to_bool,
     "overwrite": _to_bool,
+    "verify": _to_verify_level,
     "cache_dir": _to_path,
     "radarr_url": _to_http_url,
     "radarr_api_key": _to_str,

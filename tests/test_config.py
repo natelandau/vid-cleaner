@@ -6,6 +6,7 @@ import pytest
 
 from vid_cleaner import constants
 from vid_cleaner.config import ConfigError, load_config
+from vid_cleaner.constants import VerifyLevel
 
 
 def write_toml(path: Path, text: str) -> Path:
@@ -38,6 +39,8 @@ def _errors(tmp_path: Path, *, user_toml: str = "", environ=None, cli=None) -> t
         ("langs_to_keep", '["en"]', '["de"]', "es", ("es",)),
         ("tmdb_api_key", '"file"', "env", None, "env"),
         ("overwrite", "true", None, None, True),
+        ("verify", '"quick"', "full", None, VerifyLevel.FULL),
+        ("verify", '"full"', None, "off", VerifyLevel.OFF),
     ],
 )
 def test_precedence_cli_over_env_over_file(
@@ -84,6 +87,7 @@ def test_cache_dir_defaults_and_expands_tilde(tmp_path, environ, expected) -> No
         ("VIDCLEANER_KEEP_COMMENTARY", "1", True),
         ("VIDCLEANER_KEEP_COMMENTARY", "0", False),
         ("VIDCLEANER_KEEP_COMMENTARY", "", False),
+        ("VIDCLEANER_VERIFY", "FULL", VerifyLevel.FULL),
         ("VIDCLEANER_LANGS_TO_KEEP", " en , fr ", ("en", "fr")),
         ("VIDCLEANER_LANGS_TO_KEEP", '["en", "fr"]', ("en", "fr")),
     ],
@@ -106,6 +110,7 @@ def test_environment_value_parsing(tmp_path, variable, text, expected) -> None:
             "",
             "environment variable VIDCLEANER_KEEP_COMMENTARY",
         ),
+        ({"VIDCLEANER_VERIFY": "fast"}, {}, "", "environment variable VIDCLEANER_VERIFY"),
         ({}, {"langs_to_keep": ""}, "", "CLI flag"),
         ({}, {}, 'langs_to_keep = ["english"]', "langs_to_keep"),
         ({}, {}, 'radarr_url = "ftp://host"', "radarr_url"),

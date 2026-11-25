@@ -87,6 +87,14 @@ class VideoTrait(StrEnum):
         return ", ".join(values)
 
 
+class VerifyLevel(StrEnum):
+    """How thoroughly to check ffmpeg output before it replaces the original."""
+
+    OFF = "off"
+    QUICK = "quick"
+    FULL = "full"
+
+
 class SortOrder(StrEnum):
     """Ordering applied to `search` results."""
 
