@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import signal
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import cappa
 from cappa.base import command, invoke
@@ -20,6 +21,34 @@ from vid_cleaner.utils import (
     parse_limit,
     parse_trait_filters,
 )
+
+if TYPE_CHECKING:
+    from types import FrameType
+
+# What kill, `docker stop`, and systemd send to stop a process, and what a closed terminal sends
+STOP_SIGNALS = (signal.SIGTERM, signal.SIGHUP)
+
+
+def _raise_keyboard_interrupt(signum: int, frame: FrameType | None) -> None:  # noqa: ARG001
+    """Turn a stop signal into the KeyboardInterrupt that Ctrl-C raises.
+
+    Raises:
+        KeyboardInterrupt: Always.
+    """
+    raise KeyboardInterrupt
+
+
+def handle_stop_signals() -> None:
+    """Stop on SIGTERM and SIGHUP the same way as on Ctrl-C, so temporary files are removed.
+
+    By default these signals end the process at once, skipping exit hooks and the
+    interrupt handling that deletes full-size temporary files and staged output copies.
+    A signal the parent set to be ignored, such as SIGHUP under `nohup`, stays ignored.
+    """
+    for stop_signal in STOP_SIGNALS:
+        if signal.getsignal(stop_signal) is signal.SIG_IGN:
+            continue
+        signal.signal(stop_signal, _raise_keyboard_interrupt)
 
 
 def verify_required_binaries(vidcleaner: VidCleaner) -> None:
@@ -681,6 +710,7 @@ class SearchCommand:
 def main() -> None:  # pragma: no cover
     """Main function."""
     install(show_locals=False)
+    handle_stop_signals()
 
     try:
         invoke(

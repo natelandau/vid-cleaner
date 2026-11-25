@@ -191,10 +191,11 @@ def copy_to_output(src: Path, dst: Path, *, overwrite: bool) -> tuple[Path, list
 
         try:
             staged.replace(dst)  # atomic within the destination filesystem
-        except OSError:
-            # A same-filesystem rename failing here is near-impossible, but if it does
-            # after the original was moved aside, put the original back at its expected
-            # path rather than stranding it under the .bak name.
+        except BaseException:
+            # A same-filesystem rename failing here is near-impossible, but a stop signal
+            # can land between the two renames. Either way, once the original was moved
+            # aside, put it back at its expected path rather than stranding it under the
+            # .bak name.
             if backup is not None:
                 backup.replace(dst)
             raise

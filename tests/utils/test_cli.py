@@ -120,10 +120,18 @@ def test_copy_to_output_creates_new_destination(tmp_path: Path, *, overwrite: bo
     assert any(SAVED_TO_MESSAGE in m for m in messages)
 
 
-def test_copy_to_output_restores_original_when_swap_fails(tmp_path: Path, mocker) -> None:
-    """Verify a failed final swap restores the original to its path instead of stranding it."""
+@pytest.mark.parametrize(
+    "swap_error",
+    [OSError(5, "Input/output error"), KeyboardInterrupt()],
+    ids=["io-error", "stop-signal"],
+)
+def test_copy_to_output_restores_original_when_swap_fails(
+    tmp_path: Path, mocker, swap_error: BaseException
+) -> None:
+    """Verify a failed or interrupted final swap restores the original instead of stranding it."""
     # Given: an existing destination and source, with the atomic swap (but not the backup
-    #        move) set to fail, mimicking a rename failure after the original was moved aside
+    #        move) set to fail, mimicking a rename failure or a stop signal after the
+    #        original was moved aside
     src = tmp_path / "processed.mkv"
     src.write_text("new content")
     dst = tmp_path / "movie.mkv"
@@ -135,13 +143,13 @@ def test_copy_to_output_restores_original_when_swap_fails(tmp_path: Path, mocker
         # Only the staged temp -> dst swap fails; the dst -> .bak move and the
         # .bak -> dst restore both run for real.
         if "vidcleaner-tmp" in self.name:
-            raise OSError(5, "Input/output error")
+            raise swap_error
         return real_replace(self, target)
 
     mocker.patch.object(Path, "replace", autospec=True, side_effect=_fail_swap)
 
     # When: the swap fails after the backup move
-    with pytest.raises(OSError, match="Input/output error"):
+    with pytest.raises(type(swap_error)):
         copy_to_output(src, dst, overwrite=False)
 
     # Then: the original is back at its expected path, with nothing stranded

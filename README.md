@@ -149,6 +149,8 @@ These rules apply to `--from`:
 
 If one file fails when you clean or clip several files, the command continues with the other files. At the end, it lists the failures and exits with a non-zero status. `clean` and `clip` refuse a file that has no video stream.
 
+Ctrl-C, `kill`, `docker stop`, and `systemctl stop` stop the run, delete its temporary files, and exit with status 1. The command also stops when you close its terminal, unless you started it with `nohup`.
+
 ### Checking the output
 
 Before `clean` or `clip` replaces the original, the command checks the new file. The `--verify` option sets the level, for example `--verify=full`. The default level is `quick`. To change the default, set `verify` in the configuration file.

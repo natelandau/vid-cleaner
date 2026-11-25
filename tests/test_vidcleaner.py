@@ -1,11 +1,13 @@
 """Test the vidcleaner command line interface."""
 
+import os
+import signal
 from pathlib import Path
 
 import pytest
 
 from tests.helpers import run_vidcleaner
-from vid_cleaner.vidcleaner import verify_required_binaries
+from vid_cleaner.vidcleaner import STOP_SIGNALS, handle_stop_signals, verify_required_binaries
 
 
 @pytest.mark.parametrize("subcommand", ["inspect", "clip", "clean", "cache"])
@@ -216,3 +218,37 @@ def test_trace_output_hides_api_keys(capsys, user_config, captured_clean, video_
     captured = capsys.readouterr()
     assert "tmdb_api_key" in captured.out + captured.err
     assert "k3y-value" not in captured.out + captured.err
+
+
+@pytest.fixture
+def restore_signal_handlers():
+    """Put back the signal handlers a test replaces, so later tests see pytest's own."""
+    saved = {stop_signal: signal.getsignal(stop_signal) for stop_signal in STOP_SIGNALS}
+    yield
+    for stop_signal, handler in saved.items():
+        signal.signal(stop_signal, handler)
+
+
+@pytest.mark.parametrize("stop_signal", STOP_SIGNALS, ids=lambda s: s.name)
+@pytest.mark.usefixtures("restore_signal_handlers")
+def test_stop_signal_takes_the_ctrl_c_path(stop_signal: signal.Signals) -> None:
+    """Verify kill, `docker stop`, and systemd stop the run the way Ctrl-C does.
+
+    Ctrl-C's KeyboardInterrupt is what removes temporary files, so a signal that ended
+    the process outright would leave full-size transcodes behind.
+    """
+    handle_stop_signals()
+
+    with pytest.raises(KeyboardInterrupt):
+        os.kill(os.getpid(), stop_signal)
+
+
+@pytest.mark.parametrize("stop_signal", STOP_SIGNALS, ids=lambda s: s.name)
+@pytest.mark.usefixtures("restore_signal_handlers")
+def test_ignored_stop_signal_stays_ignored(stop_signal: signal.Signals) -> None:
+    """Verify a run started under `nohup` keeps running when the terminal closes."""
+    signal.signal(stop_signal, signal.SIG_IGN)
+
+    handle_stop_signals()
+
+    assert signal.getsignal(stop_signal) is signal.SIG_IGN
