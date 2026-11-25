@@ -1175,7 +1175,7 @@ wheels = [
 
 [[package]]
 name = "vid-cleaner"
-version = "0.14.0"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "cappa" },

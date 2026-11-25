@@ -25,7 +25,7 @@
     name = "vid-cleaner"
     readme = "README.md"
     requires-python = ">=3.11"
-    version = "0.14.0"
+    version = "1.0.0"
 
     [project.urls]
         Changelog  = "https://github.com/natelandau/vid-cleaner/blob/main/CHANGELOG.md"

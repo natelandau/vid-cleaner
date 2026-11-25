@@ -1,3 +1,43 @@
+## v1.0.0 (2026-11-25)
+
+### BREAKING CHANGE
+
+- a clean flag no longer reverses a true config
+value; use the --no- form, such as --no-downmix. The overwrite
+setting in the config file and VIDCLEANER_OVERWRITE now take
+effect. Bool environment values other than true, false, 1, or 0
+are errors, and cache_dir must be an absolute path. Dynaconf
+environment features (@json, @format, nested __ keys,
+SETTINGS_FILE_FOR_DYNACONF) are not supported.
+
+### Feat
+
+- **cli**: add --json to search, check, clean, and inspect (#108)
+- **clean**: stop before encoding when a disk is too full (#107)
+- **clean**: check output before it replaces the original (#106)
+- **clean**: keep attachments such as subtitle fonts
+- **clean**: ask before upscaling a video to 1080p (#103)
+- **config**: resolve settings as flag, then env, then file (#101)
+
+### Fix
+
+- **clean**: remove temp files when stopped by a signal
+- **clean**: keep the result when the final copy fails
+- **search**: skip macOS ._ files named on the command line
+- **clean**: stop -vv output showing :v: and :a: as emoji
+- **clean**: fix stream selection and dry-run edge cases (#102)
+- **search**: fix library discovery edge cases (#100)
+- **search**: reject missing directories and expand ~
+- **search**: skip macOS AppleDouble sidecar files
+
+### Refactor
+
+- **clean**: simplify planning and the video model
+
+### Perf
+
+- **search**: cache ffprobe results and add --jobs (#109)
+
 ## v0.14.0 (2026-10-12)
 
 ### Feat
