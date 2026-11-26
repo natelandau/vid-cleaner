@@ -15,6 +15,12 @@ SAMPLE_FRAMES = 150
 FALLBACK_SAMPLE_FRAMES = 450
 # Shorter files cannot hold three non-overlapping samples of SAMPLE_FRAMES at typical frame rates
 MIN_SAMPLED_DURATION_SECONDS = 60.0
+# A sample decodes a few hundred frames, so a run this long means ffmpeg is stuck
+SCAN_TIMEOUT_SECONDS = 60
+
+INTERLACED_DESCRIPTION_TEMPLATE = "interlaced ({field_order})"
+PROGRESSIVE_DESCRIPTION = "progressive"
+UNDECIDED_DESCRIPTION = "undetermined"
 
 # Only the multi-frame lines are trusted; single-frame and repeated-field lines are noisier
 _MULTI_FRAME_PATTERN = re.compile(
@@ -45,6 +51,33 @@ class InterlaceScan:
 
     interlaced: bool | None
     field_order: FieldOrder | None
+
+    def __post_init__(self) -> None:
+        """Reject a verdict whose field order disagrees with whether it found interlacing.
+
+        Raises:
+            ValueError: When `field_order` is missing from an interlaced verdict, or set on
+                one that is not interlaced.
+        """
+        if (self.interlaced is True) != (self.field_order is not None):
+            msg = (
+                f"InterlaceScan needs a field_order exactly when interlaced is True, got "
+                f"interlaced={self.interlaced!r} and field_order={self.field_order!r}"
+            )
+            raise ValueError(msg)
+
+    @property
+    def description(self) -> str:
+        """Describe the verdict in plain words for messages to the user.
+
+        Returns:
+            str: `interlaced (<field order>)`, `progressive`, or `undetermined`.
+        """
+        if self.interlaced is None:
+            return UNDECIDED_DESCRIPTION
+        if self.field_order is None:
+            return PROGRESSIVE_DESCRIPTION
+        return INTERLACED_DESCRIPTION_TEMPLATE.format(field_order=self.field_order.description)
 
 
 UNDECIDED_SCAN = InterlaceScan(interlaced=None, field_order=None)
@@ -96,7 +129,8 @@ def _build_sample_command(path: Path, *, start_seconds: float | None, frames: in
         "-frames:v",
         str(frames),
         "-map",
-        "0:v:0",
+        # Capital V skips attached pictures such as cover art
+        "0:V:0",
         "-an",
         "-sn",
         "-dn",
@@ -119,7 +153,7 @@ def detect_interlacing(path: Path, *, duration_seconds: float | None) -> Interla
         duration_seconds (float | None): The video's duration, when known.
 
     Returns:
-        InterlaceScan: Undecided when ffmpeg fails or too few frames were classified.
+        InterlaceScan: Undecided when ffmpeg fails, times out, or classifies too few frames.
     """
     if duration_seconds is None or duration_seconds < MIN_SAMPLED_DURATION_SECONDS:
         commands = [_build_sample_command(path, start_seconds=None, frames=FALLBACK_SAMPLE_FRAMES)]
@@ -134,7 +168,10 @@ def detect_interlacing(path: Path, *, duration_seconds: float | None) -> Interla
     stderr_lines: list[str] = []
     try:
         for command in commands:
-            stderr_lines.extend(run_command(command, check=False).stderr_lines)
+            stderr_lines.extend(
+                run_command(command, check=False, timeout=SCAN_TIMEOUT_SECONDS).stderr_lines
+            )
+    # ShellCommandError includes ShellCommandTimeoutError, raised when a run hits the timeout
     except (ShellCommandError, OSError) as e:
         pp.debug(f"Interlace scan failed for {path}: {e}")
         return UNDECIDED_SCAN

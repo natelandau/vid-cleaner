@@ -509,10 +509,12 @@ def main(
     report = json_report_for(vidcleaner)
     summary = dict.fromkeys(("total", *(str(status) for status in CleanStatus)), 0)
     failures: list[str] = []
+    skipped: list[dict[str, str]] = []
 
     with report_on_exit(report):
         if report:
             report.summary = summary
+            report.extra["skipped"] = skipped
 
         if options.h265 and options.vp9:
             raise stop_run(H265_AND_VP9_ERROR)
@@ -531,11 +533,10 @@ def main(
                 f"Skipped {len(decision.skipped)} interlaced file(s):",
                 details=[str(video_file.path) for video_file in decision.skipped],
             )
-            if report:
-                report.extra["skipped"] = [
-                    {"path": str(video_file.path), "reason": INTERLACED_FILES_SKIPPED_REASON}
-                    for video_file in decision.skipped
-                ]
+            skipped.extend(
+                {"path": str(video_file.path), "reason": INTERLACED_FILES_SKIPPED_REASON}
+                for video_file in decision.skipped
+            )
 
         for video_file in decision.files:
             # Print the video name first so live progress bars and the up-front operation

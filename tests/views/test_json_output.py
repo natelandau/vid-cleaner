@@ -194,7 +194,7 @@ ENVELOPE_KEYS = ["schema_version", "command", "dry_run", "interrupted", "error",
         ),
         (
             ["clean", "--json", "--h265", "--vp9", "movie.mkv"],
-            [],
+            ["skipped"],
             ["total", "cleaned", "unchanged", "failed", "planned"],
         ),
     ],

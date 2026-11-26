@@ -6,6 +6,7 @@ import pytest
 from cappa.base import invoke
 
 from tests.helpers import read_json_document, run_vidcleaner
+from vid_cleaner.cli import check_video
 from vid_cleaner.cli.check_video import display_path
 from vid_cleaner.cli.discovery_output import (
     FROM_WITH_FILES_ERROR,
@@ -14,7 +15,6 @@ from vid_cleaner.cli.discovery_output import (
     NOT_AN_EXISTING_DIRECTORY_ERROR,
     REQUIRES_FROM_ERROR,
 )
-from vid_cleaner.constants import INTERLACED_MARKER_TEMPLATE
 from vid_cleaner.controllers.validation import CheckResult
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.utils import FieldOrder, InterlaceScan
@@ -302,7 +302,7 @@ def test_check_prints_square_brackets_verbatim(capsys, tmp_path, mocker):
     markup tags and drops, leaving a printed filename that does not exist on disk.
     """
     # Given: A bracketed filename that fails with a bracketed ffprobe reason
-    movie = tmp_path / "Movie [x265].mkv"
+    movie = tmp_path / "Movie [x265] :smile:.mkv"
     movie.touch()
     mocker.patch(
         "vid_cleaner.models.video_file.get_probe_as_box",
@@ -319,7 +319,7 @@ def test_check_prints_square_brackets_verbatim(capsys, tmp_path, mocker):
 
     # Then: Both the name and the reason are printed as written
     assert exit_code == 1
-    assert "Movie [x265].mkv" in captured.err
+    assert "Movie [x265] :smile:.mkv" in captured.err
     assert "[matroska,webm @ 0x14f1] Read error" in captured.err
 
 
@@ -445,25 +445,52 @@ def test_check_json(
 
 
 def test_check_marks_interlaced_files_on_stdout(
-    capsys, video_path, mock_video_probe, mock_interlace_detection
+    capsys, tmp_path, mock_video_probe, mock_interlace_detection
 ):
-    """Verify an interlaced file stays a valid, stdout-listed file and carries the marker."""
-    # Given: A valid, interlaced file
+    """Verify an interlaced file stays a valid, stdout-listed file and carries the marker.
+
+    The filename keeps its square brackets and emoji shortcode, which Rich would otherwise
+    read as markup.
+    """
+    # Given: A valid, interlaced file whose name Rich could misread
+    movie = tmp_path / "Movie [x265] :smile:.mkv"
+    movie.touch()
     mock_video_probe("reference.json")
-    mock_interlace_detection.return_value = InterlaceScan(
-        interlaced=True, field_order=FieldOrder.TFF
-    )
+    scan = InterlaceScan(interlaced=True, field_order=FieldOrder.TFF)
+    mock_interlace_detection.return_value = scan
 
     # When: Checking it
-    exit_code = run_vidcleaner(["check", str(video_path)])
+    exit_code = run_vidcleaner(["check", str(movie)])
 
-    # Then: The marker is on stdout beside the name, the summary counts it, and the run succeeds
+    # Then: The marker is on stdout beside the verbatim name, the summary counts it, and the
+    # run succeeds
     captured = capsys.readouterr()
     assert exit_code == 0
-    marker = INTERLACED_MARKER_TEMPLATE.format(field_order=FieldOrder.TFF.description)
-    assert f"{video_path.name}{marker}" in captured.out
-    assert video_path.name in captured.out
+    assert f"{movie.name}  {scan.description}" in captured.out
     assert "1 valid, 0 invalid, 1 interlaced" in captured.out
+
+
+@pytest.mark.parametrize("deep", [False, True], ids=["header check", "deep"])
+@pytest.mark.parametrize("from_directory", [False, True], ids=["named files", "from"])
+def test_check_always_shows_progress(
+    mocker, video_path, mock_video_probe, video_library, deep, from_directory
+):
+    """Verify a check shows progress whether or not it decodes, since scans take time too."""
+    # Given: A file named directly or found under a `--from` directory
+    progress = mocker.spy(check_video, "track_progress")
+    if from_directory:
+        library = video_library([("movie.mkv", 1_000, 1_000)])
+        args = ["check", "--from", str(library)]
+    else:
+        mock_video_probe("reference.json")
+        args = ["check", str(video_path)]
+
+    # When: Checking it
+    run_vidcleaner([*args, *(["--deep"] if deep else [])])
+
+    # Then: The progress bar is shown
+    progress.assert_called_once()
+    assert not progress.call_args.kwargs.get("disable", False)
 
 
 def test_check_keeps_file_valid_when_scan_cannot_stat(capsys, video_path, mock_video_probe, mocker):

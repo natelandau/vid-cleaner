@@ -152,9 +152,6 @@ UNKNOWN_DURATION_REASON = "could not determine duration"
 UPSCALE_DECLINED_REASON = "upscale not approved"
 # Dry-run notice for an interlaced file whose deinterlace choice a real run asks for
 INTERLACE_QUESTION_NOTICE = "Video is interlaced; a real run asks whether to deinterlace it"
-# Appended to a valid file's line in `check` output when the file is interlaced
-INTERLACED_MARKER_TEMPLATE = "  interlaced ({field_order})"
-UNKNOWN_FIELD_ORDER = "unknown field order"
 # Reasons a file cannot be cleaned
 NO_AUDIO_STREAMS_REASON = "no audio streams found"
 NO_VIDEO_STREAMS_REASON = "no video streams found"

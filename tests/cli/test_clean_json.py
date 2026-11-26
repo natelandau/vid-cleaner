@@ -117,6 +117,7 @@ def test_clean_json_reports_each_status(
     assert doc["dry_run"] is bool(global_flags)
     assert doc["error"] is None
     assert doc["summary"] == {"total": 1, **{name: int(name == status) for name in STATUSES}}
+    assert doc["skipped"] == []
     assert list(outcome) == OUTCOME_KEYS
     assert outcome["path"] == str(video)
     assert outcome["status"] == status

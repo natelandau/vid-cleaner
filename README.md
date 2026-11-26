@@ -266,7 +266,7 @@ Each command fills `files` in its own way:
 
 -   `inspect` and `search`: each entry has the file's `path`, `name`, `size`, and ffprobe's `streams` and `format`. `inspect` entries also have `interlaced` and `field_order`. `search` entries also have `traits`, `matches`, and `bitrate`. Files that cannot be read are in a separate `skipped` list, each with a `path` and a `reason`. `search` also returns the `query` that selected the files.
 -   `check`: each entry has the file's `path`, `ok`, the `reason` it is invalid, `interlaced`, and `field_order`. The `summary` also has an `interlaced` count.
--   `clean`: see below. Interlaced files that you chose to skip are in a top-level `skipped` list, each with a `path` and a `reason`. A skipped file is not a failure.
+-   `clean`: see below. The top-level `skipped` list holds the interlaced files that you chose to skip, each with a `path` and a `reason`. The list is empty when you skip no file. A skipped file is not a failure.
 
 For `clean`, each entry has a `status`:
 

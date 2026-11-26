@@ -7,7 +7,7 @@ import pytest
 
 from tests.helpers import load_ffprobe_json, read_json_document, run_vidcleaner
 from vid_cleaner.cli import inspect_video
-from vid_cleaner.cli.inspect_video import SCAN_LINE_TEMPLATE, scan_verdict
+from vid_cleaner.cli.inspect_video import SCAN_LINE_TEMPLATE
 from vid_cleaner.utils import FieldOrder, InterlaceScan
 
 
@@ -37,7 +37,7 @@ def test_inspect_table(capsys, video_path, mock_video_probe, mock_interlace_dete
     assert re.search(r"9 │ video +│ mjpeg", output)
     assert re.search(r"eng +│ 8 +│ 7.1", output)
     assert re.search(r"1920 +│ 1080 +│ Test", output)
-    assert SCAN_LINE_TEMPLATE.format(verdict=scan_verdict(scan)) in output
+    assert SCAN_LINE_TEMPLATE.format(verdict=scan.description) in output
 
 
 def test_inspect_title_shows_file_size(capsys, video_path, mock_video_probe):

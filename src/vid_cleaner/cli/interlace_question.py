@@ -172,10 +172,7 @@ def resolve_interlaced_files(
 
     pp.warning(
         "Interlaced video found:",
-        details=[
-            f"{video_file.path}: {scan.field_order.description if scan.field_order else 'interlaced'}"
-            for video_file, scan in interlaced
-        ],
+        details=[f"{video_file.path}: {scan.description}" for video_file, scan in interlaced],
         markup=False,
     )
     # The planner notes on each dry-run plan that a real run asks

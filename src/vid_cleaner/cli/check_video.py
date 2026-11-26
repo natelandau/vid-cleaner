@@ -5,6 +5,7 @@ from pathlib import Path
 
 import cappa
 from nclutils import pp
+from rich.text import Text
 
 from vid_cleaner.cli.discovery_output import (
     FROM_WITH_FILES_ERROR,
@@ -13,12 +14,27 @@ from vid_cleaner.cli.discovery_output import (
     REQUIRES_FROM_ERROR,
     discover_from_directory,
 )
-from vid_cleaner.constants import INTERLACED_MARKER_TEMPLATE, UNKNOWN_FIELD_ORDER
 from vid_cleaner.controllers.discovery import DiscoveryReport
 from vid_cleaner.controllers.validation import CheckResult, check_probed_video, check_video_file
 from vid_cleaner.utils import drop_macos_sidecars, stop_run, track_progress
 from vid_cleaner.vidcleaner import CheckCommand, VidCleaner, build_probe_cache, json_report_for
 from vid_cleaner.views.json_output import check_report_entry, report_on_exit
+
+# Matches the warning style nclutils pp uses for detail lines
+INTERLACED_MARKER_STYLE = "yellow"
+
+
+def progress_description(file_count: int, *, deep: bool) -> str:
+    """Label the progress bar with the work a check does on each file.
+
+    Args:
+        file_count (int): The number of files to check.
+        deep (bool): Whether each file is fully decoded.
+
+    Returns:
+        str: The progress bar label.
+    """
+    return f"{'Decoding' if deep else 'Checking'} {file_count} files..."
 
 
 def display_path(path: Path) -> str:
@@ -79,9 +95,8 @@ def check_discovered_files(report: DiscoveryReport, *, deep: bool) -> Iterator[C
     with build_probe_cache() as probe_cache:
         for result in track_progress(
             report.results,
-            description=f"Decoding {len(report.results)} files...",
+            description=progress_description(len(report.results), deep=deep),
             transient=True,
-            disable=not deep,
         ):
             yield check_probed_video(result.video_file, deep=deep, probe_cache=probe_cache)
 
@@ -102,9 +117,8 @@ def check_explicit_files(check_cmd: CheckCommand) -> Iterator[CheckResult]:
     with build_probe_cache() as probe_cache:
         for path in track_progress(
             files,
-            description=f"Decoding {len(files)} files...",
+            description=progress_description(len(files), deep=check_cmd.deep),
             transient=True,
-            disable=not check_cmd.deep,
         ):
             yield check_video_file(path, deep=check_cmd.deep, probe_cache=probe_cache)
 
@@ -164,46 +178,38 @@ def main(check_cmd: CheckCommand, vidcleaner: VidCleaner) -> None:
         cappa.Exit: With code 0 when every file checked is valid, code 1 when any is not.
     """
     report = json_report_for(vidcleaner)
-    invalid = 0
     summary = {"total": 0, "valid": 0, "invalid": 0, "interlaced": 0}
 
     with report_on_exit(report):
+        # Filled per file, so an interrupted run's report still counts the files it finished
         if report:
             report.summary = summary
         results: list[CheckResult] = []
         for result in select_results(check_cmd):
             results.append(result)
+            summary["total"] += 1
+            summary["valid" if result.ok else "invalid"] += 1
+            summary["interlaced"] += bool(result.scan and result.scan.interlaced)
             if report:
                 report.files.append(check_report_entry(result))
-                summary["total"] += 1
-                summary["valid" if result.ok else "invalid"] += 1
-                summary["interlaced"] += bool(result.scan and result.scan.interlaced)
 
         # `pp.success` and `pp.error` render their own markers and route failures to stderr,
-        # so `check ... 2>/dev/null` narrows the output to the valid files. Both default to
-        # `markup=False`, which is what keeps the square brackets in a release filename or an
-        # ffmpeg diagnostic from being read as Rich markup tags and dropped.
-        interlaced = 0
+        # so `check ... 2>/dev/null` narrows the output to the valid files. A `Text` message
+        # is printed as written, so the square brackets in a release filename or an ffmpeg
+        # diagnostic are not read as Rich markup and a `:name:` is not turned into an emoji.
         for result in results:
-            name = display_path(result.path)
-            if result.ok:
-                if result.scan and result.scan.interlaced:
-                    interlaced += 1
-                    field_order = (
-                        result.scan.field_order.description
-                        if result.scan.field_order
-                        else UNKNOWN_FIELD_ORDER
-                    )
-                    name += INTERLACED_MARKER_TEMPLATE.format(field_order=field_order)
-                pp.success(name)
+            line = Text(display_path(result.path))
+            if not result.ok:
+                line.append(f"  {result.reason}")
+                pp.error(line)
                 continue
-
-            invalid += 1
-            pp.error(f"{name}  {result.reason}")
+            if result.scan and result.scan.interlaced:
+                line.append(f"  {result.scan.description}", style=INTERLACED_MARKER_STYLE)
+            pp.success(line)
 
         pp.info(
-            f"\nChecked {len(results)} file(s): {len(results) - invalid} valid, {invalid} invalid, "
-            f"{interlaced} interlaced"
+            f"\nChecked {summary['total']} file(s): {summary['valid']} valid, "
+            f"{summary['invalid']} invalid, {summary['interlaced']} interlaced"
         )
 
-    raise cappa.Exit(code=1 if invalid else 0)
+    raise cappa.Exit(code=1 if summary["invalid"] else 0)

@@ -1,5 +1,6 @@
 """VideoFile model."""
 
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -155,19 +156,24 @@ class VideoFile:
         if self._interlace_scan is not None:
             return self._interlace_scan
 
-        stat = self.path.stat() if probe_cache else None
-        if probe_cache and stat:
+        stat = None
+        if probe_cache is not None:
+            stat = self.path.stat()
             cached = probe_cache.get_scan(self.path, size=stat.st_size, mtime_ns=stat.st_mtime_ns)
             if cached is not None:
                 self._interlace_scan = cached
                 return cached
 
-        try:
-            duration_seconds = float(self.probe_box.duration or 0) or None
-        except ValueError:
-            duration_seconds = None
-        scan = detect_interlacing(self.path, duration_seconds=duration_seconds)
-        if probe_cache and stat:
+        # `probe_box` follows the latest temporary output, which can be shorter than the source
+        source_probe = (
+            self.probe_box
+            if self.temp_file.latest_temp_path() == self.path
+            else get_probe_as_box(self.path)
+        )
+        scan = detect_interlacing(
+            self.path, duration_seconds=self._known_duration_seconds(source_probe)
+        )
+        if probe_cache is not None and stat is not None:
             probe_cache.put_scan(self.path, size=stat.st_size, mtime_ns=stat.st_mtime_ns, scan=scan)
         self._interlace_scan = scan
         return scan
@@ -672,13 +678,36 @@ class VideoFile:
         """
         return not options.force and self.video_streams[0].codec_name.lower() in H265_CODECS
 
-    def _has_known_duration(self) -> bool:
-        """Check whether a duration exists to derive H.265 bitrate targets from."""
-        video_stream = self.video_streams[0]
-        return bool(float(self.probe_box.duration or 0) or float(video_stream.duration or 0))
+    def _known_duration_seconds(self, probe: Box) -> float | None:
+        """Read a usable duration, which H.265 bitrate targets and scan sampling depend on.
+
+        Prefer the container duration, then the first video stream's.
+
+        Args:
+            probe (Box): The probe of the file whose duration is wanted.
+
+        Returns:
+            float | None: A finite, positive duration in seconds, or None when neither is usable.
+        """
+        stream_duration = self.video_streams[0].duration if self.video_streams else None
+        for value in (probe.duration, stream_duration):
+            try:
+                seconds = float(value or 0)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(seconds) and seconds > 0:
+                return seconds
+        return None
 
     def _is_scale_unneeded(self, options: RunOptions) -> bool:
-        """Check whether the source is 1080p or smaller and `force` does not override that."""
+        """Check whether the source is 1080p or smaller and `force` does not override that.
+
+        Args:
+            options (RunOptions): The CLI-only values for this run; `force` overrides the check.
+
+        Returns:
+            bool: True when the 1080p scale has nothing to shrink.
+        """
         source_width = self.video_streams[0].width or 0
         return source_width <= FHD_RESOLUTION.width and not options.force
 
@@ -698,7 +727,11 @@ class VideoFile:
             return False
         modern = self._is_modern_codec_source(options)
         return (
-            (options.h265 and not modern and self._has_known_duration())
+            (
+                options.h265
+                and not modern
+                and self._known_duration_seconds(self.probe_box) is not None
+            )
             or (options.vp9 and not modern)
             or (options.video_1080 and not self._is_scale_unneeded(options))
         )
@@ -766,8 +799,8 @@ class VideoFile:
         video_stream = self.video_streams[0]
         # Calculate target bitrate using Frame.io's formula: https://blog.frame.io/2017/03/06/calculate-video-bitrates/
         # This formula provides good quality while maintaining reasonable file sizes
-        stream_duration = float(self.probe_box.duration or 0) or float(video_stream.duration or 0)
-        if not self._has_known_duration():
+        stream_duration = self._known_duration_seconds(self.probe_box)
+        if stream_duration is None:
             plan.actions.append(
                 PlanAction(
                     label=CONVERT_TO_H265_LABEL,
@@ -904,7 +937,8 @@ class VideoFile:
             return
 
         scan = self.interlace_scan()
-        if not (scan.interlaced and scan.field_order):
+        # An InterlaceScan carries a field order exactly when it found interlacing
+        if scan.field_order is None:
             plan.actions.append(
                 PlanAction(
                     label=DEINTERLACE_LABEL,

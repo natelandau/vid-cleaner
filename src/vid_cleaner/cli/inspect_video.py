@@ -3,35 +3,13 @@
 import cappa
 from nclutils import pp
 
-from vid_cleaner.constants import UNKNOWN_FIELD_ORDER
 from vid_cleaner.exceptions import VideoProbeError
-from vid_cleaner.utils import InterlaceScan, coerce_video_files
+from vid_cleaner.utils import coerce_video_files
 from vid_cleaner.vidcleaner import InspectCommand, VidCleaner, build_probe_cache, json_report_for
 from vid_cleaner.views import stream_table
 from vid_cleaner.views.json_output import file_object, interlace_scan_fields, report_on_exit
 
 SCAN_LINE_TEMPLATE = "Scan: {verdict}"
-INTERLACED_VERDICT_TEMPLATE = "interlaced ({field_order})"
-PROGRESSIVE_VERDICT = "progressive"
-UNDECIDED_VERDICT = "undetermined"
-
-
-def scan_verdict(scan: InterlaceScan) -> str:
-    """Describe an interlace scan in words for the line printed under a stream table.
-
-    Args:
-        scan (InterlaceScan): The scan result for one file.
-
-    Returns:
-        str: The interlaced verdict with its field order, `progressive`, or an undecided note.
-    """
-    if scan.interlaced is None:
-        return UNDECIDED_VERDICT
-    if not scan.interlaced:
-        return PROGRESSIVE_VERDICT
-    return INTERLACED_VERDICT_TEMPLATE.format(
-        field_order=scan.field_order.description if scan.field_order else UNKNOWN_FIELD_ORDER
-    )
 
 
 def main(inspect_cmd: InspectCommand, vidcleaner: VidCleaner) -> None:
@@ -68,7 +46,7 @@ def main(inspect_cmd: InspectCommand, vidcleaner: VidCleaner) -> None:
                     else:
                         pp.console().print(stream_table(video.probe_box))
                         scan = video.interlace_scan(probe_cache)
-                        pp.info(SCAN_LINE_TEMPLATE.format(verdict=scan_verdict(scan)))
+                        pp.info(SCAN_LINE_TEMPLATE.format(verdict=scan.description))
                 except VideoProbeError as e:
                     pp.error(str(e))
                     skipped.append({"path": str(video.path), "reason": e.reason})
