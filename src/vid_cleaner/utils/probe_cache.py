@@ -106,22 +106,13 @@ class ProbeCache:
         Returns:
             dict[str, Any] | None: The stored ffprobe output, or None on a miss.
         """
-        with self._lock:
-            connection = self._open()
-            if connection is None:
-                return None
-            try:
-                row = connection.execute(
-                    "SELECT probe FROM probes WHERE path = ? AND size = ? AND mtime_ns = ?",
-                    (str(path), size, mtime_ns),
-                ).fetchone()
-            except sqlite3.Error as e:
-                self._disable(e)
-                return None
-            if row is not None:
-                # Written in one batch at close, so a hit costs no commit
-                self._paths_read.append(str(path))
-
+        row = self._lookup(
+            "SELECT probe FROM probes WHERE path = ? AND size = ? AND mtime_ns = ?",
+            path=path,
+            size=size,
+            mtime_ns=mtime_ns,
+            paths_read=self._paths_read,
+        )
         if row is None:
             return None
         try:
@@ -142,19 +133,11 @@ class ProbeCache:
         """
         # ffprobe JSON is repetitive text, so compression keeps a large library's cache small
         blob = zlib.compress(json.dumps(probe).encode())
-        with self._lock:
-            connection = self._open()
-            if connection is None:
-                return
-            try:
-                with connection:
-                    connection.execute(
-                        "INSERT OR REPLACE INTO probes (path, size, mtime_ns, probe, used_at) "
-                        "VALUES (?, ?, ?, ?, ?)",
-                        (str(path), size, mtime_ns, blob, int(time.time())),
-                    )
-            except sqlite3.Error as e:
-                self._disable(e)
+        self._store(
+            "INSERT OR REPLACE INTO probes (path, size, mtime_ns, probe, used_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (str(path), size, mtime_ns, blob, int(time.time())),
+        )
 
     def get_scan(self, path: Path, *, size: int, mtime_ns: int) -> InterlaceScan | None:
         """Look up the stored interlace verdict for a file that has not changed since it was scanned.
@@ -169,23 +152,16 @@ class ProbeCache:
         Returns:
             InterlaceScan | None: The stored verdict, which may be undecided, or None on a miss.
         """
-        with self._lock:
-            connection = self._open()
-            if connection is None:
-                return None
-            try:
-                row = connection.execute(
-                    "SELECT interlaced, field_order FROM interlace_scans "
-                    "WHERE path = ? AND size = ? AND mtime_ns = ?",
-                    (str(path), size, mtime_ns),
-                ).fetchone()
-            except sqlite3.Error as e:
-                self._disable(e)
-                return None
-            if row is None:
-                return None
-            self._scan_paths_read.append(str(path))
-
+        row = self._lookup(
+            "SELECT interlaced, field_order FROM interlace_scans "
+            "WHERE path = ? AND size = ? AND mtime_ns = ?",
+            path=path,
+            size=size,
+            mtime_ns=mtime_ns,
+            paths_read=self._scan_paths_read,
+        )
+        if row is None:
+            return None
         interlaced, field_order = row
         try:
             return InterlaceScan(
@@ -205,25 +181,63 @@ class ProbeCache:
             mtime_ns (int): The file's modification time in nanoseconds when it was scanned.
             scan (InterlaceScan): The verdict, including an undecided one.
         """
+        self._store(
+            "INSERT OR REPLACE INTO interlace_scans "
+            "(path, size, mtime_ns, interlaced, field_order, used_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                str(path),
+                size,
+                mtime_ns,
+                None if scan.interlaced is None else int(scan.interlaced),
+                scan.field_order.value if scan.field_order else None,
+                int(time.time()),
+            ),
+        )
+
+    def _lookup(
+        self, query: str, *, path: Path, size: int, mtime_ns: int, paths_read: list[str]
+    ) -> tuple[Any, ...] | None:
+        """Fetch the entry for an unchanged file and note the hit for `close` to mark as used.
+
+        Args:
+            query (str): A SELECT filtered on path, size, and mtime_ns, in that order.
+            path (Path): The file.
+            size (int): The file's current size in bytes.
+            mtime_ns (int): The file's current modification time in nanoseconds.
+            paths_read (list[str]): The hit list for the table `query` reads.
+
+        Returns:
+            tuple[Any, ...] | None: The row, or None on a miss or when the cache is off.
+        """
+        with self._lock:
+            connection = self._open()
+            if connection is None:
+                return None
+            try:
+                row = connection.execute(query, (str(path), size, mtime_ns)).fetchone()
+            except sqlite3.Error as e:
+                self._disable(e)
+                return None
+            if row is not None:
+                # Written in one batch at close, so a hit costs no commit
+                paths_read.append(str(path))
+            return row
+
+    def _store(self, statement: str, parameters: tuple[object, ...]) -> None:
+        """Write one entry in its own transaction, turning the cache off on a database error.
+
+        Args:
+            statement (str): The INSERT OR REPLACE statement.
+            parameters (tuple[object, ...]): The values for its placeholders.
+        """
         with self._lock:
             connection = self._open()
             if connection is None:
                 return
             try:
                 with connection:
-                    connection.execute(
-                        "INSERT OR REPLACE INTO interlace_scans "
-                        "(path, size, mtime_ns, interlaced, field_order, used_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?)",
-                        (
-                            str(path),
-                            size,
-                            mtime_ns,
-                            None if scan.interlaced is None else int(scan.interlaced),
-                            scan.field_order.value if scan.field_order else None,
-                            int(time.time()),
-                        ),
-                    )
+                    connection.execute(statement, parameters)
             except sqlite3.Error as e:
                 self._disable(e)
 
@@ -275,11 +289,9 @@ class ProbeCache:
                     "UPDATE interlace_scans SET used_at = ? WHERE path = ?",
                     [(now, path) for path in self._scan_paths_read],
                 )
-                for table in ("probes", "interlace_scans"):
-                    connection.execute(
-                        f"DELETE FROM {table} WHERE used_at < ?",  # noqa: S608
-                        (now - UNUSED_ENTRY_MAX_AGE_SECONDS,),
-                    )
+                oldest_kept = (now - UNUSED_ENTRY_MAX_AGE_SECONDS,)
+                connection.execute("DELETE FROM probes WHERE used_at < ?", oldest_kept)
+                connection.execute("DELETE FROM interlace_scans WHERE used_at < ?", oldest_kept)
         except sqlite3.Error as e:
             self._disable(e)
         self._paths_read.clear()

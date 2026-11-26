@@ -1,12 +1,18 @@
 """Detect interlaced video by sampling it with ffmpeg's idet filter."""
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from nclutils import pp
 from nclutils.sh import ShellCommandError, run_command
+
+if TYPE_CHECKING:
+    # probe_cache imports this module for InterlaceScan
+    from vid_cleaner.utils.probe_cache import ProbeCache
 
 IDET_MIN_DECIDED_FRAMES = 100
 IDET_INTERLACED_RATIO = 0.25
@@ -177,3 +183,35 @@ def detect_interlacing(path: Path, *, duration_seconds: float | None) -> Interla
         return UNDECIDED_SCAN
 
     return parse_idet_output("\n".join(stderr_lines))
+
+
+def scan_with_cache(
+    path: Path,
+    *,
+    read_duration: Callable[[], float | None],
+    probe_cache: "ProbeCache | None",
+) -> InterlaceScan:
+    """Scan a video for interlacing, reusing a stored verdict while the file is unchanged.
+
+    The scan decodes part of the video, so a cached verdict saves real time on a large
+    library. The duration is read only on a cache miss, since reading it can mean probing
+    the file.
+
+    Args:
+        path (Path): The video file to scan.
+        read_duration (Callable[[], float | None]): Returns the video's duration, when known.
+        probe_cache (ProbeCache | None): The cache to read and fill. Skipped when None.
+
+    Returns:
+        InterlaceScan: The verdict, undecided when the file has too few frames to judge.
+    """
+    if probe_cache is None:
+        return detect_interlacing(path, duration_seconds=read_duration())
+
+    stat = path.stat()
+    cached = probe_cache.get_scan(path, size=stat.st_size, mtime_ns=stat.st_mtime_ns)
+    if cached is not None:
+        return cached
+    scan = detect_interlacing(path, duration_seconds=read_duration())
+    probe_cache.put_scan(path, size=stat.st_size, mtime_ns=stat.st_mtime_ns, scan=scan)
+    return scan

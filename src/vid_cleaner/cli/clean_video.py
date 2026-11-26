@@ -39,6 +39,7 @@ from vid_cleaner.utils import (
     FfmpegCommand,
     OutputWrite,
     ProbeCache,
+    ask_if_interactive,
     coerce_video_files,
     output_write_messages,
     render_operations,
@@ -188,17 +189,11 @@ def approve_upscale(video_file: VideoFile, *, source_width: int, dryrun: bool) -
     if dryrun:
         return True
 
-    no_prompt_message = "Cannot ask for approval in a non-interactive run. Skipping the upscale."
-    if not pp.console().is_terminal:
-        pp.warning(no_prompt_message)
-        return False
-
-    try:
-        approved = Confirm.ask("Upscale this video to 1080p?", default=False, console=pp.console())
-    # `is_terminal` describes the output stream, so a closed or redirected stdin still
-    # reaches the prompt and gets EOF instead of an answer.
-    except EOFError:
-        pp.warning(no_prompt_message)
+    approved = ask_if_interactive(
+        lambda: Confirm.ask("Upscale this video to 1080p?", default=False, console=pp.console())
+    )
+    if approved is None:
+        pp.warning("Cannot ask for approval in a non-interactive run. Skipping the upscale.")
         return False
     return approved
 

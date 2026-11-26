@@ -58,10 +58,10 @@ from vid_cleaner.utils import (
     MediaId,
     ProbeCache,
     build_ffmpeg_command,
-    detect_interlacing,
     find_media_ids,
     get_probe_as_box,
     radarr_imdb_id,
+    scan_with_cache,
     sonarr_imdb_id,
     tmdb_original_language,
 )
@@ -153,30 +153,25 @@ class VideoFile:
         Returns:
             InterlaceScan: The verdict, undecided when the file has too few frames to judge.
         """
-        if self._interlace_scan is not None:
-            return self._interlace_scan
+        if self._interlace_scan is None:
+            self._interlace_scan = scan_with_cache(
+                self.path, read_duration=self._source_duration_seconds, probe_cache=probe_cache
+            )
+        return self._interlace_scan
 
-        stat = None
-        if probe_cache is not None:
-            stat = self.path.stat()
-            cached = probe_cache.get_scan(self.path, size=stat.st_size, mtime_ns=stat.st_mtime_ns)
-            if cached is not None:
-                self._interlace_scan = cached
-                return cached
+    def _source_duration_seconds(self) -> float | None:
+        """Read the source file's duration, which the interlace scan samples across.
 
+        Returns:
+            float | None: The duration in seconds, or None when unknown.
+        """
         # `probe_box` follows the latest temporary output, which can be shorter than the source
         source_probe = (
             self.probe_box
             if self.temp_file.latest_temp_path() == self.path
             else get_probe_as_box(self.path)
         )
-        scan = detect_interlacing(
-            self.path, duration_seconds=self._known_duration_seconds(source_probe)
-        )
-        if probe_cache is not None and stat is not None:
-            probe_cache.put_scan(self.path, size=stat.st_size, mtime_ns=stat.st_mtime_ns, scan=scan)
-        self._interlace_scan = scan
-        return scan
+        return self._known_duration_seconds(source_probe)
 
     @property
     def video_streams(self) -> list[Box]:
@@ -952,14 +947,7 @@ class VideoFile:
 
         deinterlace_filter = f"bwdif=mode=send_frame:parity={scan.field_order.value}:deint=all"
         for video_output in plan.streams_of(CodecTypes.VIDEO):
-            video_output.stream_filter = (
-                f"{deinterlace_filter},{video_output.stream_filter}"
-                if video_output.stream_filter
-                else deinterlace_filter
-            )
-            if video_output.codec == "copy":
-                # Filtering requires an encode; None lets ffmpeg pick the container default
-                video_output.codec = None
+            video_output.add_filter(deinterlace_filter, first=True)
         plan.actions.append(
             PlanAction(
                 label=DEINTERLACE_LABEL_TEMPLATE.format(field_order=scan.field_order.description),
@@ -977,7 +965,6 @@ class VideoFile:
             plan (ConversionPlan): The plan whose video stream is annotated in place.
             options (RunOptions): The CLI-only values for this run.
         """
-        source_width = self.video_streams[0].width or 0
         if self._is_scale_unneeded(options):
             plan.actions.append(
                 PlanAction(
@@ -986,20 +973,14 @@ class VideoFile:
             )
             return
 
+        source_width = self.video_streams[0].width or 0
         if 0 < source_width < FHD_RESOLUTION.width:
             plan.upscale_source_width = source_width
 
+        # Height -2 keeps the aspect ratio while forcing the even dimension encoders need
+        scale_filter = f"scale=width={FHD_RESOLUTION.width}:height=-2"
         for video_output in plan.streams_of(CodecTypes.VIDEO):
-            # Height -2 keeps the aspect ratio while forcing the even dimension encoders need
-            scale_filter = f"scale=width={FHD_RESOLUTION.width}:height=-2"
-            video_output.stream_filter = (
-                f"{video_output.stream_filter},{scale_filter}"
-                if video_output.stream_filter
-                else scale_filter
-            )
-            if video_output.codec == "copy":
-                # Scaling requires an encode; None lets ffmpeg pick the container default
-                video_output.codec = None
+            video_output.add_filter(scale_filter)
         plan.actions.append(PlanAction(label=SCALE_TO_1080P_LABEL, applied=True))
 
     def _build_plan(self, config: Config, options: RunOptions) -> ConversionPlan:

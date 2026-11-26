@@ -14,7 +14,7 @@ from rich.filesize import decimal
 from rich.prompt import Confirm
 
 from vid_cleaner.controllers.discovery import discover_video_files
-from vid_cleaner.utils import stop_run
+from vid_cleaner.utils import ask_if_interactive, stop_run
 from vid_cleaner.views import search_table
 
 if TYPE_CHECKING:
@@ -177,9 +177,6 @@ def confirm_selection(report: DiscoveryReport, *, assume_yes: bool, overwrite: b
     if assume_yes:
         return
 
-    if not pp.console().is_terminal:
-        raise _no_prompt_available()
-
     total_size = decimal(sum(result.size for result in report.results))
     # This prompt is the only gate on a whole library, and `--overwrite` leaves no backup
     # to restore from, so it has to say which of the two it is about to do.
@@ -187,12 +184,9 @@ def confirm_selection(report: DiscoveryReport, *, assume_yes: bool, overwrite: b
         "in place with no backup" if overwrite else "keeping a timestamped backup of each original"
     )
     prompt = f"Clean these {len(report.results)} files ({total_size}) {recovery}?"
-    try:
-        approved = Confirm.ask(prompt, default=False, console=pp.console())
-    # `is_terminal` describes the output stream, so a run with a terminal on stdout but a
-    # closed or redirected stdin reaches the prompt and gets EOF instead of an answer.
-    except EOFError as e:
-        raise _no_prompt_available() from e
+    approved = ask_if_interactive(lambda: Confirm.ask(prompt, default=False, console=pp.console()))
+    if approved is None:
+        raise _no_prompt_available()
 
     if not approved:
         pp.info("Nothing to do")

@@ -189,7 +189,7 @@ def main(check_cmd: CheckCommand, vidcleaner: VidCleaner) -> None:
             results.append(result)
             summary["total"] += 1
             summary["valid" if result.ok else "invalid"] += 1
-            summary["interlaced"] += bool(result.scan and result.scan.interlaced)
+            summary["interlaced"] += result.interlaced
             if report:
                 report.files.append(check_report_entry(result))
 
@@ -203,7 +203,7 @@ def main(check_cmd: CheckCommand, vidcleaner: VidCleaner) -> None:
                 line.append(f"  {result.reason}")
                 pp.error(line)
                 continue
-            if result.scan and result.scan.interlaced:
+            if result.interlaced and result.scan:
                 line.append(f"  {result.scan.description}", style=INTERLACED_MARKER_STYLE)
             pp.success(line)
 

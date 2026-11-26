@@ -46,6 +46,11 @@ class CheckResult:
     reason: str | None = None
     scan: InterlaceScan | None = None
 
+    @property
+    def interlaced(self) -> bool:
+        """Report whether the file's scan found interlacing, so output can flag it."""
+        return bool(self.scan and self.scan.interlaced)
+
 
 def check_probed_video(
     video: VideoFile, *, deep: bool = False, probe_cache: ProbeCache | None = None

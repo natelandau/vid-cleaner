@@ -8,7 +8,13 @@ from rich.prompt import Prompt
 
 from vid_cleaner.config import RunOptions
 from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
-from vid_cleaner.utils import InterlaceScan, ProbeCache, stop_run, track_progress
+from vid_cleaner.utils import (
+    InterlaceScan,
+    ProbeCache,
+    ask_if_interactive,
+    stop_run,
+    track_progress,
+)
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
@@ -34,13 +40,14 @@ class InterlaceDecision:
             `deinterlace` decided when the user answered the question. Read a file's
             options through `options_for`.
         skipped (list[VideoFile]): Interlaced files the user chose not to clean.
-        deinterlaced (list[VideoFile]): Interlaced files the user chose to deinterlace.
+        deinterlaced_paths (frozenset[Path]): Paths of the interlaced files the user chose
+            to deinterlace.
     """
 
     files: list[VideoFile]
     options: RunOptions
     skipped: list[VideoFile] = field(default_factory=list)
-    deinterlaced: list[VideoFile] = field(default_factory=list)
+    deinterlaced_paths: frozenset[Path] = frozenset()
 
     def options_for(self, video_file: VideoFile) -> RunOptions:
         """Return the options to clean one file with.
@@ -54,7 +61,7 @@ class InterlaceDecision:
         Returns:
             RunOptions: The run's options, with `deinterlace=True` for a listed file.
         """
-        if any(video_file is listed for listed in self.deinterlaced):
+        if video_file.path in self.deinterlaced_paths:
             return replace(self.options, deinterlace=True)
         return self.options
 
@@ -125,19 +132,17 @@ def _ask_how_to_handle_interlaced_files() -> str:
     Raises:
         RunStopped: When the console cannot prompt.
     """
-    if not pp.console().is_terminal:
-        raise stop_run(DEINTERLACE_FLAG_REQUIRED_ERROR)
-    try:
-        return Prompt.ask(
+    answer = ask_if_interactive(
+        lambda: Prompt.ask(
             INTERLACE_QUESTION,
             choices=[DEINTERLACE_CHOICE, REENCODE_CHOICE, SKIP_CHOICE],
             default=DEINTERLACE_CHOICE,
             console=pp.console(),
         )
-    # `is_terminal` describes the output stream, so a closed or redirected stdin still
-    # reaches the prompt and gets EOF instead of an answer.
-    except EOFError as e:
-        raise stop_run(DEINTERLACE_FLAG_REQUIRED_ERROR) from e
+    )
+    if answer is None:
+        raise stop_run(DEINTERLACE_FLAG_REQUIRED_ERROR)
+    return answer
 
 
 def resolve_interlaced_files(
@@ -186,15 +191,13 @@ def resolve_interlaced_files(
     # planner never scans them mid-batch
     run_options = replace(options, deinterlace=False)
     interlaced_files = [video_file for video_file, _ in interlaced]
-    if answer == DEINTERLACE_CHOICE:
-        return InterlaceDecision(
-            files=video_files, options=run_options, deinterlaced=interlaced_files
-        )
-    if answer == REENCODE_CHOICE:
-        return InterlaceDecision(files=video_files, options=run_options)
-    skipped_ids = {id(video_file) for video_file in interlaced_files}
+    interlaced_paths = frozenset(video_file.path for video_file in interlaced_files)
+    skip = answer == SKIP_CHOICE
     return InterlaceDecision(
-        files=[video_file for video_file in video_files if id(video_file) not in skipped_ids],
+        files=[video_file for video_file in video_files if video_file.path not in interlaced_paths]
+        if skip
+        else video_files,
         options=run_options,
-        skipped=interlaced_files,
+        skipped=interlaced_files if skip else [],
+        deinterlaced_paths=interlaced_paths if answer == DEINTERLACE_CHOICE else frozenset(),
     )

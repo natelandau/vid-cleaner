@@ -186,7 +186,7 @@ def mock_interlace_detection(mocker):
     Autouse; set `return_value` or `side_effect` on the returned mock to change the verdict.
     """
     return mocker.patch(
-        "vid_cleaner.models.video_file.detect_interlacing",
+        "vid_cleaner.utils.interlace_detection.detect_interlacing",
         return_value=InterlaceScan(interlaced=False, field_order=None),
     )
 

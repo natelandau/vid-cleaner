@@ -9,7 +9,14 @@ from .api_utils import (
     sonarr_imdb_id,
     tmdb_original_language,
 )
-from .console import progress_display, render_operations, render_substeps, stop_run, track_progress
+from .console import (
+    ask_if_interactive,
+    progress_display,
+    render_operations,
+    render_substeps,
+    stop_run,
+    track_progress,
+)
 from .ffmpeg_utils import (
     FfmpegCommand,
     build_ffmpeg_command,
@@ -18,7 +25,7 @@ from .ffmpeg_utils import (
     run_ffmpeg,
     run_ffprobe,
 )
-from .interlace_detection import FieldOrder, InterlaceScan, detect_interlacing
+from .interlace_detection import FieldOrder, InterlaceScan, detect_interlacing, scan_with_cache
 from .media_ids import MediaId, find_media_ids
 from .probe_cache import ProbeCache
 
@@ -45,6 +52,7 @@ __all__ = [
     "MediaId",
     "OutputWrite",
     "ProbeCache",
+    "ask_if_interactive",
     "build_ffmpeg_command",
     "channels_to_layout",
     "coerce_video_files",
@@ -70,6 +78,7 @@ __all__ = [
     "resolve_out_path_override",
     "run_ffmpeg",
     "run_ffprobe",
+    "scan_with_cache",
     "sonarr_imdb_id",
     "stop_run",
     "tmdb_original_language",
