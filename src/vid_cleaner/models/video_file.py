@@ -48,9 +48,11 @@ from vid_cleaner.exceptions import VideoCleanError
 from vid_cleaner.models.conversion_plan import ConversionPlan, OutputStream, PlanAction
 from vid_cleaner.utils import (
     FfmpegCommand,
+    InterlaceScan,
     MediaId,
     ProbeCache,
     build_ffmpeg_command,
+    detect_interlacing,
     find_media_ids,
     get_probe_as_box,
     radarr_imdb_id,
@@ -104,6 +106,7 @@ class VideoFile:
         self.language: Lang | None = None
         self.ran_language_check = False
         self._probe_box: Box = Box({}, default_box=True, default_box_create_on_get=False)
+        self._interlace_scan: InterlaceScan | None = None
 
         self._all_streams: list[Box] = []
         self._video_streams: list[Box] = []
@@ -130,6 +133,39 @@ class VideoFile:
         """
         if self.temp_file.latest_temp_path() == self.path:
             self._probe_box = get_probe_as_box(self.path, probe_cache=probe_cache)
+
+    def interlace_scan(self, probe_cache: ProbeCache | None = None) -> InterlaceScan:
+        """Scan the source file for interlacing, once per instance.
+
+        Call this when a plan needs to know whether to deinterlace or warn. The scan decodes
+        part of the video, so the verdict is memoized and, given a cache, stored for the
+        next run. It always reads the source file, never a temporary output.
+
+        Args:
+            probe_cache (ProbeCache | None): The cache to read and fill. Skipped when None.
+
+        Returns:
+            InterlaceScan: The verdict, undecided when the file has too few frames to judge.
+        """
+        if self._interlace_scan is not None:
+            return self._interlace_scan
+
+        stat = self.path.stat() if probe_cache else None
+        if probe_cache and stat:
+            cached = probe_cache.get_scan(self.path, size=stat.st_size, mtime_ns=stat.st_mtime_ns)
+            if cached is not None:
+                self._interlace_scan = cached
+                return cached
+
+        try:
+            duration_seconds = float(self.probe_box.duration or 0) or None
+        except ValueError:
+            duration_seconds = None
+        scan = detect_interlacing(self.path, duration_seconds=duration_seconds)
+        if probe_cache and stat:
+            probe_cache.put_scan(self.path, size=stat.st_size, mtime_ns=stat.st_mtime_ns, scan=scan)
+        self._interlace_scan = scan
+        return scan
 
     @property
     def video_streams(self) -> list[Box]:

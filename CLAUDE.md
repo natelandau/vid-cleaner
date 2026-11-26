@@ -60,6 +60,7 @@ Each `_plan_*` method on `VideoFile` adds `OutputStream` and `PlanAction` entrie
 - Fixtures in `tests/conftest.py`:
     - Probing: `mock_video_probe("reference.json")` (every `VideoFile` probe returns that recorded response; returns the box to adjust), `mock_unreadable_probe(*names)`, `make_video` (a `VideoFile` for model tests), `video_library` (a directory of probeable files).
     - Clean and clip runs: `mock_original_language` (English, no network; set `return_value`), `mock_ffmpeg`, `stub_output_write` (skips the copy to the destination), or `fake_transcode` (real write), `captured_clean` (records the `Config` and `RunOptions` clean receives).
+    - Interlace scans: `mock_interlace_detection` (autouse; every file reads as progressive; set `return_value` or `side_effect`). Tests never run the real scan.
     - Files: `video_path` (empty file). Recorded ffprobe responses live in `tests/fixtures/ffprobe/`; load raw JSON with `load_ffprobe_json`.
 - The autouse `_isolate_config` fixture points the user and dev config paths at `tmp_path` and clears `VIDCLEANER_*` vars. Write a test config with the `user_config` fixture. Build a `Config` with `make_config`; construct `RunOptions(...)` directly.
 - `VideoFile.probe_box` re-probes whenever the cached box's `path_to_file` differs from `latest_temp_path()`, so a `get_probe_as_box` mock fires more than once per file. A call-count assertion on it must count those re-probes.
