@@ -106,7 +106,7 @@ To decide in advance, use a flag:
 -   `--deinterlace` deinterlaces every interlaced file without a question. It also re-encodes an interlaced file when you give no codec flag, because deinterlacing needs an encode.
 -   `--no-deinterlace` skips the scan and the question, and re-encodes interlaced files as they are.
 
-If `clean` cannot ask the question, it stops with exit code 1 before it encodes a file. This happens with `--yes`, and when no terminal is available. The error names both flags. A dry run lists the interlaced files and does not ask.
+If `clean` cannot ask the question, it stops with exit code 1 before it encodes a file. This happens with `--yes`, and when no terminal is available. The error names both flags. If you give neither flag, a dry run lists the interlaced files and does not ask.
 
 The deinterlace filter is `bwdif`. It keeps the original frame rate and runs before the 1080p scale. A file that you skip is not a failure. The command lists the skipped files, and does not exit non-zero because of them.
 
@@ -217,7 +217,7 @@ The command prints one line for every file, so one invalid file does not hide th
 ✗ audiobook.mkv  no video stream
 ✗ notes.txt  not a video file
 
-Checked 4 file(s): 1 valid, 3 invalid
+Checked 4 file(s): 1 valid, 3 invalid, 0 interlaced
 ```
 
 A file is valid when all of these conditions are true:
