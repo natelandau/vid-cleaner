@@ -7,9 +7,12 @@ from datetime import timedelta
 from pathlib import Path  # noqa: TC003
 from typing import TYPE_CHECKING
 
+from nclutils import pp
+
 from vid_cleaner.constants import VIDEO_SUFFIXES, CodecTypes, VerifyLevel
 from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
 from vid_cleaner.utils.ffmpeg_utils import decode_check
+from vid_cleaner.utils.interlace_detection import UNDECIDED_SCAN, InterlaceScan
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping
@@ -18,6 +21,7 @@ if TYPE_CHECKING:
 
     from vid_cleaner.models.conversion_plan import ConversionPlan
     from vid_cleaner.models.video_file import VideoFile
+    from vid_cleaner.utils.probe_cache import ProbeCache
 
 CLEAN_DURATION_TOLERANCE_SECONDS = 2.0
 CLIP_DURATION_TOLERANCE_SECONDS = 10.0
@@ -40,9 +44,12 @@ class CheckResult:
     path: Path
     ok: bool
     reason: str | None = None
+    scan: InterlaceScan | None = None
 
 
-def check_probed_video(video: VideoFile, *, deep: bool = False) -> CheckResult:
+def check_probed_video(
+    video: VideoFile, *, deep: bool = False, probe_cache: ProbeCache | None = None
+) -> CheckResult:
     """Apply the checks that need a successful probe to an already-probed file.
 
     Split from `check_video_file` so discovery mode, which has already probed every file
@@ -51,9 +58,10 @@ def check_probed_video(video: VideoFile, *, deep: bool = False) -> CheckResult:
     Args:
         video (VideoFile): A file whose probe has already succeeded.
         deep (bool): Decode every frame instead of trusting the header.
+        probe_cache (ProbeCache | None): Where to read and store the interlace scan.
 
     Returns:
-        CheckResult: The verdict for this file.
+        CheckResult: The verdict for this file, with its interlace scan when valid.
     """
     # `video_streams` excludes cover art (mjpeg/png), so an audio-only file carrying an
     # embedded poster cannot pass on the strength of that poster alone.
@@ -63,10 +71,20 @@ def check_probed_video(video: VideoFile, *, deep: bool = False) -> CheckResult:
     if deep and (error := decode_check(video.path)):
         return CheckResult(path=video.path, ok=False, reason=error)
 
-    return CheckResult(path=video.path, ok=True)
+    # Only a valid file is scanned: the scan decodes part of the video, so spending it on a
+    # file that already failed would slow the very runs that exist to find broken files.
+    try:
+        scan = video.interlace_scan(probe_cache)
+    except OSError as e:
+        pp.debug(f"Interlace scan skipped for {video.path}: {e}")
+        scan = UNDECIDED_SCAN
+
+    return CheckResult(path=video.path, ok=True, scan=scan)
 
 
-def check_video_file(path: Path, *, deep: bool = False) -> CheckResult:
+def check_video_file(
+    path: Path, *, deep: bool = False, probe_cache: ProbeCache | None = None
+) -> CheckResult:
     """Report whether one path is a video file the rest of the tool could work on.
 
     Run the cheapest disqualifying check first so a directory of junk costs no ffprobe
@@ -76,6 +94,7 @@ def check_video_file(path: Path, *, deep: bool = False) -> CheckResult:
     Args:
         path (Path): The path to check.
         deep (bool): Decode every frame instead of trusting the header. Minutes per file.
+        probe_cache (ProbeCache | None): Where to read and store the interlace scan.
 
     Returns:
         CheckResult: The verdict for this path.
@@ -96,7 +115,7 @@ def check_video_file(path: Path, *, deep: bool = False) -> CheckResult:
     # OSError covers an ffprobe that cannot be launched at all: reporting it per file keeps
     # the batch printing one line per path instead of aborting on a traceback.
     try:
-        result = check_probed_video(VideoFile(resolved), deep=deep)
+        result = check_probed_video(VideoFile(resolved), deep=deep, probe_cache=probe_cache)
     except VideoProbeError as e:
         return CheckResult(path=path, ok=False, reason=e.reason)
     except OSError as e:
@@ -104,7 +123,7 @@ def check_video_file(path: Path, *, deep: bool = False) -> CheckResult:
 
     # Report against the path the user named, not the resolved one, so the printed line
     # matches what they typed.
-    return CheckResult(path=path, ok=result.ok, reason=result.reason)
+    return CheckResult(path=path, ok=result.ok, reason=result.reason, scan=result.scan)
 
 
 @dataclass(frozen=True)

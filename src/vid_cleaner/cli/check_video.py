@@ -13,6 +13,7 @@ from vid_cleaner.cli.discovery_output import (
     REQUIRES_FROM_ERROR,
     discover_from_directory,
 )
+from vid_cleaner.constants import INTERLACED_MARKER_TEMPLATE, UNKNOWN_FIELD_ORDER
 from vid_cleaner.controllers.discovery import DiscoveryReport
 from vid_cleaner.controllers.validation import CheckResult, check_probed_video, check_video_file
 from vid_cleaner.utils import drop_macos_sidecars, stop_run, track_progress
@@ -73,14 +74,16 @@ def check_discovered_files(report: DiscoveryReport, *, deep: bool) -> Iterator[C
         yield CheckResult(path=error.path, ok=False, reason=error.reason)
 
     # Discovery already probed every file it kept and `VideoFile` caches its probe, so
-    # finishing the verdict here costs no second ffprobe.
-    for result in track_progress(
-        report.results,
-        description=f"Decoding {len(report.results)} files...",
-        transient=True,
-        disable=not deep,
-    ):
-        yield check_probed_video(result.video_file, deep=deep)
+    # finishing the verdict here costs no second ffprobe. The scan cache opens here, inside
+    # the generator, because discovery's own cache closes before the caller iterates.
+    with build_probe_cache() as probe_cache:
+        for result in track_progress(
+            report.results,
+            description=f"Decoding {len(report.results)} files...",
+            transient=True,
+            disable=not deep,
+        ):
+            yield check_probed_video(result.video_file, deep=deep, probe_cache=probe_cache)
 
 
 def check_explicit_files(check_cmd: CheckCommand) -> Iterator[CheckResult]:
@@ -96,13 +99,14 @@ def check_explicit_files(check_cmd: CheckCommand) -> Iterator[CheckResult]:
         cappa.Exit: If every path given is a macOS `._` metadata file.
     """
     files = drop_macos_sidecars(check_cmd.files)
-    for path in track_progress(
-        files,
-        description=f"Decoding {len(files)} files...",
-        transient=True,
-        disable=not check_cmd.deep,
-    ):
-        yield check_video_file(path, deep=check_cmd.deep)
+    with build_probe_cache() as probe_cache:
+        for path in track_progress(
+            files,
+            description=f"Decoding {len(files)} files...",
+            transient=True,
+            disable=not check_cmd.deep,
+        ):
+            yield check_video_file(path, deep=check_cmd.deep, probe_cache=probe_cache)
 
 
 def select_results(check_cmd: CheckCommand) -> Iterator[CheckResult]:
@@ -161,7 +165,7 @@ def main(check_cmd: CheckCommand, vidcleaner: VidCleaner) -> None:
     """
     report = json_report_for(vidcleaner)
     invalid = 0
-    summary = {"total": 0, "valid": 0, "invalid": 0}
+    summary = {"total": 0, "valid": 0, "invalid": 0, "interlaced": 0}
 
     with report_on_exit(report):
         if report:
@@ -173,14 +177,24 @@ def main(check_cmd: CheckCommand, vidcleaner: VidCleaner) -> None:
                 report.files.append(check_report_entry(result))
                 summary["total"] += 1
                 summary["valid" if result.ok else "invalid"] += 1
+                summary["interlaced"] += bool(result.scan and result.scan.interlaced)
 
         # `pp.success` and `pp.error` render their own markers and route failures to stderr,
         # so `check ... 2>/dev/null` narrows the output to the valid files. Both default to
         # `markup=False`, which is what keeps the square brackets in a release filename or an
         # ffmpeg diagnostic from being read as Rich markup tags and dropped.
+        interlaced = 0
         for result in results:
             name = display_path(result.path)
             if result.ok:
+                if result.scan and result.scan.interlaced:
+                    interlaced += 1
+                    field_order = (
+                        result.scan.field_order.description
+                        if result.scan.field_order
+                        else UNKNOWN_FIELD_ORDER
+                    )
+                    name += INTERLACED_MARKER_TEMPLATE.format(field_order=field_order)
                 pp.success(name)
                 continue
 
@@ -188,7 +202,8 @@ def main(check_cmd: CheckCommand, vidcleaner: VidCleaner) -> None:
             pp.error(f"{name}  {result.reason}")
 
         pp.info(
-            f"\nChecked {len(results)} file(s): {len(results) - invalid} valid, {invalid} invalid"
+            f"\nChecked {len(results)} file(s): {len(results) - invalid} valid, {invalid} invalid, "
+            f"{interlaced} interlaced"
         )
 
     raise cappa.Exit(code=1 if invalid else 0)

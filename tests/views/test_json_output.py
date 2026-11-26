@@ -187,7 +187,11 @@ ENVELOPE_KEYS = ["schema_version", "command", "dry_run", "interrupted", "error",
             ["query", "skipped"],
             ["total", "shown", "skipped", "truncated"],
         ),
-        (["check", "--json", "--from", "missing-directory"], [], ["total", "valid", "invalid"]),
+        (
+            ["check", "--json", "--from", "missing-directory"],
+            [],
+            ["total", "valid", "invalid", "interlaced"],
+        ),
         (
             ["clean", "--json", "--h265", "--vp9", "movie.mkv"],
             [],

@@ -85,13 +85,17 @@ def check_report_entry(result: CheckResult) -> dict[str, Any]:
         result (CheckResult): The verdict for one file.
 
     Returns:
-        dict[str, Any]: The `path`, resolved like every other command's, plus `ok` and
-            `reason`, which is null when the file is valid.
+        dict[str, Any]: The `path`, resolved like every other command's, plus `ok`,
+            `reason` (null when the file is valid), `interlaced` and `field_order`. The
+            last two are null for an invalid file or an undecided scan.
     """
+    scan = result.scan
     return {
         "path": str(result.path.expanduser().resolve()),
         "ok": result.ok,
         "reason": result.reason,
+        "interlaced": scan.interlaced if scan else None,
+        "field_order": scan.field_order.value if scan and scan.field_order else None,
     }
 
 
