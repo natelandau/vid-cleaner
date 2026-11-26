@@ -11,6 +11,7 @@ Tools to transcode, inspect, and convert videos. vid-cleaner is a command-line w
 -   Determine a video's original language from its filename, its container metadata, or the TMDb, Radarr, and Sonarr APIs
 -   Convert to H.265 or VP9
 -   Convert 4k to 1080p
+-   Detect interlaced video, and deinterlace it during a re-encode
 -   Add a stereo track to a surround file (5.1, 7.1, or Atmos), with a mix that keeps dialogue clear
 -   Inspect the streams in a video file
 -   Create clips from a video file
@@ -46,6 +47,8 @@ Every command that reads video files skips the `._` metadata files that macOS wr
 
 `vidcleaner inspect FILES` prints a table of the video, audio, and subtitle streams in each file, with the codec, language, and channel layout of each stream. `inspect` continues past a file it cannot read and exits 1 at the end. Use `--json` to print one JSON document for all files instead. The data for one file is at `.files[N]`, with ffprobe's `streams` and `format`.
 
+After the table, `inspect` prints the scan result: `Scan: interlaced (top field first)`, `Scan: interlaced (bottom field first)`, `Scan: progressive`, or `Scan: undetermined`. The scan samples the video with the ffmpeg `idet` filter. The result is `undetermined` when the file has too few frames to decide.
+
 ```shell
 vidcleaner inspect movie.mkv
 vidcleaner inspect --json movie.mkv
@@ -79,11 +82,41 @@ These are the options you use most:
 | `-d`, `--downmix`          | Add a stereo track if the file has none. With `--force`, replace the stereo track in the language of the surround track. |
 | `-s`, `--keep-subs`        | Keep every subtitle track                                                  |
 | `-c`, `--keep-commentary`  | Keep commentary audio tracks. Without this flag, all commentary tracks are removed, also tracks with no language tag. |
+| `--deinterlace`            | Deinterlace interlaced video without a question. `--no-deinterlace` re-encodes it as it is, without a question. |
 | `-f`, `--force`            | Process the file even if it is already in the requested format             |
 
 Each on-or-off option in the `Configuration` group of `vidcleaner clean --help` also has a `--no-` form, such as `--no-downmix` or `--no-keep-commentary`. Use the `--no-` form to turn off for one run an option that your configuration file turns on.
 
 Run `vidcleaner clean --help` for the full list. To act on every file that matches a query, see [Cleaning what you searched for](#cleaning-what-you-searched-for).
+
+### Interlaced video
+
+Interlaced video stores each frame as two fields. If `clean` re-encodes interlaced video without a deinterlace filter, the output keeps the combing artifacts. A run re-encodes the video when you use `--h265`, `--vp9`, or `--1080p` on a file that needs the change.
+
+Before the first encode, `clean` scans the files that the run will re-encode. If it finds interlaced files, it lists them and asks one question for the whole run:
+
+-   `deinterlace`: deinterlace the listed files. This is the default answer.
+-   `re-encode`: encode the listed files as they are.
+-   `skip`: leave the listed files unchanged.
+
+The answer `deinterlace` applies only to the listed files. A file that the scan did not find interlaced is never deinterlaced.
+
+To decide in advance, use a flag:
+
+-   `--deinterlace` deinterlaces every interlaced file without a question. It also re-encodes an interlaced file when you give no codec flag, because deinterlacing needs an encode.
+-   `--no-deinterlace` skips the scan and the question, and re-encodes interlaced files as they are.
+
+If `clean` cannot ask the question, it stops with exit code 1 before it encodes a file. This happens with `--yes`, and when no terminal is available. The error names both flags. A dry run lists the interlaced files and does not ask.
+
+The deinterlace filter is `bwdif`. It keeps the original frame rate and runs before the 1080p scale. A file that you skip is not a failure. The command lists the skipped files, and does not exit non-zero because of them.
+
+```shell
+# Deinterlace while converting to H.265, with no question
+vidcleaner clean --h265 --deinterlace movie.mkv
+
+# Convert in a script, and encode interlaced files as they are
+vidcleaner clean --from /media --h265 --yes --no-deinterlace
+```
 
 ### Making a clip
 
@@ -196,6 +229,14 @@ A file is valid when all of these conditions are true:
 
 Cover art does not count as a video stream. An audio-only file with an embedded poster is invalid.
 
+`check` also scans each valid file for interlacing. An interlaced file stays valid. Its line carries a marker with the field order, and the summary counts the interlaced files.
+
+```console
+✓ movie.mkv  interlaced (top field first)
+
+Checked 1 file(s): 1 valid, 0 invalid, 1 interlaced
+```
+
 The command prints valid files to stdout and invalid files to stderr. To hide the invalid files, run `vidcleaner check FILES 2>/dev/null`. With `--json`, all per-file lines go to stderr and stdout holds only the JSON document.
 
 By default, the command reads only the metadata of each file, which takes milliseconds. To decode every frame instead, use `--deep`. A deep check finds damage in the body of a file that has a correct header. It takes minutes for each file.
@@ -223,9 +264,9 @@ Every document has the same top-level keys:
 
 Each command fills `files` in its own way:
 
--   `inspect` and `search`: each entry has the file's `path`, `name`, `size`, and ffprobe's `streams` and `format`. `search` entries also have `traits`, `matches`, and `bitrate`. Files that cannot be read are in a separate `skipped` list, each with a `path` and a `reason`. `search` also returns the `query` that selected the files.
--   `check`: each entry has the file's `path`, `ok`, and the `reason` it is invalid.
--   `clean`: see below.
+-   `inspect` and `search`: each entry has the file's `path`, `name`, `size`, and ffprobe's `streams` and `format`. `inspect` entries also have `interlaced` and `field_order`. `search` entries also have `traits`, `matches`, and `bitrate`. Files that cannot be read are in a separate `skipped` list, each with a `path` and a `reason`. `search` also returns the `query` that selected the files.
+-   `check`: each entry has the file's `path`, `ok`, the `reason` it is invalid, `interlaced`, and `field_order`. The `summary` also has an `interlaced` count.
+-   `clean`: see below. Interlaced files that you chose to skip are in a top-level `skipped` list, each with a `path` and a `reason`. A skipped file is not a failure.
 
 For `clean`, each entry has a `status`:
 
@@ -234,7 +275,9 @@ For `clean`, each entry has a `status`:
 -   `failed`: the file was skipped. `reason` says why.
 -   `planned`: a dry run. `planned_streams` lists the streams the run would write.
 
-A script cannot answer the confirmation prompt. With `clean --from`, add `--yes`.
+`interlaced` is `true`, `false`, or `null` when the scan could not decide. `field_order` is `"tff"` or `"bff"` for an interlaced file, and `null` otherwise.
+
+A script cannot answer the confirmation prompt. With `clean --from`, add `--yes`. If the run can find interlaced files, also add `--deinterlace` or `--no-deinterlace`.
 
 ```shell
 # List the files that failed to clean
@@ -306,7 +349,7 @@ vid-cleaner keeps its files in the locations that the [XDG Base Directory specif
 -   Configuration file: `~/.config/vid-cleaner/config.toml`, or `$XDG_CONFIG_HOME/vid-cleaner/config.toml` if `XDG_CONFIG_HOME` is set
 -   Cache: `~/.cache/vid-cleaner`, or `$XDG_CACHE_HOME/vid-cleaner` if `XDG_CACHE_HOME` is set. To use a different directory, set `cache_dir` in the configuration file or `VIDCLEANER_CACHE_DIR`.
 
-The cache holds temporary files from `clean` and `clip`, and the ffprobe results that `search`, `check --from`, and `clean --from` use again. To print the contents of the cache, run `vidcleaner cache`. To empty the cache, run `vidcleaner cache --clear`.
+The cache holds temporary files from `clean` and `clip`, the ffprobe results that `search`, `check --from`, and `clean --from` use again, and the interlace scan results that `check`, `inspect`, and `clean` use again. To print the contents of the cache, run `vidcleaner cache`. To empty the cache, run `vidcleaner cache --clear`.
 
 Before `clean` encodes a file, it makes sure that the cache disk and the destination disk each have free space of at least 1.5 times the size of the original file. The extra space allows for a result that is larger than the original, for example after an upscale. If the cache and the destination are on the same disk, that disk needs 3 times the size of the original file. If there is not sufficient space, `clean` skips the file and continues with the next file.
 
