@@ -25,7 +25,7 @@ uv run duty test -k downmix   # extra args pass through to pytest; filtered runs
 ## Settings
 
 - `load_config()` in `config.py` resolves each setting: CLI flag, then `VIDCLEANER_*` env var, then config files (default, user, dev). Returns a frozen `Config`.
-- Flag-only values (`dryrun`, `verbosity`, `h265`, `vp9`, `video_1080`, `force`, `out`) go in `RunOptions`, not `Config`.
+- Flag-only values (`dryrun`, `verbosity`, `h265`, `vp9`, `video_1080`, `force`, `deinterlace`, `out`) go in `RunOptions`, not `Config`.
 - Handlers that read settings take `Annotated[Config, Dep(build_config)]` and `Annotated[RunOptions, Dep(build_run_options)]`. Pass both down as arguments. Nothing reads settings from a module global.
 - A setting with a CLI flag: command attribute named exactly as the `Config` field, default `None`, paired `--x`/`--no-x` as two `cappa.Arg` entries (cappa's `--x/--no-x` shorthand rejects a short flag). `build_config` reads every attribute named in `SETTING_NAMES`.
 - `TempFile` picks its directory on the first `new_tmp_path(cache_dir=...)` call. Pass `config.cache_dir`; never construct `VideoFile` with a cache path. On a dry run, call `preview_tmp_path`, not `new_tmp_path`; it creates nothing on disk.
@@ -60,6 +60,7 @@ Each `_plan_*` method on `VideoFile` adds `OutputStream` and `PlanAction` entrie
 - Fixtures in `tests/conftest.py`:
     - Probing: `mock_video_probe("reference.json")` (every `VideoFile` probe returns that recorded response; returns the box to adjust), `mock_unreadable_probe(*names)`, `make_video` (a `VideoFile` for model tests), `video_library` (a directory of probeable files).
     - Clean and clip runs: `mock_original_language` (English, no network; set `return_value`), `mock_ffmpeg`, `stub_output_write` (skips the copy to the destination), or `fake_transcode` (real write), `captured_clean` (records the `Config` and `RunOptions` clean receives).
+    - Interlace scans: `mock_interlace_detection` (autouse; every file reads as progressive; set `return_value` or `side_effect`). Tests never run the real scan.
     - Files: `video_path` (empty file). Recorded ffprobe responses live in `tests/fixtures/ffprobe/`; load raw JSON with `load_ffprobe_json`.
 - The autouse `_isolate_config` fixture points the user and dev config paths at `tmp_path` and clears `VIDCLEANER_*` vars. Write a test config with the `user_config` fixture. Build a `Config` with `make_config`; construct `RunOptions(...)` directly.
 - `VideoFile.probe_box` re-probes whenever the cached box's `path_to_file` differs from `latest_temp_path()`, so a `get_probe_as_box` mock fires more than once per file. A call-count assertion on it must count those re-probes.

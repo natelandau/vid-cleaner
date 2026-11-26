@@ -1,0 +1,9 @@
+[Parsed_idet_0 @ 0x6000012a4000] Repeated Fields: Neither:   149 Top:     1 Bottom:     0
+[Parsed_idet_0 @ 0x6000012a4000] Single frame detection: TFF:   135 BFF:     2 Progressive:   8 Undetermined:   7
+[Parsed_idet_0 @ 0x6000012a4000] Multi frame detection: TFF:  140 BFF:    0 Progressive:   5 Undetermined:   5
+[Parsed_idet_0 @ 0x6000012a4000] Repeated Fields: Neither:   149 Top:     1 Bottom:     0
+[Parsed_idet_0 @ 0x6000012a4000] Single frame detection: TFF:   137 BFF:     2 Progressive:   7 Undetermined:   6
+[Parsed_idet_0 @ 0x6000012a4000] Multi frame detection: TFF:  142 BFF:    0 Progressive:   4 Undetermined:   4
+[Parsed_idet_0 @ 0x6000012a4000] Repeated Fields: Neither:   149 Top:     1 Bottom:     0
+[Parsed_idet_0 @ 0x6000012a4000] Single frame detection: TFF:   133 BFF:     2 Progressive:   11 Undetermined:   6
+[Parsed_idet_0 @ 0x6000012a4000] Multi frame detection: TFF:  138 BFF:    0 Progressive:   8 Undetermined:   4

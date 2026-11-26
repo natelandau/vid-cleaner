@@ -1,0 +1,6 @@
+[Parsed_idet_0 @ 0x6000012a4000] Repeated Fields: Neither:   149 Top:     1 Bottom:     0
+[Parsed_idet_0 @ 0x6000012a4000] Single frame detection: TFF:   15 BFF:     2 Progressive:   13 Undetermined:   7
+[Parsed_idet_0 @ 0x6000012a4000] Multi frame detection: TFF:  20 BFF:    0 Progressive:   10 Undetermined:   5
+[Parsed_idet_0 @ 0x6000012a4000] Repeated Fields: Neither:   149 Top:     1 Bottom:     0
+[Parsed_idet_0 @ 0x6000012a4000] Single frame detection: TFF:   10 BFF:     2 Progressive:   15 Undetermined:   5
+[Parsed_idet_0 @ 0x6000012a4000] Multi frame detection: TFF:  15 BFF:    0 Progressive:   12 Undetermined:   3

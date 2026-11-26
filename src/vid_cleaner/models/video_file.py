@@ -1,5 +1,6 @@
 """VideoFile model."""
 
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,8 @@ from vid_cleaner.constants import (
     COMMENTARY_STREAM_TITLE_REGEX,
     CONVERT_TO_H265_LABEL,
     CONVERT_TO_VP9_LABEL,
+    DEINTERLACE_LABEL,
+    DEINTERLACE_LABEL_TEMPLATE,
     DOWNMIX_STEREO_FILTER,
     DOWNMIX_STEREO_LABEL,
     DROP_AUDIO_LABEL,
@@ -23,6 +26,8 @@ from vid_cleaner.constants import (
     FHD_RESOLUTION,
     H265_CODECS,
     HDTV_RESOLUTION,
+    INTERLACE_QUESTION_NOTICE,
+    INTERLACE_UNDECIDED_REASON,
     KEEP_ALL_SUBTITLES_REASON,
     MIN_SURROUND_CHANNELS,
     NO_AUDIO_STREAMS_REASON,
@@ -30,6 +35,7 @@ from vid_cleaner.constants import (
     NO_SURROUND_SOURCE_REASON,
     NO_UNWANTED_SUBTITLES_REASON,
     NO_VIDEO_STREAMS_REASON,
+    NOT_INTERLACED_REASON,
     REORDER_STREAMS_LABEL,
     SCALE_TO_1080P_LABEL,
     SDTV_RESOLUTION,
@@ -48,12 +54,14 @@ from vid_cleaner.exceptions import VideoCleanError
 from vid_cleaner.models.conversion_plan import ConversionPlan, OutputStream, PlanAction
 from vid_cleaner.utils import (
     FfmpegCommand,
+    InterlaceScan,
     MediaId,
     ProbeCache,
     build_ffmpeg_command,
     find_media_ids,
     get_probe_as_box,
     radarr_imdb_id,
+    scan_with_cache,
     sonarr_imdb_id,
     tmdb_original_language,
 )
@@ -104,6 +112,7 @@ class VideoFile:
         self.language: Lang | None = None
         self.ran_language_check = False
         self._probe_box: Box = Box({}, default_box=True, default_box_create_on_get=False)
+        self._interlace_scan: InterlaceScan | None = None
 
         self._all_streams: list[Box] = []
         self._video_streams: list[Box] = []
@@ -130,6 +139,39 @@ class VideoFile:
         """
         if self.temp_file.latest_temp_path() == self.path:
             self._probe_box = get_probe_as_box(self.path, probe_cache=probe_cache)
+
+    def interlace_scan(self, probe_cache: ProbeCache | None = None) -> InterlaceScan:
+        """Scan the source file for interlacing, once per instance.
+
+        Call this when a plan needs to know whether to deinterlace or warn. The scan decodes
+        part of the video, so the verdict is memoized and, given a cache, stored for the
+        next run. It always reads the source file, never a temporary output.
+
+        Args:
+            probe_cache (ProbeCache | None): The cache to read and fill. Skipped when None.
+
+        Returns:
+            InterlaceScan: The verdict, undecided when the file has too few frames to judge.
+        """
+        if self._interlace_scan is None:
+            self._interlace_scan = scan_with_cache(
+                self.path, read_duration=self._source_duration_seconds, probe_cache=probe_cache
+            )
+        return self._interlace_scan
+
+    def _source_duration_seconds(self) -> float | None:
+        """Read the source file's duration, which the interlace scan samples across.
+
+        Returns:
+            float | None: The duration in seconds, or None when unknown.
+        """
+        # `probe_box` follows the latest temporary output, which can be shorter than the source
+        source_probe = (
+            self.probe_box
+            if self.temp_file.latest_temp_path() == self.path
+            else get_probe_as_box(self.path)
+        )
+        return self._known_duration_seconds(source_probe)
 
     @property
     def video_streams(self) -> list[Box]:
@@ -620,8 +662,80 @@ class VideoFile:
 
         return keep
 
+    def _is_modern_codec_source(self, options: RunOptions) -> bool:
+        """Check whether the source is already H.265/VP9 and `force` does not override that.
+
+        Args:
+            options (RunOptions): The CLI-only values for this run.
+
+        Returns:
+            bool: True when a codec conversion has nothing to change, ignoring deinterlacing.
+        """
+        return not options.force and self.video_streams[0].codec_name.lower() in H265_CODECS
+
+    def _known_duration_seconds(self, probe: Box) -> float | None:
+        """Read a usable duration, which H.265 bitrate targets and scan sampling depend on.
+
+        Prefer the container duration, then the first video stream's.
+
+        Args:
+            probe (Box): The probe of the file whose duration is wanted.
+
+        Returns:
+            float | None: A finite, positive duration in seconds, or None when neither is usable.
+        """
+        stream_duration = self.video_streams[0].duration if self.video_streams else None
+        for value in (probe.duration, stream_duration):
+            try:
+                seconds = float(value or 0)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(seconds) and seconds > 0:
+                return seconds
+        return None
+
+    def _is_scale_unneeded(self, options: RunOptions) -> bool:
+        """Check whether the source is 1080p or smaller and `force` does not override that.
+
+        Args:
+            options (RunOptions): The CLI-only values for this run; `force` overrides the check.
+
+        Returns:
+            bool: True when the 1080p scale has nothing to shrink.
+        """
+        source_width = self.video_streams[0].width or 0
+        return source_width <= FHD_RESOLUTION.width and not options.force
+
+    def will_reencode_video(self, options: RunOptions) -> bool:
+        """Check whether the requested codec or scale work re-encodes the video.
+
+        Call this to decide whether a deinterlace question is worth asking. It reflects
+        what the codec and scale planners decide and never scans for interlacing.
+
+        Args:
+            options (RunOptions): The CLI-only values for this run.
+
+        Returns:
+            bool: True when `--h265`, `--vp9`, or `--1080p` changes the video for this file.
+        """
+        if not self.video_streams:
+            return False
+        modern = self._is_modern_codec_source(options)
+        return (
+            (
+                options.h265
+                and not modern
+                and self._known_duration_seconds(self.probe_box) is not None
+            )
+            or (options.vp9 and not modern)
+            or (options.video_1080 and not self._is_scale_unneeded(options))
+        )
+
     def _skip_codec_conversion(self, plan: ConversionPlan, label: str, options: RunOptions) -> bool:
         """Record a skipped codec conversion when the video already uses a modern codec.
+
+        Deinterlacing an interlaced modern-codec source needs an encode, so it lifts the
+        skip the same way `force` does.
 
         Args:
             plan (ConversionPlan): The plan that receives the skipped action.
@@ -631,7 +745,9 @@ class VideoFile:
         Returns:
             bool: True when the conversion was skipped and the caller should stop planning it.
         """
-        if options.force or self.video_streams[0].codec_name.lower() not in H265_CODECS:
+        if not self._is_modern_codec_source(options):
+            return False
+        if options.deinterlace is True and self.interlace_scan().interlaced:
             return False
         plan.actions.append(
             PlanAction(label=label, applied=False, reason=ALREADY_MODERN_CODEC_REASON)
@@ -678,8 +794,8 @@ class VideoFile:
         video_stream = self.video_streams[0]
         # Calculate target bitrate using Frame.io's formula: https://blog.frame.io/2017/03/06/calculate-video-bitrates/
         # This formula provides good quality while maintaining reasonable file sizes
-        stream_duration = float(self.probe_box.duration or 0) or float(video_stream.duration or 0)
-        if not stream_duration:
+        stream_duration = self._known_duration_seconds(self.probe_box)
+        if stream_duration is None:
             plan.actions.append(
                 PlanAction(
                     label=CONVERT_TO_H265_LABEL,
@@ -795,6 +911,50 @@ class VideoFile:
                 action.applied = True
                 action.reason = None
 
+    def _plan_deinterlace(self, plan: ConversionPlan, options: RunOptions) -> None:
+        """Plan a bwdif deinterlace of every kept video stream when the source is interlaced.
+
+        With the choice unanswered (`None`), only a dry run reaches here with an interlaced
+        file; it gets a notice instead of a filter. The scan runs only when the video is
+        re-encoded anyway.
+
+        Args:
+            plan (ConversionPlan): The plan whose video streams are annotated in place.
+            options (RunOptions): The CLI-only values for this run.
+        """
+        if options.deinterlace is None:
+            if not self.will_reencode_video(options):
+                return
+            if self.interlace_scan().interlaced:
+                plan.notices.append(INTERLACE_QUESTION_NOTICE)
+            return
+        if options.deinterlace is False:
+            return
+
+        scan = self.interlace_scan()
+        # An InterlaceScan carries a field order exactly when it found interlacing
+        if scan.field_order is None:
+            plan.actions.append(
+                PlanAction(
+                    label=DEINTERLACE_LABEL,
+                    applied=False,
+                    reason=INTERLACE_UNDECIDED_REASON
+                    if scan.interlaced is None
+                    else NOT_INTERLACED_REASON,
+                )
+            )
+            return
+
+        deinterlace_filter = f"bwdif=mode=send_frame:parity={scan.field_order.value}:deint=all"
+        for video_output in plan.streams_of(CodecTypes.VIDEO):
+            video_output.add_filter(deinterlace_filter, first=True)
+        plan.actions.append(
+            PlanAction(
+                label=DEINTERLACE_LABEL_TEMPLATE.format(field_order=scan.field_order.description),
+                applied=True,
+            )
+        )
+
     def _plan_scale_to_1080p(self, plan: ConversionPlan, options: RunOptions) -> None:
         """Plan scaling the video stream to 1080p.
 
@@ -805,8 +965,7 @@ class VideoFile:
             plan (ConversionPlan): The plan whose video stream is annotated in place.
             options (RunOptions): The CLI-only values for this run.
         """
-        source_width = self.video_streams[0].width or 0
-        if source_width <= FHD_RESOLUTION.width and not options.force:
+        if self._is_scale_unneeded(options):
             plan.actions.append(
                 PlanAction(
                     label=SCALE_TO_1080P_LABEL, applied=False, reason="source already ≤1080p"
@@ -814,15 +973,14 @@ class VideoFile:
             )
             return
 
+        source_width = self.video_streams[0].width or 0
         if 0 < source_width < FHD_RESOLUTION.width:
             plan.upscale_source_width = source_width
 
+        # Height -2 keeps the aspect ratio while forcing the even dimension encoders need
+        scale_filter = f"scale=width={FHD_RESOLUTION.width}:height=-2"
         for video_output in plan.streams_of(CodecTypes.VIDEO):
-            # Height -2 keeps the aspect ratio while forcing the even dimension encoders need
-            video_output.stream_filter = f"scale=width={FHD_RESOLUTION.width}:height=-2"
-            if video_output.codec == "copy":
-                # Scaling requires an encode; None lets ffmpeg pick the container default
-                video_output.codec = None
+            video_output.add_filter(scale_filter)
         plan.actions.append(PlanAction(label=SCALE_TO_1080P_LABEL, applied=True))
 
     def _build_plan(self, config: Config, options: RunOptions) -> ConversionPlan:
@@ -875,12 +1033,15 @@ class VideoFile:
         )
         plan.streams = video + audio + subtitles
 
-        # Codec planners run before the scale planner so scaling only falls back to the
-        # container default encoder when no explicit codec was requested.
+        # Codec planners run first so later filters only fall back to the container default
+        # encoder when no explicit codec was requested. Deinterlacing precedes scaling so
+        # the scale filter sees whole frames.
         if options.h265:
             self._plan_h265(plan=plan, options=options)
         if options.vp9:
             self._plan_vp9(plan=plan, options=options)
+        if options.deinterlace is not False:
+            self._plan_deinterlace(plan=plan, options=options)
         if options.video_1080:
             self._plan_scale_to_1080p(plan=plan, options=options)
 

@@ -231,6 +231,7 @@ def build_run_options(vidcleaner: VidCleaner) -> RunOptions:
         video_1080=getattr(command, "video_1080", False),
         force=getattr(command, "force", False),
         out=getattr(command, "out", None),
+        deinterlace=getattr(command, "deinterlace", None),
     )
 
 
@@ -411,6 +412,8 @@ Defaults for vid-cleaner are set in the configuration file located at `{USER_CON
 
 Each on-or-off option in `Configuration` also has a `--no-` form, such as `--no-downmix`. A flag overrides the matching `VIDCLEANER_*` environment variable and the configuration file.
 
+When a run re-encodes interlaced video, `clean` asks once, before any encode, whether to deinterlace the files, re-encode them as they are, or skip them. To decide in advance, use `--deinterlace` or `--no-deinterlace`. With `--yes`, or when no terminal is available, `clean` stops with exit code 1 and names both flags.
+
 **Important:** Vid-cleaner makes decisions about which audio and subtitle tracks to keep based on the original language of the video. This is determined by querying the TMDb, Radarr, andSonarr APIs. To use this functionality, you must add the appropriate API keys to the configuration file.
 
 **Usage Examples:**
@@ -584,6 +587,21 @@ class CleanCommand:
             group="Video Conversion",
         ),
     ] = False
+    deinterlace: Annotated[
+        bool | None,
+        cappa.Arg(
+            help="Deinterlace interlaced video without asking (Default: ask when a re-encode finds it)",
+            long="--deinterlace",
+            action=cappa.ArgAction.store_true,
+            group="Video Conversion",
+        ),
+        cappa.Arg(
+            help="Re-encode interlaced video as it is without asking",
+            long="--no-deinterlace",
+            action=cappa.ArgAction.store_false,
+            group="Video Conversion",
+        ),
+    ] = None
     force: Annotated[
         bool,
         cappa.Arg(
@@ -620,7 +638,7 @@ class CleanCommand:
     description="""\
 Inspect video files to display detailed stream information.
 
-Use this command to view detailed information about the video and audio streams of a video file. The information includes stream type, codec, language, and audio channel details. This command is useful for understanding the composition of a video file before performing operations like clipping or transcoding.
+Use this command to view detailed information about the video and audio streams of a video file. The information includes stream type, codec, language, and audio channel details. After the table, a `Scan:` line says whether the video is interlaced, progressive, or undetermined. This command is useful for understanding the composition of a video file before performing operations like clipping or transcoding.
 """,
 )
 class InspectCommand:
@@ -718,6 +736,8 @@ class ClipCommand:
 Report whether each video file is valid, and exit non-zero when any file is not.
 
 Use this to find damaged and mislabeled files in a library. The command prints one line for every file, so one invalid file does not hide the state of the others. Valid files go to stdout and invalid files to stderr.
+
+The command also scans each valid file for interlacing. An interlaced file stays valid, and its line shows the field order.
 
 A file is valid when all of these conditions are true:
 

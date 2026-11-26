@@ -201,6 +201,34 @@ def test_is_noop_false_when_any_stream_encodes():
     assert rewrapped.is_noop(stream_count=1) is False
 
 
+@pytest.mark.parametrize(
+    ("existing_filter", "codec", "first", "expected_filter", "expected_codec"),
+    [
+        (None, "copy", False, "new", None),
+        (None, "copy", True, "new", None),
+        ("old", "copy", False, "old,new", None),
+        ("old", "copy", True, "new,old", None),
+        ("old", "libx265", False, "old,new", "libx265"),
+        (None, None, False, "new", None),
+    ],
+)
+def test_add_filter_chains_filter_and_leaves_stream_copy(
+    existing_filter, codec, first, expected_filter, expected_codec
+):
+    """Verify add_filter chains in the requested position and drops stream copy only."""
+    # Given: a video stream with an optional filter and codec
+    stream = OutputStream(
+        source_index=0, codec_type=CodecTypes.VIDEO, codec=codec, stream_filter=existing_filter
+    )
+
+    # When: adding a filter
+    stream.add_filter("new", first=first)
+
+    # Then: the chain and codec match
+    assert stream.stream_filter == expected_filter
+    assert stream.codec == expected_codec
+
+
 def test_plan_action_defaults():
     """Verify PlanAction defaults reason to None."""
     action = PlanAction(label="Downmix to stereo", applied=True)

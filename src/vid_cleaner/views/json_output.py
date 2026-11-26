@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from vid_cleaner.controllers.discovery import DiscoveryReport
     from vid_cleaner.controllers.validation import CheckResult
     from vid_cleaner.models.video_file import VideoFile
+    from vid_cleaner.utils import InterlaceScan
 
 JSON_SCHEMA_VERSION = 1
 
@@ -78,6 +79,24 @@ def file_object(video_file: VideoFile, *, size: int | None = None) -> dict[str, 
     }
 
 
+def interlace_scan_fields(scan: InterlaceScan | None) -> dict[str, bool | str | None]:
+    """Serialize an interlace scan to the `interlaced` and `field_order` JSON fields.
+
+    Call this so every command reports a scan in the same shape.
+
+    Args:
+        scan (InterlaceScan | None): The scan result, or None when no scan ran.
+
+    Returns:
+        dict[str, bool | str | None]: `interlaced` and `field_order`, each null when the
+            scan did not run or could not decide.
+    """
+    return {
+        "interlaced": scan.interlaced if scan else None,
+        "field_order": scan.field_order.value if scan and scan.field_order else None,
+    }
+
+
 def check_report_entry(result: CheckResult) -> dict[str, Any]:
     """Convert one check verdict to its JSON file entry so scripts can read the file's result.
 
@@ -85,13 +104,15 @@ def check_report_entry(result: CheckResult) -> dict[str, Any]:
         result (CheckResult): The verdict for one file.
 
     Returns:
-        dict[str, Any]: The `path`, resolved like every other command's, plus `ok` and
-            `reason`, which is null when the file is valid.
+        dict[str, Any]: The `path`, resolved like every other command's, plus `ok`,
+            `reason` (null when the file is valid), `interlaced` and `field_order`. The
+            last two are null for an invalid file or an undecided scan.
     """
     return {
         "path": str(result.path.expanduser().resolve()),
         "ok": result.ok,
         "reason": result.reason,
+        **interlace_scan_fields(result.scan),
     }
 
 

@@ -10,6 +10,7 @@ import cappa
 import pytest
 from cappa.base import invoke
 
+from vid_cleaner.utils.probe_cache import PROBE_CACHE_FILENAME
 from vid_cleaner.vidcleaner import VidCleaner, configure_output
 
 FFPROBE_FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "ffprobe"
@@ -96,10 +97,18 @@ def ffmpeg_command(mock_ffmpeg: MagicMock) -> str:
 def leftover_cache_files(cache_dir: Path) -> list[Path]:
     """List the files still under a cache directory, to assert a run cleaned up its temp files.
 
+    The probe cache database lives in the same directory and is meant to persist, so it is
+    not a leftover.
+
     Args:
         cache_dir: The cache directory to search recursively.
 
     Returns:
-        list[Path]: Every file under `cache_dir`, directories excluded.
+        list[Path]: Every file under `cache_dir` except the probe cache database,
+            directories excluded.
     """
-    return [path for path in cache_dir.rglob("*") if path.is_file()]
+    return [
+        path
+        for path in cache_dir.rglob("*")
+        if path.is_file() and not path.name.startswith(PROBE_CACHE_FILENAME)
+    ]

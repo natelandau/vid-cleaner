@@ -12,11 +12,31 @@ from vid_cleaner.constants import SYMBOL_CHECK, SYMBOL_CROSS, TREE_BRANCH, TREE_
 from vid_cleaner.exceptions import RunStopped
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Callable, Iterable, Iterator
 
     from vid_cleaner.models.conversion_plan import PlanAction
 
 T = TypeVar("T")
+
+
+def ask_if_interactive(prompt: Callable[[], T]) -> T | None:
+    """Run a prompt only when someone can answer it, so a caller can fall back otherwise.
+
+    `is_terminal` describes the output stream, so a closed or redirected stdin still
+    reaches the prompt and gets EOF instead of an answer. Both cases return None.
+
+    Args:
+        prompt (Callable[[], T]): Asks the question and returns the answer.
+
+    Returns:
+        T | None: The answer, or None when the run cannot prompt.
+    """
+    if not pp.console().is_terminal:
+        return None
+    try:
+        return prompt()
+    except EOFError:
+        return None
 
 
 def progress_display(*, transient: bool = True) -> Progress:

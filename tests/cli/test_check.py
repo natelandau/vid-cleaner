@@ -6,7 +6,8 @@ import pytest
 from cappa.base import invoke
 
 from tests.helpers import read_json_document, run_vidcleaner
-from vid_cleaner.cli.check_video import display_path
+from vid_cleaner.cli import check_video
+from vid_cleaner.cli.check_video import CHECK_SUMMARY_TEMPLATE, display_path
 from vid_cleaner.cli.discovery_output import (
     FROM_WITH_FILES_ERROR,
     NO_FILES_OR_FROM_ERROR,
@@ -16,7 +17,15 @@ from vid_cleaner.cli.discovery_output import (
 )
 from vid_cleaner.controllers.validation import CheckResult
 from vid_cleaner.exceptions import VideoProbeError
+from vid_cleaner.utils import FieldOrder, InterlaceScan
 from vid_cleaner.vidcleaner import VidCleaner, configure_output
+
+
+def check_summary(*, valid: int, invalid: int, interlaced: int = 0) -> str:
+    """Return the summary line a check run prints for these counts."""
+    return CHECK_SUMMARY_TEMPLATE.format(
+        total=valid + invalid, valid=valid, invalid=invalid, interlaced=interlaced
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -43,10 +52,10 @@ def test_check_valid_file_exits_zero(capsys, video_path, mock_video_probe):
     # Then: It is reported valid and the run succeeds
     assert exit_code == 0
     assert "test_video.mp4" in captured.out
-    assert "1 valid, 0 invalid" in captured.out
+    assert check_summary(valid=1, invalid=0) in captured.out
 
 
-def test_check_invalid_file_exits_one(capsys, video_path, mocker):
+def test_check_invalid_file_exits_one(capsys, video_path, mocker, mock_interlace_detection):
     """Verify an unreadable file fails the run with its ffprobe reason."""
     # Given: A file ffprobe cannot read
     mocker.patch(
@@ -63,7 +72,8 @@ def test_check_invalid_file_exits_one(capsys, video_path, mocker):
     # Then: The failure carries ffprobe's reason and the run fails
     assert exit_code == 1
     assert "moov atom not found" in captured.err
-    assert "0 valid, 1 invalid" in captured.out
+    assert check_summary(valid=0, invalid=1) in captured.out
+    mock_interlace_detection.assert_not_called()
 
 
 def test_check_reports_every_file_in_a_mixed_batch(capsys, tmp_path, mock_unreadable_probe):
@@ -92,7 +102,7 @@ def test_check_reports_every_file_in_a_mixed_batch(capsys, tmp_path, mock_unread
     assert "Invalid data found" in output
     assert "not a video file" in output
     assert "file does not exist" in output
-    assert "1 valid, 3 invalid" in captured.out
+    assert check_summary(valid=1, invalid=3) in captured.out
 
 
 def test_check_skips_named_macos_sidecars(capsys, video_path, mock_video_probe):
@@ -109,7 +119,7 @@ def test_check_skips_named_macos_sidecars(capsys, video_path, mock_video_probe):
 
     # Then: Only the video is checked
     assert exit_code == 0
-    assert "Checked 1 file(s): 1 valid, 0 invalid" in captured.out
+    assert check_summary(valid=1, invalid=0) in captured.out
     assert sidecar.name not in captured.out + captured.err
 
 
@@ -167,8 +177,12 @@ def test_check_without_deep_does_not_decode(video_path, mocker, mock_video_probe
 @pytest.mark.parametrize(
     ("filters", "summary"),
     [
-        pytest.param([], "1 valid, 1 invalid", id="no filter"),
-        pytest.param(["--filters", "vp9"], "0 valid, 1 invalid", id="filter matching neither"),
+        pytest.param([], check_summary(valid=1, invalid=1), id="no filter"),
+        pytest.param(
+            ["--filters", "vp9"],
+            check_summary(valid=0, invalid=1),
+            id="filter matching neither",
+        ),
     ],
 )
 def test_check_from_reports_unreadable_files(
@@ -299,7 +313,7 @@ def test_check_prints_square_brackets_verbatim(capsys, tmp_path, mocker):
     markup tags and drops, leaving a printed filename that does not exist on disk.
     """
     # Given: A bracketed filename that fails with a bracketed ffprobe reason
-    movie = tmp_path / "Movie [x265].mkv"
+    movie = tmp_path / "Movie [x265] :smile:.mkv"
     movie.touch()
     mocker.patch(
         "vid_cleaner.models.video_file.get_probe_as_box",
@@ -316,7 +330,7 @@ def test_check_prints_square_brackets_verbatim(capsys, tmp_path, mocker):
 
     # Then: Both the name and the reason are printed as written
     assert exit_code == 1
-    assert "Movie [x265].mkv" in captured.err
+    assert "Movie [x265] :smile:.mkv" in captured.err
     assert "[matroska,webm @ 0x14f1] Read error" in captured.err
 
 
@@ -372,28 +386,50 @@ def test_display_path_survives_a_deleted_working_directory(tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize(
-    ("readable", "exit_code", "summary", "ok", "has_reason"),
+    ("readable", "scan", "exit_code", "interlaced_count", "interlaced", "field_order"),
     [
-        (True, 0, {"total": 1, "valid": 1, "invalid": 0}, True, False),
-        (False, 1, {"total": 1, "valid": 0, "invalid": 1}, False, True),
+        pytest.param(
+            True,
+            InterlaceScan(interlaced=True, field_order=FieldOrder.TFF),
+            0,
+            1,
+            True,
+            "tff",
+            id="tff",
+        ),
+        pytest.param(
+            True,
+            InterlaceScan(interlaced=False, field_order=None),
+            0,
+            0,
+            False,
+            None,
+            id="progressive",
+        ),
+        pytest.param(
+            True, InterlaceScan(interlaced=None, field_order=None), 0, 0, None, None, id="undecided"
+        ),
+        pytest.param(False, None, 1, 0, None, None, id="unreadable"),
     ],
-    ids=["valid", "unreadable"],
 )
 def test_check_json(
     capsys,
     video_path,
     mock_video_probe,
     mock_unreadable_probe,
+    mock_interlace_detection,
     readable,
+    scan,
     exit_code,
-    summary,
-    ok,
-    has_reason,
+    interlaced_count,
+    interlaced,
+    field_order,
 ):
-    """Verify check --json prints one document with a verdict per file."""
+    """Verify check --json prints one document with a verdict and interlace scan per file."""
     # Given: A file that probes or fails to probe
     if readable:
         mock_video_probe("reference.json")
+        mock_interlace_detection.return_value = scan
     else:
         mock_unreadable_probe(video_path.name)
 
@@ -402,13 +438,89 @@ def test_check_json(
 
     # Then: stdout is one report matching the verdict, and the exit code is unchanged
     doc = read_json_document(capsys)
+    entry = doc["files"][0]
     assert actual_exit_code == exit_code
     assert doc["command"] == "check"
     assert doc["error"] is None
-    assert doc["summary"] == summary
-    assert doc["files"][0]["path"] == str(video_path.resolve())
-    assert doc["files"][0]["ok"] is ok
-    assert (doc["files"][0]["reason"] is not None) is has_reason
+    assert doc["summary"] == {
+        "total": 1,
+        "valid": int(readable),
+        "invalid": int(not readable),
+        "interlaced": interlaced_count,
+    }
+    assert entry["path"] == str(video_path.resolve())
+    assert entry["ok"] is readable
+    assert (entry["reason"] is not None) is (not readable)
+    assert entry["interlaced"] is interlaced
+    assert entry["field_order"] == field_order
+
+
+def test_check_marks_interlaced_files_on_stdout(
+    capsys, tmp_path, mock_video_probe, mock_interlace_detection
+):
+    """Verify an interlaced file stays a valid, stdout-listed file and carries the marker.
+
+    The filename keeps its square brackets and emoji shortcode, which Rich would otherwise
+    read as markup.
+    """
+    # Given: A valid, interlaced file whose name Rich could misread
+    movie = tmp_path / "Movie [x265] :smile:.mkv"
+    movie.touch()
+    mock_video_probe("reference.json")
+    scan = InterlaceScan(interlaced=True, field_order=FieldOrder.TFF)
+    mock_interlace_detection.return_value = scan
+
+    # When: Checking it
+    exit_code = run_vidcleaner(["check", str(movie)])
+
+    # Then: The marker is on stdout beside the verbatim name, the summary counts it, and the
+    # run succeeds
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert f"{movie.name}  {scan.description}" in captured.out
+    assert check_summary(valid=1, invalid=0, interlaced=1) in captured.out
+
+
+@pytest.mark.parametrize("deep", [False, True], ids=["header check", "deep"])
+@pytest.mark.parametrize("from_directory", [False, True], ids=["named files", "from"])
+def test_check_always_shows_progress(
+    mocker, video_path, mock_video_probe, video_library, deep, from_directory
+):
+    """Verify a check shows progress whether or not it decodes, since scans take time too."""
+    # Given: A file named directly or found under a `--from` directory
+    progress = mocker.spy(check_video, "track_progress")
+    if from_directory:
+        library = video_library([("movie.mkv", 1_000, 1_000)])
+        args = ["check", "--from", str(library)]
+    else:
+        mock_video_probe("reference.json")
+        args = ["check", str(video_path)]
+
+    # When: Checking it
+    run_vidcleaner([*args, *(["--deep"] if deep else [])])
+
+    # Then: The progress bar is shown
+    progress.assert_called_once()
+    assert not progress.call_args.kwargs.get("disable", False)
+
+
+def test_check_keeps_file_valid_when_scan_cannot_stat(capsys, video_path, mock_video_probe, mocker):
+    """Verify a file whose scan raises OSError is still valid, with an undecided verdict."""
+    # Given: A valid file whose scan fails with an OSError
+    mock_video_probe("reference.json")
+    mocker.patch(
+        "vid_cleaner.models.video_file.VideoFile.interlace_scan",
+        side_effect=OSError("stat failed"),
+    )
+
+    # When: Checking it
+    exit_code = run_vidcleaner(["check", "--json", video_path.name])
+
+    # Then: The file is valid and the verdict is undecided
+    doc = read_json_document(capsys)
+    assert exit_code == 0
+    assert doc["files"][0]["ok"] is True
+    assert doc["files"][0]["interlaced"] is None
 
 
 def test_check_json_reports_missing_from_directory(capsys, tmp_path):
@@ -462,4 +574,4 @@ def test_check_json_interrupt_keeps_finished_verdicts(capsys, mocker, tmp_path):
     doc = read_json_document(capsys)
     assert doc["interrupted"] is True
     assert [entry["path"] for entry in doc["files"]] == [str(first)]
-    assert doc["summary"] == {"total": 1, "valid": 1, "invalid": 0}
+    assert doc["summary"] == {"total": 1, "valid": 1, "invalid": 0, "interlaced": 0}

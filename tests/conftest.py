@@ -16,7 +16,7 @@ from vid_cleaner import constants
 from vid_cleaner.config import Config, RunOptions, load_config
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.models.conversion_plan import ConversionPlan
-from vid_cleaner.utils import OutputWrite, get_probe_as_box
+from vid_cleaner.utils import InterlaceScan, OutputWrite, get_probe_as_box
 
 from vid_cleaner.models.video_file import VideoFile  # isort: skip
 
@@ -177,6 +177,18 @@ def stub_output_write(mocker):
         return OutputWrite(path=dst, backup_path=None)
 
     return mocker.patch("vid_cleaner.cli.ffmpeg_step.copy_to_output", side_effect=_report_save)
+
+
+@pytest.fixture(autouse=True)
+def mock_interlace_detection(mocker):
+    """Report every file as progressive so no test runs ffmpeg's interlace scan.
+
+    Autouse; set `return_value` or `side_effect` on the returned mock to change the verdict.
+    """
+    return mocker.patch(
+        "vid_cleaner.utils.interlace_detection.detect_interlacing",
+        return_value=InterlaceScan(interlaced=False, field_order=None),
+    )
 
 
 @pytest.fixture

@@ -37,6 +37,25 @@ class OutputStream:
     extra_args: list[str] = field(default_factory=list)
     metadata: dict[str, str] = field(default_factory=dict)
 
+    def add_filter(self, expression: str, *, first: bool = False) -> None:
+        """Chain a filter onto this stream so planners can combine filters in one pass.
+
+        Filtering needs an encode, so a stream-copied stream switches to the container's
+        default encoder. A codec a planner already chose stays.
+
+        Args:
+            expression (str): The ffmpeg filter expression to chain.
+            first (bool): Prepend the filter instead of appending it.
+        """
+        if not self.stream_filter:
+            self.stream_filter = expression
+        elif first:
+            self.stream_filter = f"{expression},{self.stream_filter}"
+        else:
+            self.stream_filter = f"{self.stream_filter},{expression}"
+        if self.codec == "copy":
+            self.codec = None
+
 
 @dataclass
 class PlanAction:

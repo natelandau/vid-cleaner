@@ -11,6 +11,7 @@ from cappa import Dep
 from nclutils import pp
 from rich.filesize import decimal
 from rich.prompt import Confirm
+from rich.text import Text
 
 from vid_cleaner.cli.discovery_output import (
     FROM_WITH_FILES_ERROR,
@@ -20,9 +21,15 @@ from vid_cleaner.cli.discovery_output import (
     discover_from_directory,
     present_discovery,
 )
+from vid_cleaner.cli.interlace_question import (
+    INTERLACED_FILES_SKIPPED_REASON,
+    UNDECIDED_INTERLACE_REASON,
+    resolve_interlaced_files,
+)
 from vid_cleaner.config import Config, RunOptions
 from vid_cleaner.constants import (
     FHD_RESOLUTION,
+    INTERLACE_QUESTION_NOTICE,
     SCALE_TO_1080P_LABEL,
     SYMBOL_CROSS,
     UPSCALE_DECLINED_REASON,
@@ -35,6 +42,7 @@ from vid_cleaner.utils import (
     FfmpegCommand,
     OutputWrite,
     ProbeCache,
+    ask_if_interactive,
     coerce_video_files,
     output_write_messages,
     render_operations,
@@ -184,17 +192,11 @@ def approve_upscale(video_file: VideoFile, *, source_width: int, dryrun: bool) -
     if dryrun:
         return True
 
-    no_prompt_message = "Cannot ask for approval in a non-interactive run. Skipping the upscale."
-    if not pp.console().is_terminal:
-        pp.warning(no_prompt_message)
-        return False
-
-    try:
-        approved = Confirm.ask("Upscale this video to 1080p?", default=False, console=pp.console())
-    # `is_terminal` describes the output stream, so a closed or redirected stdin still
-    # reaches the prompt and gets EOF instead of an answer.
-    except EOFError:
-        pp.warning(no_prompt_message)
+    approved = ask_if_interactive(
+        lambda: Confirm.ask("Upscale this video to 1080p?", default=False, console=pp.console())
+    )
+    if approved is None:
+        pp.warning("Cannot ask for approval in a non-interactive run. Skipping the upscale.")
         return False
     return approved
 
@@ -241,7 +243,12 @@ def check_free_space(video_file: VideoFile, *, temp_dir: Path, destination_dir: 
 
 
 def clean_video_file(
-    video_file: VideoFile, *, destination_dir: Path, config: Config, options: RunOptions
+    video_file: VideoFile,
+    *,
+    destination_dir: Path,
+    config: Config,
+    options: RunOptions,
+    answered_deinterlace: bool = False,
 ) -> tuple[ConversionPlan, FfmpegCommand | None]:
     """Plan a file's cleaning, report the plan, and run it unless it changes nothing.
 
@@ -253,6 +260,9 @@ def clean_video_file(
             free space before encoding.
         config (Config): The settings for this run.
         options (RunOptions): The CLI-only values for this run.
+        answered_deinterlace (bool): Whether `options.deinterlace` comes from the user's
+            answer to the interlace question rather than the `--deinterlace` flag. Such a
+            deinterlace is dropped when a declined upscale leaves nothing else to re-encode.
 
     Returns:
         tuple[ConversionPlan, FfmpegCommand | None]: The plan, whose `output_suffix` names
@@ -264,10 +274,19 @@ def clean_video_file(
     if plan.upscale_source_width is not None and not approve_upscale(
         video_file, source_width=plan.upscale_source_width, dryrun=options.dryrun
     ):
-        plan = video_file.plan_clean(config=config, options=replace(options, video_1080=False))
+        options = replace(options, video_1080=False)
+        # The question asked about deinterlacing during an encode the run was going to do,
+        # so with the upscale gone and nothing else re-encoding, the answer no longer applies
+        if answered_deinterlace and not video_file.will_reencode_video(options):
+            options = replace(options, deinterlace=False)
+        plan = video_file.plan_clean(config=config, options=options)
         plan.actions.append(
             PlanAction(label=SCALE_TO_1080P_LABEL, applied=False, reason=UPSCALE_DECLINED_REASON)
         )
+
+    # Only a dry run may reach the encode with the question unanswered
+    if not options.dryrun and INTERLACE_QUESTION_NOTICE in plan.notices:
+        raise VideoCleanError(path=video_file.path, reason=UNDECIDED_INTERLACE_REASON)
 
     for note in plan.debug_notes:
         pp.debug(note)
@@ -305,6 +324,7 @@ def clean_one_file(
     config: Config,
     options: RunOptions,
     probe_for_report: bool,
+    answered_deinterlace: bool = False,
 ) -> CleanOutcome:
     """Clean one file and return what happened, so a batch can report it and move on.
 
@@ -321,6 +341,8 @@ def clean_one_file(
         probe_for_report (bool): Describe the input file before planning and the written
             file after a successful write. Pass True only when a report needs the
             descriptions, so a plain run does no extra probing.
+        answered_deinterlace (bool): Whether `options.deinterlace` comes from the user's
+            answer to the interlace question rather than the `--deinterlace` flag.
 
     Returns:
         CleanOutcome: The file's outcome.
@@ -338,6 +360,7 @@ def clean_one_file(
             destination_dir=destination.parent,
             config=config,
             options=options,
+            answered_deinterlace=answered_deinterlace,
         )
         outcome.plan = plan
         if command is None:
@@ -505,10 +528,12 @@ def main(
     report = json_report_for(vidcleaner)
     summary = dict.fromkeys(("total", *(str(status) for status in CleanStatus)), 0)
     failures: list[str] = []
+    skipped: list[dict[str, str]] = []
 
     with report_on_exit(report):
         if report:
             report.summary = summary
+            report.extra["skipped"] = skipped
 
         if options.h265 and options.vp9:
             raise stop_run(H265_AND_VP9_ERROR)
@@ -519,17 +544,31 @@ def main(
             clean_cmd.files, out=options.out, from_directory=clean_cmd.from_
         )
         video_files = select_video_files(clean_cmd=clean_cmd, config=config, options=options)
+        decision = resolve_interlaced_files(
+            video_files, options=options, cache_dir=config.cache_dir, assume_yes=clean_cmd.yes
+        )
+        if decision.skipped:
+            pp.info(
+                f"Skipped {len(decision.skipped)} interlaced file(s):",
+                # `Text` keeps a `:name:` in a filename from turning into an emoji
+                details=[Text(str(video_file.path)) for video_file in decision.skipped],
+            )
+            skipped.extend(
+                {"path": str(video_file.path), "reason": INTERLACED_FILES_SKIPPED_REASON}
+                for video_file in decision.skipped
+            )
 
-        for video_file in video_files:
+        for video_file in decision.files:
             # Print the video name first so live progress bars and the up-front operation
             # tree render beneath it.
-            pp.info(f"⇨ {video_file.path.name}")
+            pp.info(Text(f"⇨ {video_file.path.name}"))
             outcome = clean_one_file(
                 video_file,
                 out_path_override=out_path_override,
                 config=config,
-                options=options,
+                options=decision.options_for(video_file),
                 probe_for_report=report is not None,
+                answered_deinterlace=video_file.path in decision.deinterlaced_paths,
             )
             render_clean_outcome(outcome, dryrun=options.dryrun)
             if outcome.status == CleanStatus.FAILED:
