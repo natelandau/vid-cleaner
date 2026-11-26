@@ -14,6 +14,7 @@ from vid_cleaner.constants import (
     ALREADY_MODERN_CODEC_REASON,
     CONVERT_TO_H265_LABEL,
     CONVERT_TO_VP9_LABEL,
+    DEINTERLACE_LABEL,
     DOWNMIX_STEREO_LABEL,
     DROP_AUDIO_LABEL,
     DROP_SUBTITLES_LABEL,
@@ -925,9 +926,19 @@ TFF_FILTER = "bwdif=mode=send_frame:parity=tff:deint=all"
 
 
 @pytest.mark.parametrize(
-    ("fixture", "source_codec", "deinterlace", "scan", "flags", "codec", "stream_filter", "reason"),
+    (
+        "fixture",
+        "source_codec",
+        "deinterlace",
+        "scan",
+        "flags",
+        "codec",
+        "stream_filter",
+        "reason",
+        "asks_question",
+    ),
     [
-        ("reference.json", None, True, TFF_SCAN, {}, None, TFF_FILTER, None),
+        ("reference.json", None, True, TFF_SCAN, {}, None, TFF_FILTER, None, False),
         (
             "reference.json",
             None,
@@ -937,6 +948,7 @@ TFF_FILTER = "bwdif=mode=send_frame:parity=tff:deint=all"
             None,
             "bwdif=mode=send_frame:parity=bff:deint=all",
             None,
+            False,
         ),
         (
             "uhd.json",
@@ -947,6 +959,7 @@ TFF_FILTER = "bwdif=mode=send_frame:parity=tff:deint=all"
             None,
             f"{TFF_FILTER},scale=width=1920:height=-2",
             None,
+            False,
         ),
         (
             "reference.json",
@@ -957,8 +970,30 @@ TFF_FILTER = "bwdif=mode=send_frame:parity=tff:deint=all"
             "libx265",
             "bwdif=mode=send_frame:parity=bff:deint=all",
             None,
+            False,
         ),
-        ("reference.json", None, True, PROGRESSIVE_SCAN, {}, "copy", None, NOT_INTERLACED_REASON),
+        (
+            "reference.json",
+            "hevc",
+            True,
+            TFF_SCAN,
+            {"vp9": True},
+            "libvpx-vp9",
+            TFF_FILTER,
+            None,
+            False,
+        ),
+        (
+            "reference.json",
+            None,
+            True,
+            PROGRESSIVE_SCAN,
+            {},
+            "copy",
+            None,
+            NOT_INTERLACED_REASON,
+            False,
+        ),
         (
             "reference.json",
             None,
@@ -968,15 +1003,27 @@ TFF_FILTER = "bwdif=mode=send_frame:parity=tff:deint=all"
             "copy",
             None,
             INTERLACE_UNDECIDED_REASON,
+            False,
         ),
-        ("reference.json", None, None, TFF_SCAN, {"h265": True}, "libx265", None, None),
-        ("reference.json", None, None, TFF_SCAN, {}, "copy", None, None),
+        (
+            "reference.json",
+            None,
+            None,
+            TFF_SCAN,
+            {"h265": True},
+            "libx265",
+            None,
+            None,
+            True,
+        ),
+        ("reference.json", None, None, TFF_SCAN, {}, "copy", None, None, False),
     ],
     ids=[
         "tff-no-codec-flag",
         "bff-no-codec-flag",
         "tff-with-scale",
         "hevc-source-reencodes",
+        "hevc-source-vp9-reencodes",
         "progressive",
         "undecided",
         "undecided-choice-keeps-filter-off",
@@ -995,6 +1042,7 @@ def test_plan_deinterlace(
     codec,
     stream_filter,
     reason,
+    asks_question,
 ):
     """Verify the deinterlace step filters, re-encodes, or records why it did not apply."""
     # Given: a source, a scan verdict, and the requested flags
@@ -1011,11 +1059,9 @@ def test_plan_deinterlace(
     assert plan.streams[0].codec == codec
     assert plan.streams[0].stream_filter == stream_filter
     # And: the action reports the outcome without a wrong modern-codec skip
-    labels = [a.label for a in plan.actions]
-    assert CONVERT_TO_H265_LABEL not in labels or all(
-        a.reason != ALREADY_MODERN_CODEC_REASON for a in plan.actions
-    )
-    deinterlace_actions = [a for a in plan.actions if a.label.startswith("Deinterlace")]
+    assert all(a.reason != ALREADY_MODERN_CODEC_REASON for a in plan.actions)
+    assert (INTERLACE_QUESTION_NOTICE in plan.notices) is asks_question
+    deinterlace_actions = [a for a in plan.actions if a.label.startswith(DEINTERLACE_LABEL)]
     if deinterlace is True:
         assert len(deinterlace_actions) == 1
         assert deinterlace_actions[0].applied is (stream_filter is not None)
@@ -1024,52 +1070,20 @@ def test_plan_deinterlace(
         assert deinterlace_actions == []
 
 
-def test_plan_deinterlace_progressive_file_stays_a_no_op(
-    make_video, plan_settings, mock_interlace_detection
-):
-    """Verify --deinterlace on a progressive, otherwise clean file does not rewrite it."""
-    # Given: a progressive source, and the plan without --deinterlace as the baseline
-    mock_interlace_detection.return_value = PROGRESSIVE_SCAN
-    plan_settings.update({"deinterlace": False})
-    baseline = make_video("reference.json").plan_clean(*plan_settings.args())
-    plan_settings.update({"deinterlace": True})
-    video = make_video("reference.json")
-
-    # When: building the plan with --deinterlace
-    plan = video.plan_clean(*plan_settings.args())
-
-    # Then: the file is changed exactly as much as without the flag
-    assert video.plan_changes_file(plan) is video.plan_changes_file(baseline)
-
-
-def test_plan_deinterlace_unanswered_interlaced_file_notes_the_question(
-    make_video, plan_settings, mock_interlace_detection
-):
-    """Verify an unresolved choice on an interlaced re-encode adds a notice and no filter."""
-    # Given: an interlaced source, --h265, and no answer yet
-    mock_interlace_detection.return_value = TFF_SCAN
-    plan_settings.update({"h265": True, "deinterlace": None})
-    video = make_video("reference.json")
-
-    # When: building the plan
-    plan = video.plan_clean(*plan_settings.args())
-
-    # Then: the notice is recorded
-    assert INTERLACE_QUESTION_NOTICE in plan.notices
-
-
 @pytest.mark.parametrize(
-    "flags",
-    [{}, {"h265": True}, {"video_1080": True}],
-    ids=["no-flags", "h265", "1080p"],
+    ("source_codec", "flags"),
+    [(None, {}), (None, {"h265": True}), (None, {"video_1080": True}), ("hevc", {"h265": True})],
+    ids=["no-flags", "h265", "1080p", "h265-on-hevc"],
 )
 def test_plan_deinterlace_declined_never_scans(
-    make_video, plan_settings, mock_interlace_detection, flags
+    make_video, plan_settings, mock_interlace_detection, source_codec, flags
 ):
-    """Verify --no-deinterlace and a no-re-encode run never start a scan."""
-    # Given: an explicit decline, or no re-encode with the choice unanswered
+    """Verify --no-deinterlace never starts a scan, whatever the run re-encodes."""
+    # Given: --no-deinterlace with each kind of requested work
     plan_settings.update({"deinterlace": False, **flags})
     video = make_video("reference.json")
+    if source_codec:
+        video.probe_box.streams[0].codec_name = source_codec
 
     # When: building the plan
     video.plan_clean(*plan_settings.args())
@@ -1091,7 +1105,7 @@ def test_plan_deinterlace_unanswered_without_reencode_never_scans(
 
     # Then: no scan and no deinterlace action
     mock_interlace_detection.assert_not_called()
-    assert not [a for a in plan.actions if a.label.startswith("Deinterlace")]
+    assert not [a for a in plan.actions if a.label.startswith(DEINTERLACE_LABEL)]
 
 
 @pytest.mark.parametrize(
