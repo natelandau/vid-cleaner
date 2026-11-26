@@ -231,6 +231,7 @@ def build_run_options(vidcleaner: VidCleaner) -> RunOptions:
         video_1080=getattr(command, "video_1080", False),
         force=getattr(command, "force", False),
         out=getattr(command, "out", None),
+        deinterlace=getattr(command, "deinterlace", None),
     )
 
 
@@ -584,6 +585,21 @@ class CleanCommand:
             group="Video Conversion",
         ),
     ] = False
+    deinterlace: Annotated[
+        bool | None,
+        cappa.Arg(
+            help="Deinterlace interlaced video without asking (Default: ask when a re-encode finds it)",
+            long="--deinterlace",
+            action=cappa.ArgAction.store_true,
+            group="Video Conversion",
+        ),
+        cappa.Arg(
+            help="Re-encode interlaced video as it is without asking",
+            long="--no-deinterlace",
+            action=cappa.ArgAction.store_false,
+            group="Video Conversion",
+        ),
+    ] = None
     force: Annotated[
         bool,
         cappa.Arg(

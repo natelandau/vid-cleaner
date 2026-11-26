@@ -20,6 +20,10 @@ from vid_cleaner.cli.discovery_output import (
     discover_from_directory,
     present_discovery,
 )
+from vid_cleaner.cli.interlace_question import (
+    INTERLACED_FILES_SKIPPED_REASON,
+    resolve_interlaced_files,
+)
 from vid_cleaner.config import Config, RunOptions
 from vid_cleaner.constants import (
     FHD_RESOLUTION,
@@ -519,8 +523,22 @@ def main(
             clean_cmd.files, out=options.out, from_directory=clean_cmd.from_
         )
         video_files = select_video_files(clean_cmd=clean_cmd, config=config, options=options)
+        decision = resolve_interlaced_files(
+            video_files, options=options, cache_dir=config.cache_dir, assume_yes=clean_cmd.yes
+        )
+        options = decision.options
+        if decision.skipped:
+            pp.info(
+                f"Skipped {len(decision.skipped)} interlaced file(s):",
+                details=[str(video_file.path) for video_file in decision.skipped],
+            )
+            if report:
+                report.extra["skipped"] = [
+                    {"path": str(video_file.path), "reason": INTERLACED_FILES_SKIPPED_REASON}
+                    for video_file in decision.skipped
+                ]
 
-        for video_file in video_files:
+        for video_file in decision.files:
             # Print the video name first so live progress bars and the up-front operation
             # tree render beneath it.
             pp.info(f"⇨ {video_file.path.name}")
