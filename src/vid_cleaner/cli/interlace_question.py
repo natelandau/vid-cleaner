@@ -23,6 +23,10 @@ DEINTERLACE_FLAG_REQUIRED_ERROR = (
     "Some files are interlaced and this run cannot ask how to handle them. "
     "Pass `--deinterlace` or `--no-deinterlace` to decide in advance."
 )
+UNDECIDED_INTERLACE_REASON = (
+    "interlaced video with no decision on deinterlacing; "
+    "pass `--deinterlace` or `--no-deinterlace` to decide in advance"
+)
 INTERLACED_FILES_SKIPPED_REASON = "interlaced video, skipped at the user's request"
 INTERLACE_SCAN_FAILED_WARNING = "Could not check for interlacing:"
 INTERLACE_QUESTION = "These files are interlaced. How should they be encoded?"

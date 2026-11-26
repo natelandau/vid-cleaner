@@ -14,6 +14,7 @@ from vid_cleaner.cli.interlace_question import (
     INTERLACED_FILES_SKIPPED_REASON,
     REENCODE_CHOICE,
     SKIP_CHOICE,
+    UNDECIDED_INTERLACE_REASON,
 )
 from vid_cleaner.constants import INTERLACE_QUESTION_NOTICE
 from vid_cleaner.exceptions import VideoProbeError
@@ -419,3 +420,28 @@ def test_clean_interrupt_during_scan_encodes_nothing(
     with pytest.raises(KeyboardInterrupt):
         run_vidcleaner(["clean", "--h265", str(video_path)])
     mock_ffmpeg.assert_not_called()
+
+
+def test_clean_fails_a_file_found_interlaced_only_after_the_pre_scan_failed(
+    capsys,
+    video_path,
+    mock_ffmpeg,
+    mock_video_probe,
+    mock_original_language,
+    stub_output_write,
+    mock_interlace_detection,
+):
+    """Verify a real run never encodes an interlaced file without a deinterlace decision."""
+    # Given: a pre-scan that fails, then a planner rescan that finds interlacing
+    mock_video_probe("reference.json")
+    mock_interlace_detection.side_effect = [OSError(5, "Input/output error"), INTERLACED_TFF]
+
+    # When: cleaning for real with a re-encode
+    exit_code = run_vidcleaner(["clean", "--h265", str(video_path)])
+
+    # Then: the file fails with the reason and is never encoded
+    captured = capsys.readouterr()
+    output = "".join((captured.out + captured.err).split())
+    assert exit_code == 1
+    assert "".join(UNDECIDED_INTERLACE_REASON.split()) in output
+    assert _ffmpeg_commands(mock_ffmpeg) == []

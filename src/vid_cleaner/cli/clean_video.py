@@ -23,11 +23,13 @@ from vid_cleaner.cli.discovery_output import (
 )
 from vid_cleaner.cli.interlace_question import (
     INTERLACED_FILES_SKIPPED_REASON,
+    UNDECIDED_INTERLACE_REASON,
     resolve_interlaced_files,
 )
 from vid_cleaner.config import Config, RunOptions
 from vid_cleaner.constants import (
     FHD_RESOLUTION,
+    INTERLACE_QUESTION_NOTICE,
     SCALE_TO_1080P_LABEL,
     SYMBOL_CROSS,
     UPSCALE_DECLINED_REASON,
@@ -268,6 +270,10 @@ def clean_video_file(
         plan.actions.append(
             PlanAction(label=SCALE_TO_1080P_LABEL, applied=False, reason=UPSCALE_DECLINED_REASON)
         )
+
+    # Only a dry run may reach the encode with the question unanswered
+    if not options.dryrun and INTERLACE_QUESTION_NOTICE in plan.notices:
+        raise VideoCleanError(path=video_file.path, reason=UNDECIDED_INTERLACE_REASON)
 
     for note in plan.debug_notes:
         pp.debug(note)
