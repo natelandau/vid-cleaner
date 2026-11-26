@@ -2,6 +2,7 @@
 
 import pytest
 
+from vid_cleaner.utils.interlace_detection import UNDECIDED_SCAN, FieldOrder, InterlaceScan
 from vid_cleaner.utils.probe_cache import (
     PROBE_CACHE_FILENAME,
     PROBE_CACHE_UNUSABLE_WARNING,
@@ -9,8 +10,27 @@ from vid_cleaner.utils.probe_cache import (
 )
 
 PROBE = {"format": {"filename": "movie.mkv"}, "streams": [{"codec_type": "video"}]}
+SCAN = InterlaceScan(interlaced=True, field_order=FieldOrder.BFF)
 
 
+def put_probe(cache, path, **stat) -> None:
+    """Store the sample probe."""
+    cache.put(path, probe=PROBE, **stat)
+
+
+def put_scan(cache, path, **stat) -> None:
+    """Store the sample scan."""
+    cache.put_scan(path, scan=SCAN, **stat)
+
+
+# Each kind of entry: how to store it, how to look it up, and what comes back
+ENTRY_KINDS = [
+    pytest.param(put_probe, ProbeCache.get, PROBE, id="probe"),
+    pytest.param(put_scan, ProbeCache.get_scan, SCAN, id="scan"),
+]
+
+
+@pytest.mark.parametrize(("store", "lookup", "stored"), ENTRY_KINDS)
 @pytest.mark.parametrize(
     ("size", "mtime_ns", "hit"),
     [
@@ -19,19 +39,47 @@ PROBE = {"format": {"filename": "movie.mkv"}, "streams": [{"codec_type": "video"
         pytest.param(100, 6, False, id="modified"),
     ],
 )
-def test_lookup_hits_only_an_unchanged_file(tmp_path, size, mtime_ns, hit) -> None:
+def test_lookup_hits_only_an_unchanged_file(
+    tmp_path, store, lookup, stored, size, mtime_ns, hit
+) -> None:
     """Verify a stored probe is returned only while the file's size and modification time match."""
     # Given: A probe stored for a file of size 100 modified at 5
     path = tmp_path / "movie.mkv"
     with ProbeCache(tmp_path / "cache") as cache:
-        cache.put(path, size=100, mtime_ns=5, probe=PROBE)
+        store(cache, path, size=100, mtime_ns=5)
 
     # When: A later run looks the file up
     with ProbeCache(tmp_path / "cache") as cache:
-        result = cache.get(path, size=size, mtime_ns=mtime_ns)
+        result = lookup(cache, path, size=size, mtime_ns=mtime_ns)
 
-    # Then: Only an unchanged file reuses the stored probe
-    assert result == (PROBE if hit else None)
+    # Then: Only an unchanged file reuses the stored entry
+    assert result == (stored if hit else None)
+
+
+def test_undecided_scan_is_cached(tmp_path) -> None:
+    """Verify an undecided verdict is a hit, so the file is not scanned again."""
+    # Given: An undecided verdict stored for a file
+    path = tmp_path / "movie.mkv"
+    with ProbeCache(tmp_path) as cache:
+        cache.put_scan(path, size=1, mtime_ns=1, scan=UNDECIDED_SCAN)
+
+    # When: A later run looks the file up
+    with ProbeCache(tmp_path) as cache:
+        result = cache.get_scan(path, size=1, mtime_ns=1)
+
+    # Then: The verdict comes back instead of a miss
+    assert result == UNDECIDED_SCAN
+
+
+def test_scan_and_probe_entries_are_independent(tmp_path) -> None:
+    """Verify storing one kind of entry for a file does not answer lookups of the other."""
+    # Given: Only a scan stored for a file
+    path = tmp_path / "movie.mkv"
+    with ProbeCache(tmp_path) as cache:
+        cache.put_scan(path, size=1, mtime_ns=1, scan=SCAN)
+
+        # When/Then: The probe lookup misses
+        assert cache.get(path, size=1, mtime_ns=1) is None
 
 
 def test_storing_again_replaces_the_entry(tmp_path) -> None:
@@ -60,9 +108,12 @@ def test_unusable_database_turns_the_cache_off(tmp_path, capsys) -> None:
     # When: Using the cache
     cache.put(path, size=100, mtime_ns=5, probe=PROBE)
     result = cache.get(path, size=100, mtime_ns=5)
+    cache.put_scan(path, size=100, mtime_ns=5, scan=SCAN)
+    scan_result = cache.get_scan(path, size=100, mtime_ns=5)
 
     # Then: Every lookup misses and the user is told once
     assert result is None
+    assert scan_result is None
     assert capsys.readouterr().err.count(PROBE_CACHE_UNUSABLE_WARNING) == 1
 
 
@@ -91,20 +142,28 @@ def test_closing_drops_entries_unused_for_90_days(tmp_path, monkeypatch) -> None
 
     # Given: Two files cached, and only one looked up again 89 days later
     with ProbeCache(tmp_path) as cache:
-        cache.put(kept, size=1, mtime_ns=1, probe=PROBE)
-        cache.put(deleted, size=1, mtime_ns=1, probe=PROBE)
+        for path in (kept, deleted):
+            cache.put(path, size=1, mtime_ns=1, probe=PROBE)
+            cache.put_scan(path, size=1, mtime_ns=1, scan=SCAN)
     clock["now"] += 89 * day
     with ProbeCache(tmp_path) as cache:
         cache.get(kept, size=1, mtime_ns=1)
+        cache.get_scan(kept, size=1, mtime_ns=1)
 
     # When: A run of another directory closes the cache 100 days after the files were cached
     clock["now"] += 11 * day
     with ProbeCache(tmp_path) as cache:
         cache.get(tmp_path / "other.mkv", size=1, mtime_ns=1)
     with ProbeCache(tmp_path) as cache:
-        kept_result = cache.get(kept, size=1, mtime_ns=1)
-        deleted_result = cache.get(deleted, size=1, mtime_ns=1)
+        kept_results = (
+            cache.get(kept, size=1, mtime_ns=1),
+            cache.get_scan(kept, size=1, mtime_ns=1),
+        )
+        deleted_results = (
+            cache.get(deleted, size=1, mtime_ns=1),
+            cache.get_scan(deleted, size=1, mtime_ns=1),
+        )
 
-    # Then: Only the entry no run used in 90 days is gone
-    assert kept_result == PROBE
-    assert deleted_result is None
+    # Then: Only the entries no run used in 90 days are gone
+    assert kept_results == (PROBE, SCAN)
+    assert deleted_results == (None, None)
