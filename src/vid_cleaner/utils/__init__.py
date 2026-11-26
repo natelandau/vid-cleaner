@@ -18,6 +18,7 @@ from .ffmpeg_utils import (
     run_ffmpeg,
     run_ffprobe,
 )
+from .interlace_detection import FieldOrder, InterlaceScan, detect_interlacing
 from .media_ids import MediaId, find_media_ids
 from .probe_cache import ProbeCache
 
@@ -39,6 +40,8 @@ from .cli import (  # isort: skip
 __all__ = [
     "TEMP_CLEANUP_WARNING",
     "FfmpegCommand",
+    "FieldOrder",
+    "InterlaceScan",
     "MediaId",
     "OutputWrite",
     "ProbeCache",
@@ -47,6 +50,7 @@ __all__ = [
     "coerce_video_files",
     "copy_to_output",
     "create_default_config",
+    "detect_interlacing",
     "drop_macos_sidecars",
     "find_media_ids",
     "find_missing_binaries",
