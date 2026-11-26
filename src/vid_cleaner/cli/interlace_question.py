@@ -17,6 +17,7 @@ DEINTERLACE_FLAG_REQUIRED_ERROR = (
     "Pass `--deinterlace` or `--no-deinterlace` to decide in advance."
 )
 INTERLACED_FILES_SKIPPED_REASON = "interlaced video, skipped at the user's request"
+INTERLACE_SCAN_FAILED_WARNING = "Could not check for interlacing:"
 INTERLACE_QUESTION = "These files are interlaced. How should they be encoded?"
 DEINTERLACE_CHOICE = "deinterlace"
 REENCODE_CHOICE = "re-encode"
@@ -29,14 +30,33 @@ class InterlaceDecision:
 
     Attributes:
         files (list[VideoFile]): The files to clean, in order.
-        options (RunOptions): The options for every file, with `deinterlace` decided when
-            the user answered the question.
+        options (RunOptions): The options for every file not in `deinterlaced`, with
+            `deinterlace` decided when the user answered the question. Read a file's
+            options through `options_for`.
         skipped (list[VideoFile]): Interlaced files the user chose not to clean.
+        deinterlaced (list[VideoFile]): Interlaced files the user chose to deinterlace.
     """
 
     files: list[VideoFile]
     options: RunOptions
     skipped: list[VideoFile] = field(default_factory=list)
+    deinterlaced: list[VideoFile] = field(default_factory=list)
+
+    def options_for(self, video_file: VideoFile) -> RunOptions:
+        """Return the options to clean one file with.
+
+        Deinterlacing re-encodes lossily, so an answer of "deinterlace" applies only to the
+        files the question listed, never to a file the scan did not check.
+
+        Args:
+            video_file (VideoFile): A file from `files`.
+
+        Returns:
+            RunOptions: The run's options, with `deinterlace=True` for a listed file.
+        """
+        if any(video_file is listed for listed in self.deinterlaced):
+            return replace(self.options, deinterlace=True)
+        return self.options
 
 
 def _scan_for_interlacing(
@@ -72,7 +92,7 @@ def _scan_for_interlacing(
             try:
                 scan = video_file.interlace_scan(probe_cache)
             except (VideoCleanError, VideoProbeError, OSError) as e:
-                pp.debug(f"Could not scan {video_file.path} for interlacing: {e}")
+                pp.warning(f"{INTERLACE_SCAN_FAILED_WARNING} {video_file.path}: {e}")
                 continue
             if scan.interlaced:
                 interlaced.append((video_file, scan))
@@ -165,14 +185,19 @@ def resolve_interlaced_files(
         raise stop_run(DEINTERLACE_FLAG_REQUIRED_ERROR)
 
     answer = _ask_how_to_handle_interlaced_files()
+    # Files outside the list were not found interlaced, so they never deinterlace and the
+    # planner never scans them mid-batch
+    run_options = replace(options, deinterlace=False)
+    interlaced_files = [video_file for video_file, _ in interlaced]
     if answer == DEINTERLACE_CHOICE:
-        return InterlaceDecision(files=video_files, options=replace(options, deinterlace=True))
+        return InterlaceDecision(
+            files=video_files, options=run_options, deinterlaced=interlaced_files
+        )
     if answer == REENCODE_CHOICE:
-        return InterlaceDecision(files=video_files, options=replace(options, deinterlace=False))
-    # None of the remaining files is interlaced, so deciding False only spares a second scan
-    skipped_ids = {id(video_file) for video_file, _ in interlaced}
+        return InterlaceDecision(files=video_files, options=run_options)
+    skipped_ids = {id(video_file) for video_file in interlaced_files}
     return InterlaceDecision(
         files=[video_file for video_file in video_files if id(video_file) not in skipped_ids],
-        options=replace(options, deinterlace=False),
-        skipped=[video_file for video_file, _ in interlaced],
+        options=run_options,
+        skipped=interlaced_files,
     )

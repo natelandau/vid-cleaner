@@ -526,7 +526,6 @@ def main(
         decision = resolve_interlaced_files(
             video_files, options=options, cache_dir=config.cache_dir, assume_yes=clean_cmd.yes
         )
-        options = decision.options
         if decision.skipped:
             pp.info(
                 f"Skipped {len(decision.skipped)} interlaced file(s):",
@@ -546,7 +545,7 @@ def main(
                 video_file,
                 out_path_override=out_path_override,
                 config=config,
-                options=options,
+                options=decision.options_for(video_file),
                 probe_for_report=report is not None,
             )
             render_clean_outcome(outcome, dryrun=options.dryrun)

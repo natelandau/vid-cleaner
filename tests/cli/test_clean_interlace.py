@@ -1,15 +1,16 @@
 """Test how the clean subcommand asks about interlaced video before it encodes."""
 
+import copy
 from pathlib import Path
 
 import pytest
-from cappa.base import invoke
 
 from tests.helpers import read_json_document, run_vidcleaner
 from vid_cleaner.cli.clean_video import FILES_FAILED_ERROR
 from vid_cleaner.cli.interlace_question import (
     DEINTERLACE_CHOICE,
     DEINTERLACE_FLAG_REQUIRED_ERROR,
+    INTERLACE_SCAN_FAILED_WARNING,
     INTERLACED_FILES_SKIPPED_REASON,
     REENCODE_CHOICE,
     SKIP_CHOICE,
@@ -17,7 +18,6 @@ from vid_cleaner.cli.interlace_question import (
 from vid_cleaner.constants import INTERLACE_QUESTION_NOTICE
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.utils.interlace_detection import FieldOrder, InterlaceScan
-from vid_cleaner.vidcleaner import VidCleaner, configure_output
 
 INTERLACED_TFF = InterlaceScan(interlaced=True, field_order=FieldOrder.TFF)
 PROMPT_TARGET = "vid_cleaner.cli.interlace_question.Prompt.ask"
@@ -39,6 +39,37 @@ def two_videos(tmp_path):
 def _ffmpeg_commands(mock_ffmpeg) -> list[str]:
     """Return every ffmpeg command a run issued, each joined into one string."""
     return [" ".join(call.args[0]) for call in mock_ffmpeg.call_args_list]
+
+
+@pytest.fixture
+def mixed_batch(mocker, two_videos, mock_ffprobe_box, mock_interlace_detection):
+    """Make the first of `two_videos` interlaced and give the second its own codec and verdict.
+
+    Returns:
+        Callable[..., None]: Call with the second file's video codec and whether its scan
+            would find interlacing.
+    """
+    first, second = two_videos
+
+    def _inner(*, second_codec: str, second_interlaced: bool) -> None:
+        reference = mock_ffprobe_box("reference.json")
+        boxes = {first: reference, second: copy.deepcopy(reference)}
+        boxes[second].streams[0].codec_name = second_codec
+        for path, box in boxes.items():
+            box.path_to_file = Path(path)
+        mocker.patch(
+            "vid_cleaner.models.video_file.get_probe_as_box",
+            side_effect=lambda path, **_kwargs: boxes[str(path)],
+        )
+        verdicts = {
+            first: INTERLACED_TFF,
+            second: INTERLACED_TFF
+            if second_interlaced
+            else InterlaceScan(interlaced=False, field_order=None),
+        }
+        mock_interlace_detection.side_effect = lambda path, **_kwargs: verdicts[str(path)]
+
+    return _inner
 
 
 @pytest.mark.parametrize(
@@ -78,6 +109,61 @@ def test_clean_asks_once_for_interlaced_files(
     commands = _ffmpeg_commands(mock_ffmpeg)
     assert len(commands) == (2 if expect_encoded else 0)
     assert all(("bwdif=" in command) is expect_filter for command in commands)
+
+
+def test_clean_skip_answer_cleans_only_the_progressive_file(
+    mocker,
+    two_videos,
+    mixed_batch,
+    mock_ffmpeg,
+    mock_original_language,
+    stub_output_write,
+    interactive_console,
+):
+    """Verify skipping removes only the interlaced files and leaves the rest undeinterlaced."""
+    # Given: an interlaced file and a progressive file that --h265 re-encodes, and a user
+    # who skips the interlaced one
+    mixed_batch(second_codec="h264", second_interlaced=False)
+    interactive_console(is_terminal=True)
+    mocker.patch(PROMPT_TARGET, return_value=SKIP_CHOICE)
+
+    # When: cleaning both
+    exit_code = run_vidcleaner(["clean", "--h265", *two_videos])
+
+    # Then: only the progressive file is encoded, with no deinterlace filter
+    assert exit_code == 0
+    [command] = _ffmpeg_commands(mock_ffmpeg)
+    assert Path(two_videos[1]).stem in command
+    assert "bwdif=" not in command
+
+
+def test_clean_deinterlace_answer_applies_only_to_the_listed_files(
+    mocker,
+    two_videos,
+    mixed_batch,
+    mock_ffmpeg,
+    mock_original_language,
+    stub_output_write,
+    interactive_console,
+    mock_interlace_detection,
+):
+    """Verify deinterlacing never reaches a file the question did not list."""
+    # Given: an interlaced file that --h265 re-encodes, an HEVC file that --h265 leaves
+    # alone and would read as interlaced if scanned, and a user who answers deinterlace
+    first, second = two_videos
+    mixed_batch(second_codec="hevc", second_interlaced=True)
+    interactive_console(is_terminal=True)
+    mocker.patch(PROMPT_TARGET, return_value=DEINTERLACE_CHOICE)
+
+    # When: cleaning both
+    exit_code = run_vidcleaner(["clean", "--h265", *two_videos])
+
+    # Then: only the listed file was scanned and deinterlaced
+    assert exit_code == 0
+    assert [call.args[0] for call in mock_interlace_detection.call_args_list] == [Path(first)]
+    commands = _ffmpeg_commands(mock_ffmpeg)
+    assert any(Path(first).stem in command and "bwdif=" in command for command in commands)
+    assert not any(Path(second).stem in command and "bwdif=" in command for command in commands)
 
 
 @pytest.mark.parametrize(
@@ -209,10 +295,14 @@ def test_clean_reports_a_file_whose_scan_fails_and_cleans_the_rest(
     # When: cleaning both
     exit_code = run_vidcleaner(["clean", "--h265", *two_videos])
 
-    # Then: the first file is reported as failed, the second is encoded, and nothing is asked
+    # Then: the user is warned the first file was not checked, it is reported as failed,
+    # the second is encoded, and nothing is asked
     captured = capsys.readouterr()
+    # Rich wraps long paths mid-word, so compare with all whitespace removed
+    output = "".join((captured.out + captured.err).split())
     assert exit_code == 1
-    assert FILES_FAILED_ERROR in captured.out + captured.err
+    assert "".join(f"{INTERLACE_SCAN_FAILED_WARNING} {first}".split()) in output
+    assert "".join(FILES_FAILED_ERROR.split()) in output
     ask.assert_not_called()
     [command] = _ffmpeg_commands(mock_ffmpeg)
     assert Path(second).stem in command
@@ -290,7 +380,8 @@ def test_clean_interrupt_during_scan_encodes_nothing(
     mock_interlace_detection.side_effect = KeyboardInterrupt
 
     # When: cleaning it
-    # Then: the interrupt stops the run and nothing is encoded
+    # Then: the interrupt reaches the top level, which exits with an error, and nothing is
+    # encoded
     with pytest.raises(KeyboardInterrupt):
-        invoke(obj=VidCleaner, argv=["clean", "--h265", str(video_path)], deps=[configure_output])
+        run_vidcleaner(["clean", "--h265", str(video_path)])
     mock_ffmpeg.assert_not_called()
