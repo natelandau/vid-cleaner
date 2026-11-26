@@ -7,11 +7,23 @@ import pytest
 
 from tests.helpers import load_ffprobe_json, read_json_document, run_vidcleaner
 from vid_cleaner.cli import inspect_video
+from vid_cleaner.cli.inspect_video import SCAN_LINE_TEMPLATE, scan_verdict
+from vid_cleaner.utils import FieldOrder, InterlaceScan
 
 
-def test_inspect_table(capsys, video_path, mock_video_probe):
-    """Verify inspect command displays video information in table format."""
+@pytest.mark.parametrize(
+    "scan",
+    [
+        InterlaceScan(interlaced=True, field_order=FieldOrder.TFF),
+        InterlaceScan(interlaced=False, field_order=None),
+        InterlaceScan(interlaced=None, field_order=None),
+    ],
+    ids=["interlaced", "progressive", "undecided"],
+)
+def test_inspect_table(capsys, video_path, mock_video_probe, mock_interlace_detection, scan):
+    """Verify inspect command displays video information and the interlace scan verdict."""
     # Given: Mock video file and ffprobe data
+    mock_interlace_detection.return_value = scan
     args = ["inspect", str(video_path)]
     mock_video_probe("reference.json")
 
@@ -25,6 +37,7 @@ def test_inspect_table(capsys, video_path, mock_video_probe):
     assert re.search(r"9 │ video +│ mjpeg", output)
     assert re.search(r"eng +│ 8 +│ 7.1", output)
     assert re.search(r"1920 +│ 1080 +│ Test", output)
+    assert SCAN_LINE_TEMPLATE.format(verdict=scan_verdict(scan)) in output
 
 
 def test_inspect_title_shows_file_size(capsys, video_path, mock_video_probe):
@@ -45,13 +58,18 @@ def test_inspect_title_shows_file_size(capsys, video_path, mock_video_probe):
     assert "(2.0 kB)" in output
 
 
-def test_inspect_json_writes_one_document_for_two_files(capsys, tmp_path, mock_video_probe):
+def test_inspect_json_writes_one_document_for_two_files(
+    capsys, tmp_path, mock_video_probe, mock_interlace_detection
+):
     """Verify inspect --json prints one document holding every file's raw ffprobe data."""
     # Given: Two video files that probe as the reference recording
     first, second = tmp_path / "first.mkv", tmp_path / "second.mkv"
     first.touch()
     second.touch()
     mock_video_probe("reference.json")
+    mock_interlace_detection.return_value = InterlaceScan(
+        interlaced=True, field_order=FieldOrder.BFF
+    )
 
     # When: Inspecting both with --json
     exit_code = run_vidcleaner(["inspect", "--json", str(first), str(second)])
@@ -62,6 +80,8 @@ def test_inspect_json_writes_one_document_for_two_files(capsys, tmp_path, mock_v
     assert doc["command"] == "inspect"
     assert len(doc["files"]) == 2
     assert doc["files"][0]["streams"] == load_ffprobe_json("reference.json")["streams"]
+    assert doc["files"][0]["interlaced"] is True
+    assert doc["files"][0]["field_order"] == "bff"
     assert doc["summary"] == {"total": 2, "skipped": 0}
 
 
