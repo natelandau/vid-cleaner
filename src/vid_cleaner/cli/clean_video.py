@@ -243,7 +243,12 @@ def check_free_space(video_file: VideoFile, *, temp_dir: Path, destination_dir: 
 
 
 def clean_video_file(
-    video_file: VideoFile, *, destination_dir: Path, config: Config, options: RunOptions
+    video_file: VideoFile,
+    *,
+    destination_dir: Path,
+    config: Config,
+    options: RunOptions,
+    answered_deinterlace: bool = False,
 ) -> tuple[ConversionPlan, FfmpegCommand | None]:
     """Plan a file's cleaning, report the plan, and run it unless it changes nothing.
 
@@ -255,6 +260,9 @@ def clean_video_file(
             free space before encoding.
         config (Config): The settings for this run.
         options (RunOptions): The CLI-only values for this run.
+        answered_deinterlace (bool): Whether `options.deinterlace` comes from the user's
+            answer to the interlace question rather than the `--deinterlace` flag. Such a
+            deinterlace is dropped when a declined upscale leaves nothing else to re-encode.
 
     Returns:
         tuple[ConversionPlan, FfmpegCommand | None]: The plan, whose `output_suffix` names
@@ -266,7 +274,12 @@ def clean_video_file(
     if plan.upscale_source_width is not None and not approve_upscale(
         video_file, source_width=plan.upscale_source_width, dryrun=options.dryrun
     ):
-        plan = video_file.plan_clean(config=config, options=replace(options, video_1080=False))
+        options = replace(options, video_1080=False)
+        # The question asked about deinterlacing during an encode the run was going to do,
+        # so with the upscale gone and nothing else re-encoding, the answer no longer applies
+        if answered_deinterlace and not video_file.will_reencode_video(options):
+            options = replace(options, deinterlace=False)
+        plan = video_file.plan_clean(config=config, options=options)
         plan.actions.append(
             PlanAction(label=SCALE_TO_1080P_LABEL, applied=False, reason=UPSCALE_DECLINED_REASON)
         )
@@ -311,6 +324,7 @@ def clean_one_file(
     config: Config,
     options: RunOptions,
     probe_for_report: bool,
+    answered_deinterlace: bool = False,
 ) -> CleanOutcome:
     """Clean one file and return what happened, so a batch can report it and move on.
 
@@ -327,6 +341,8 @@ def clean_one_file(
         probe_for_report (bool): Describe the input file before planning and the written
             file after a successful write. Pass True only when a report needs the
             descriptions, so a plain run does no extra probing.
+        answered_deinterlace (bool): Whether `options.deinterlace` comes from the user's
+            answer to the interlace question rather than the `--deinterlace` flag.
 
     Returns:
         CleanOutcome: The file's outcome.
@@ -344,6 +360,7 @@ def clean_one_file(
             destination_dir=destination.parent,
             config=config,
             options=options,
+            answered_deinterlace=answered_deinterlace,
         )
         outcome.plan = plan
         if command is None:
@@ -551,6 +568,7 @@ def main(
                 config=config,
                 options=decision.options_for(video_file),
                 probe_for_report=report is not None,
+                answered_deinterlace=video_file.path in decision.deinterlaced_paths,
             )
             render_clean_outcome(outcome, dryrun=options.dryrun)
             if outcome.status == CleanStatus.FAILED:

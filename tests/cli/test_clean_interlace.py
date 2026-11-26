@@ -169,6 +169,43 @@ def test_clean_deinterlace_answer_applies_only_to_the_listed_files(
 
 
 @pytest.mark.parametrize(
+    ("flag", "expect_deinterlaced"),
+    [
+        pytest.param([], False, id="answered deinterlace is dropped"),
+        pytest.param(["--deinterlace"], True, id="--deinterlace still applies"),
+    ],
+)
+def test_clean_declined_upscale_drops_an_answered_deinterlace(
+    mocker,
+    video_path,
+    mock_ffmpeg,
+    mock_video_probe,
+    mock_original_language,
+    stub_output_write,
+    interactive_console,
+    mock_interlace_detection,
+    flag,
+    expect_deinterlaced,
+):
+    """Verify declining the upscale leaves an interlaced file unencoded unless the flag asked."""
+    # Given: an interlaced 1280px video that only `--1080p --force` would re-encode, and a
+    # user who answers deinterlace but then declines the upscale
+    mock_video_probe("reference.json").streams[0].width = 1280
+    mock_interlace_detection.return_value = INTERLACED_TFF
+    interactive_console(is_terminal=True)
+    mocker.patch(PROMPT_TARGET, return_value=DEINTERLACE_CHOICE)
+    mocker.patch("vid_cleaner.cli.clean_video.Confirm.ask", return_value=False)
+
+    # When: cleaning the file
+    exit_code = run_vidcleaner(["clean", "--1080p", "--force", *flag, str(video_path)])
+
+    # Then: only the flag keeps the deinterlace encode
+    assert exit_code == 0
+    deinterlaced = any("bwdif=" in command for command in _ffmpeg_commands(mock_ffmpeg))
+    assert deinterlaced is expect_deinterlaced
+
+
+@pytest.mark.parametrize(
     ("use_from", "is_terminal", "prompt_error"),
     [
         pytest.param(True, True, None, id="--yes with --from"),
