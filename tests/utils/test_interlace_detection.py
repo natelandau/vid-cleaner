@@ -7,9 +7,13 @@ from nclutils.sh import CompletedCommand, ShellCommandError, ShellCommandTimeout
 from pytest_mock import MockerFixture
 
 from vid_cleaner.utils.interlace_detection import (
+    INTERLACED_DESCRIPTION_TEMPLATE,
+    PROGRESSIVE_DESCRIPTION,
+    UNDECIDED_DESCRIPTION,
     UNDECIDED_SCAN,
     FieldOrder,
     InterlaceScan,
+    InterlaceScanError,
     detect_interlacing,
     parse_idet_output,
 )
@@ -40,13 +44,9 @@ def test_parse_idet_output_verdict(fixture, interlaced, field_order):
     assert scan == InterlaceScan(interlaced=interlaced, field_order=field_order)
 
 
-@pytest.mark.parametrize(
-    ("field_order", "description"),
-    [(FieldOrder.TFF, "top field first"), (FieldOrder.BFF, "bottom field first")],
-)
-def test_field_order_description(field_order, description):
-    """Verify each field order reads as plain words."""
-    assert field_order.description == description
+def test_field_orders_read_differently():
+    """Verify a user can tell the two field orders apart in messages."""
+    assert FieldOrder.TFF.description != FieldOrder.BFF.description
 
 
 @pytest.mark.parametrize(
@@ -68,10 +68,14 @@ def test_interlace_scan_rejects_inconsistent_field_order(interlaced, field_order
     [
         (
             InterlaceScan(interlaced=True, field_order=FieldOrder.TFF),
-            "interlaced (top field first)",
+            INTERLACED_DESCRIPTION_TEMPLATE.format(field_order=FieldOrder.TFF.description),
         ),
-        (InterlaceScan(interlaced=False, field_order=None), "progressive"),
-        (UNDECIDED_SCAN, "undetermined"),
+        (
+            InterlaceScan(interlaced=True, field_order=FieldOrder.BFF),
+            INTERLACED_DESCRIPTION_TEMPLATE.format(field_order=FieldOrder.BFF.description),
+        ),
+        (InterlaceScan(interlaced=False, field_order=None), PROGRESSIVE_DESCRIPTION),
+        (UNDECIDED_SCAN, UNDECIDED_DESCRIPTION),
     ],
 )
 def test_interlace_scan_description(scan, description):
@@ -134,16 +138,14 @@ def _timed_out_scan() -> ShellCommandTimeoutError:
         pytest.param(_timed_out_scan(), id="ffmpeg timed out"),
     ],
 )
-def test_detect_interlacing_returns_undecided_when_ffmpeg_fails(mocker, error):
-    """Verify a failed or timed-out scan yields an undecided verdict."""
+def test_detect_interlacing_raises_when_ffmpeg_fails(mocker, error):
+    """Verify a failed or timed-out scan is an error, not a verdict, so it is never cached."""
     # Given ffmpeg that fails, is missing, or runs past the timeout
     mocker.patch("vid_cleaner.utils.interlace_detection.run_command", side_effect=error)
 
-    # When detecting
-    scan = detect_interlacing(Path("movie.mkv"), duration_seconds=None)
-
-    # Then the verdict is undecided
-    assert scan == UNDECIDED_SCAN
+    # When detecting, Then the failure is raised
+    with pytest.raises(InterlaceScanError):
+        detect_interlacing(Path("movie.mkv"), duration_seconds=None)
 
 
 def test_detect_interlacing_returns_undecided_without_idet_counts(mocker):

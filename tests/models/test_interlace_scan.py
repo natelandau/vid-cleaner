@@ -3,6 +3,7 @@
 import pytest
 
 from vid_cleaner.utils import FieldOrder, InterlaceScan, ProbeCache
+from vid_cleaner.utils.interlace_detection import UNDECIDED_SCAN, InterlaceScanError
 
 TOP_FIELD_FIRST_SCAN = InterlaceScan(interlaced=True, field_order=FieldOrder.TFF)
 
@@ -42,6 +43,22 @@ def test_interlace_scan_stores_its_verdict(make_video, mock_interlace_detection,
         stored = cache.get_scan(video.path, size=stat.st_size, mtime_ns=stat.st_mtime_ns)
 
     assert stored == TOP_FIELD_FIRST_SCAN
+
+
+def test_interlace_scan_does_not_store_a_failed_scan(
+    make_video, mock_interlace_detection, tmp_path
+):
+    """Verify a scan ffmpeg could not finish is undecided now and retried on the next run."""
+    video = make_video("reference.json")
+    mock_interlace_detection.side_effect = InterlaceScanError(path=video.path, reason="timed out")
+    stat = video.path.stat()
+    with ProbeCache(tmp_path / "cache") as cache:
+        scan = video.interlace_scan(cache)
+
+        stored = cache.get_scan(video.path, size=stat.st_size, mtime_ns=stat.st_mtime_ns)
+
+    assert scan == UNDECIDED_SCAN
+    assert stored is None
 
 
 @pytest.mark.parametrize(

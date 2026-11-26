@@ -22,6 +22,9 @@ from vid_cleaner.views.json_output import check_report_entry, report_on_exit
 
 # Matches the warning style nclutils pp uses for detail lines
 INTERLACED_MARKER_STYLE = "yellow"
+CHECK_SUMMARY_TEMPLATE = (
+    "Checked {total} file(s): {valid} valid, {invalid} invalid, {interlaced} interlaced"
+)
 
 
 def progress_description(file_count: int, *, deep: bool) -> str:
@@ -207,9 +210,6 @@ def main(check_cmd: CheckCommand, vidcleaner: VidCleaner) -> None:
                 line.append(f"  {result.scan.description}", style=INTERLACED_MARKER_STYLE)
             pp.success(line)
 
-        pp.info(
-            f"\nChecked {summary['total']} file(s): {summary['valid']} valid, "
-            f"{summary['invalid']} invalid, {summary['interlaced']} interlaced"
-        )
+        pp.info(f"\n{CHECK_SUMMARY_TEMPLATE.format(**summary)}")
 
     raise cappa.Exit(code=1 if summary["invalid"] else 0)

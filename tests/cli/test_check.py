@@ -7,7 +7,7 @@ from cappa.base import invoke
 
 from tests.helpers import read_json_document, run_vidcleaner
 from vid_cleaner.cli import check_video
-from vid_cleaner.cli.check_video import display_path
+from vid_cleaner.cli.check_video import CHECK_SUMMARY_TEMPLATE, display_path
 from vid_cleaner.cli.discovery_output import (
     FROM_WITH_FILES_ERROR,
     NO_FILES_OR_FROM_ERROR,
@@ -19,6 +19,13 @@ from vid_cleaner.controllers.validation import CheckResult
 from vid_cleaner.exceptions import VideoProbeError
 from vid_cleaner.utils import FieldOrder, InterlaceScan
 from vid_cleaner.vidcleaner import VidCleaner, configure_output
+
+
+def check_summary(*, valid: int, invalid: int, interlaced: int = 0) -> str:
+    """Return the summary line a check run prints for these counts."""
+    return CHECK_SUMMARY_TEMPLATE.format(
+        total=valid + invalid, valid=valid, invalid=invalid, interlaced=interlaced
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -45,7 +52,7 @@ def test_check_valid_file_exits_zero(capsys, video_path, mock_video_probe):
     # Then: It is reported valid and the run succeeds
     assert exit_code == 0
     assert "test_video.mp4" in captured.out
-    assert "1 valid, 0 invalid" in captured.out
+    assert check_summary(valid=1, invalid=0) in captured.out
 
 
 def test_check_invalid_file_exits_one(capsys, video_path, mocker, mock_interlace_detection):
@@ -65,7 +72,7 @@ def test_check_invalid_file_exits_one(capsys, video_path, mocker, mock_interlace
     # Then: The failure carries ffprobe's reason and the run fails
     assert exit_code == 1
     assert "moov atom not found" in captured.err
-    assert "0 valid, 1 invalid" in captured.out
+    assert check_summary(valid=0, invalid=1) in captured.out
     mock_interlace_detection.assert_not_called()
 
 
@@ -95,7 +102,7 @@ def test_check_reports_every_file_in_a_mixed_batch(capsys, tmp_path, mock_unread
     assert "Invalid data found" in output
     assert "not a video file" in output
     assert "file does not exist" in output
-    assert "1 valid, 3 invalid" in captured.out
+    assert check_summary(valid=1, invalid=3) in captured.out
 
 
 def test_check_skips_named_macos_sidecars(capsys, video_path, mock_video_probe):
@@ -112,7 +119,7 @@ def test_check_skips_named_macos_sidecars(capsys, video_path, mock_video_probe):
 
     # Then: Only the video is checked
     assert exit_code == 0
-    assert "Checked 1 file(s): 1 valid, 0 invalid" in captured.out
+    assert check_summary(valid=1, invalid=0) in captured.out
     assert sidecar.name not in captured.out + captured.err
 
 
@@ -170,8 +177,12 @@ def test_check_without_deep_does_not_decode(video_path, mocker, mock_video_probe
 @pytest.mark.parametrize(
     ("filters", "summary"),
     [
-        pytest.param([], "1 valid, 1 invalid", id="no filter"),
-        pytest.param(["--filters", "vp9"], "0 valid, 1 invalid", id="filter matching neither"),
+        pytest.param([], check_summary(valid=1, invalid=1), id="no filter"),
+        pytest.param(
+            ["--filters", "vp9"],
+            check_summary(valid=0, invalid=1),
+            id="filter matching neither",
+        ),
     ],
 )
 def test_check_from_reports_unreadable_files(
@@ -467,7 +478,7 @@ def test_check_marks_interlaced_files_on_stdout(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert f"{movie.name}  {scan.description}" in captured.out
-    assert "1 valid, 0 invalid, 1 interlaced" in captured.out
+    assert check_summary(valid=1, invalid=0, interlaced=1) in captured.out
 
 
 @pytest.mark.parametrize("deep", [False, True], ids=["header check", "deep"])

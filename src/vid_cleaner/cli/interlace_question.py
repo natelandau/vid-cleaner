@@ -5,6 +5,7 @@ from pathlib import Path
 
 from nclutils import pp
 from rich.prompt import Prompt
+from rich.text import Text
 
 from vid_cleaner.config import RunOptions
 from vid_cleaner.exceptions import VideoCleanError, VideoProbeError
@@ -99,7 +100,8 @@ def _scan_for_interlacing(
             try:
                 scan = video_file.interlace_scan(probe_cache)
             except (VideoCleanError, VideoProbeError, OSError) as e:
-                pp.warning(f"{INTERLACE_SCAN_FAILED_WARNING} {video_file.path}: {e}")
+                # `Text` keeps a `:name:` in a filename from turning into an emoji
+                pp.warning(Text(f"{INTERLACE_SCAN_FAILED_WARNING} {video_file.path}: {e}"))
                 continue
             if scan.interlaced:
                 interlaced.append((video_file, scan))
@@ -118,7 +120,8 @@ def _will_reencode_video(video_file: VideoFile, *, options: RunOptions) -> bool:
     """
     try:
         return video_file.will_reencode_video(options)
-    except (VideoCleanError, VideoProbeError) as e:
+    # OSError covers an ffprobe that cannot be launched; `clean_one_file` reports it per file
+    except (VideoCleanError, VideoProbeError, OSError) as e:
         pp.debug(f"Could not tell whether {video_file.path} is re-encoded: {e}")
         return False
 
@@ -177,8 +180,7 @@ def resolve_interlaced_files(
 
     pp.warning(
         "Interlaced video found:",
-        details=[f"{video_file.path}: {scan.description}" for video_file, scan in interlaced],
-        markup=False,
+        details=[Text(f"{video_file.path}: {scan.description}") for video_file, scan in interlaced],
     )
     # The planner notes on each dry-run plan that a real run asks
     if options.dryrun:

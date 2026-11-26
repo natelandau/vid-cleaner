@@ -28,6 +28,22 @@ INTERLACED_DESCRIPTION_TEMPLATE = "interlaced ({field_order})"
 PROGRESSIVE_DESCRIPTION = "progressive"
 UNDECIDED_DESCRIPTION = "undetermined"
 
+
+class InterlaceScanError(Exception):
+    """ffmpeg could not run the scan, so the file's verdict is unknown for this run only."""
+
+    def __init__(self, path: Path, reason: str) -> None:
+        """Record which file failed and why, for the debug log.
+
+        Args:
+            path (Path): The file whose scan failed.
+            reason (str): What went wrong running ffmpeg.
+        """
+        self.path = path
+        self.reason = reason
+        super().__init__(f"Interlace scan of {path} did not finish: {reason}")
+
+
 # Only the multi-frame lines are trusted; single-frame and repeated-field lines are noisier
 _MULTI_FRAME_PATTERN = re.compile(
     r"Multi frame detection:\s*TFF:\s*(\d+)\s*BFF:\s*(\d+)\s*Progressive:\s*(\d+)"
@@ -159,7 +175,10 @@ def detect_interlacing(path: Path, *, duration_seconds: float | None) -> Interla
         duration_seconds (float | None): The video's duration, when known.
 
     Returns:
-        InterlaceScan: Undecided when ffmpeg fails, times out, or classifies too few frames.
+        InterlaceScan: Undecided when ffmpeg classifies too few frames.
+
+    Raises:
+        InterlaceScanError: When ffmpeg cannot be started, fails to run, or times out.
     """
     if duration_seconds is None or duration_seconds < MIN_SAMPLED_DURATION_SECONDS:
         commands = [_build_sample_command(path, start_seconds=None, frames=FALLBACK_SAMPLE_FRAMES)]
@@ -179,8 +198,7 @@ def detect_interlacing(path: Path, *, duration_seconds: float | None) -> Interla
             )
     # ShellCommandError includes ShellCommandTimeoutError, raised when a run hits the timeout
     except (ShellCommandError, OSError) as e:
-        pp.debug(f"Interlace scan failed for {path}: {e}")
-        return UNDECIDED_SCAN
+        raise InterlaceScanError(path=path, reason=str(e)) from e
 
     return parse_idet_output("\n".join(stderr_lines))
 
@@ -195,7 +213,8 @@ def scan_with_cache(
 
     The scan decodes part of the video, so a cached verdict saves real time on a large
     library. The duration is read only on a cache miss, since reading it can mean probing
-    the file.
+    the file. A scan ffmpeg could not finish is undecided for this run only and is never
+    stored, so a timeout or a missing ffmpeg does not stick to the file.
 
     Args:
         path (Path): The video file to scan.
@@ -203,15 +222,37 @@ def scan_with_cache(
         probe_cache (ProbeCache | None): The cache to read and fill. Skipped when None.
 
     Returns:
-        InterlaceScan: The verdict, undecided when the file has too few frames to judge.
+        InterlaceScan: The verdict, undecided when the file has too few frames to judge or
+            ffmpeg could not finish the scan.
     """
     if probe_cache is None:
-        return detect_interlacing(path, duration_seconds=read_duration())
+        return _detect_this_run(path, read_duration=read_duration) or UNDECIDED_SCAN
 
     stat = path.stat()
     cached = probe_cache.get_scan(path, size=stat.st_size, mtime_ns=stat.st_mtime_ns)
     if cached is not None:
         return cached
-    scan = detect_interlacing(path, duration_seconds=read_duration())
+    scan = _detect_this_run(path, read_duration=read_duration)
+    if scan is None:
+        return UNDECIDED_SCAN
     probe_cache.put_scan(path, size=stat.st_size, mtime_ns=stat.st_mtime_ns, scan=scan)
     return scan
+
+
+def _detect_this_run(
+    path: Path, *, read_duration: Callable[[], float | None]
+) -> InterlaceScan | None:
+    """Run the scan, returning None when ffmpeg could not finish it.
+
+    Args:
+        path (Path): The video file to scan.
+        read_duration (Callable[[], float | None]): Returns the video's duration, when known.
+
+    Returns:
+        InterlaceScan | None: The verdict, or None when the scan did not finish.
+    """
+    try:
+        return detect_interlacing(path, duration_seconds=read_duration())
+    except InterlaceScanError as e:
+        pp.debug(str(e))
+        return None

@@ -17,6 +17,7 @@ from vid_cleaner.cli.interlace_question import (
 )
 from vid_cleaner.constants import INTERLACE_QUESTION_NOTICE
 from vid_cleaner.exceptions import VideoProbeError
+from vid_cleaner.models.video_file import VideoFile
 from vid_cleaner.utils.interlace_detection import FieldOrder, InterlaceScan
 
 INTERLACED_TFF = InterlaceScan(interlaced=True, field_order=FieldOrder.TFF)
@@ -304,6 +305,39 @@ def test_clean_reports_a_file_whose_scan_fails_and_cleans_the_rest(
     assert "".join(f"{INTERLACE_SCAN_FAILED_WARNING} {first}".split()) in output
     assert "".join(FILES_FAILED_ERROR.split()) in output
     ask.assert_not_called()
+    [command] = _ffmpeg_commands(mock_ffmpeg)
+    assert Path(second).stem in command
+
+
+def test_clean_reports_a_file_whose_probe_cannot_start_and_cleans_the_rest(
+    mocker,
+    capsys,
+    two_videos,
+    mock_ffmpeg,
+    mock_video_probe,
+    mock_original_language,
+    stub_output_write,
+):
+    """Verify an OSError while deciding whether to scan fails only its own file."""
+    # Given: two files that --h265 re-encodes, where reading the first raises OSError
+    first, second = two_videos
+    mock_video_probe("reference.json")
+    original = VideoFile.will_reencode_video
+
+    def will_reencode(video_file, options):
+        if str(video_file.path) == first:
+            raise OSError(24, "Too many open files")
+        return original(video_file, options)
+
+    mocker.patch.object(VideoFile, "will_reencode_video", autospec=True, side_effect=will_reencode)
+
+    # When: cleaning both
+    exit_code = run_vidcleaner(["clean", "--h265", *two_videos])
+
+    # Then: the run finishes, reports the first file as failed, and encodes the second
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "".join(FILES_FAILED_ERROR.split()) in "".join((captured.out + captured.err).split())
     [command] = _ffmpeg_commands(mock_ffmpeg)
     assert Path(second).stem in command
 

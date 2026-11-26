@@ -11,6 +11,7 @@ from cappa import Dep
 from nclutils import pp
 from rich.filesize import decimal
 from rich.prompt import Confirm
+from rich.text import Text
 
 from vid_cleaner.cli.discovery_output import (
     FROM_WITH_FILES_ERROR,
@@ -526,7 +527,8 @@ def main(
         if decision.skipped:
             pp.info(
                 f"Skipped {len(decision.skipped)} interlaced file(s):",
-                details=[str(video_file.path) for video_file in decision.skipped],
+                # `Text` keeps a `:name:` in a filename from turning into an emoji
+                details=[Text(str(video_file.path)) for video_file in decision.skipped],
             )
             skipped.extend(
                 {"path": str(video_file.path), "reason": INTERLACED_FILES_SKIPPED_REASON}
@@ -536,7 +538,7 @@ def main(
         for video_file in decision.files:
             # Print the video name first so live progress bars and the up-front operation
             # tree render beneath it.
-            pp.info(f"⇨ {video_file.path.name}")
+            pp.info(Text(f"⇨ {video_file.path.name}"))
             outcome = clean_one_file(
                 video_file,
                 out_path_override=out_path_override,
