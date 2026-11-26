@@ -13,7 +13,7 @@ from vid_cleaner.views.json_output import file_object, interlace_scan_fields, re
 SCAN_LINE_TEMPLATE = "Scan: {verdict}"
 INTERLACED_VERDICT_TEMPLATE = "interlaced ({field_order})"
 PROGRESSIVE_VERDICT = "progressive"
-UNDECIDED_VERDICT = "could not tell if interlaced"
+UNDECIDED_VERDICT = "undetermined"
 
 
 def scan_verdict(scan: InterlaceScan) -> str:
