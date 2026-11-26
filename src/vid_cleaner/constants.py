@@ -129,6 +129,8 @@ SYMBOL_CROSS = "✖"  # Marks a skipped operation in debug output, or a file tha
 # Labels of the cleaning operations a conversion plan reports
 CONVERT_TO_H265_LABEL = "Convert to H.265"
 CONVERT_TO_VP9_LABEL = "Convert to VP9"
+DEINTERLACE_LABEL = "Deinterlace"
+DEINTERLACE_LABEL_TEMPLATE = "Deinterlace ({field_order})"
 DOWNMIX_STEREO_LABEL = "Downmix to stereo"
 DROP_AUDIO_LABEL = "Drop unwanted audio"
 DROP_SUBTITLES_LABEL = "Drop unwanted subtitles"
@@ -137,7 +139,9 @@ SCALE_TO_1080P_LABEL = "Convert to 1080p"
 # Reasons a conversion plan gives for skipping a cleaning operation
 ALL_AUDIO_KEPT_REASON = "all audio matches keep languages"
 ALREADY_MODERN_CODEC_REASON = "already H.265/VP9; use --force"
+INTERLACE_UNDECIDED_REASON = "could not tell if interlaced"
 KEEP_ALL_SUBTITLES_REASON = "--keep-all-subtitles set"
+NOT_INTERLACED_REASON = "not interlaced"
 NO_SUBTITLES_REASON = "no subtitles to drop"
 NO_SURROUND_SOURCE_REASON = "no surround source to downmix"
 NO_UNWANTED_SUBTITLES_REASON = "no unwanted subtitles"
@@ -146,6 +150,8 @@ STEREO_EXISTS_REASON = "stereo track already exists; use --force"
 STREAMS_IN_ORDER_REASON = "streams already in order"
 UNKNOWN_DURATION_REASON = "could not determine duration"
 UPSCALE_DECLINED_REASON = "upscale not approved"
+# Dry-run notice for an interlaced file whose deinterlace choice a real run asks for
+INTERLACE_QUESTION_NOTICE = "Video is interlaced; a real run asks whether to deinterlace it"
 # Reasons a file cannot be cleaned
 NO_AUDIO_STREAMS_REASON = "no audio streams found"
 NO_VIDEO_STREAMS_REASON = "no video streams found"

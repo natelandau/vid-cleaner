@@ -79,6 +79,7 @@ class RunOptions:
     vp9: bool = False
     video_1080: bool = False
     force: bool = False
+    deinterlace: bool | None = None
     out: Path | None = None
 
 
